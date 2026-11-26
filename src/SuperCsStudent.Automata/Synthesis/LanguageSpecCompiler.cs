@@ -48,7 +48,7 @@ public sealed record LanguageSpecCompilationResult(
 public static class LanguageSpecCompiler
 {
     private static readonly Regex ConstraintSignalRegex = new(
-        @"\b(starts?\s+with|begins?\s+with|ends?\s+with|contains?|does\s+not|even|odd|length|divisible|multiple|at\s+least|at\s+most|exactly)\b|\b(AND|OR|NOT)\b",
+        @"\b(starts?\s+with|begins?\s+with|ends?\s+with|contains?|does\s+not|doesn't|even|odd|length|divisible|multiple|at\s+least|at\s+most|exactly)\b|\b(AND|OR|NOT)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static LanguageSpecCompilationResult Compile(
@@ -1071,16 +1071,20 @@ public static class LanguageSpecCompiler
 
     private static SortedSet<char> InferConstraintAlphabet(List<ConstraintToken> tokens, IEnumerable<char>? explicitAlphabet)
     {
-        if (explicitAlphabet is not null)
-        {
-            var explicitSet = new SortedSet<char>(explicitAlphabet);
-            if (explicitSet.Count > 0) return explicitSet;
-        }
-
         var discovered = new SortedSet<char>();
         foreach (var tok in tokens.Where(t => t.Kind == ConstraintTokenKind.Atom))
         {
             CollectAtomSymbols(tok.Text, discovered);
+        }
+
+        if (explicitAlphabet is not null)
+        {
+            var merged = new SortedSet<char>(explicitAlphabet);
+            foreach (var c in discovered)
+            {
+                merged.Add(c);
+            }
+            if (merged.Count > 0) return merged;
         }
 
         if (discovered.Count == 0)
@@ -1103,7 +1107,7 @@ public static class LanguageSpecCompiler
     private static void CollectAtomSymbols(string atom, SortedSet<char> symbols)
     {
         var s = Regex.Replace(atom.Trim(), @"\s+", " ");
-        var m = Regex.Match(s, @"^(?:does not )?(?:starts? with|begins? with|ends? with|contains?|has substring)\s+(.+)$", RegexOptions.IgnoreCase);
+        var m = Regex.Match(s, @"^(?:(?:does not|doesn't)\s+)?(?:starts? with|begins? with|ends? with|contains?|has substring)\s+(.+)$", RegexOptions.IgnoreCase);
         if (m.Success)
         {
             var arg = Unquote(m.Groups[1].Value.Trim());
@@ -1230,7 +1234,7 @@ public static class LanguageSpecCompiler
         }
 
         // Negated prefix/suffix/substring
-        var m = Regex.Match(atom, @"^does not start with\s+(.+)$", RegexOptions.IgnoreCase);
+        var m = Regex.Match(atom, @"^(?:does not|doesn't)\s+(?:start|begin)\s+with\s+(.+)$", RegexOptions.IgnoreCase);
         if (m.Success)
         {
             var x = Unquote(m.Groups[1].Value.Trim());
@@ -1238,7 +1242,7 @@ public static class LanguageSpecCompiler
             return FaOperations.Complement(pos, alpha);
         }
 
-        m = Regex.Match(atom, @"^does not end with\s+(.+)$", RegexOptions.IgnoreCase);
+        m = Regex.Match(atom, @"^(?:does not|doesn't)\s+end\s+with\s+(.+)$", RegexOptions.IgnoreCase);
         if (m.Success)
         {
             var x = Unquote(m.Groups[1].Value.Trim());
@@ -1246,7 +1250,7 @@ public static class LanguageSpecCompiler
             return FaOperations.Complement(pos, alpha);
         }
 
-        m = Regex.Match(atom, @"^does not contain\s+(.+)$", RegexOptions.IgnoreCase);
+        m = Regex.Match(atom, @"^(?:does not|doesn't)\s+contain\s+(.+)$", RegexOptions.IgnoreCase);
         if (m.Success)
         {
             var x = Unquote(m.Groups[1].Value.Trim());

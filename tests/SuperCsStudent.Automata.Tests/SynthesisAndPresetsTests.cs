@@ -45,6 +45,27 @@ public class SynthesisAndPresetsTests
         Assert.True(res4.MinimalDfa.Accepts("baa"));
         Assert.False(res4.MinimalDfa.Accepts("aab"));
         Assert.False(res4.MinimalDfa.Accepts("abba"));
+
+        // Ensure symbols discovered in constraints (e.g. 'c' in 'abc') are auto-merged even if UI default alphabet is {a, b}
+        var noAbc = LanguageSpecCompiler.Compile("does not contain abc", LanguageSpecMode.Auto, new[] { 'a', 'b' });
+        Assert.Contains('c', noAbc.MinimalDfa!.Alphabet);
+        Assert.True(noAbc.MinimalDfa.Accepts("abac"));
+        Assert.True(noAbc.MinimalDfa.Accepts("e"));
+        Assert.False(noAbc.MinimalDfa.Accepts("abc"));
+        Assert.False(noAbc.MinimalDfa.Accepts("ccabcaa"));
+        Assert.Equal(true, noAbc.CompiledTm.Trace("abac").AcceptedDecision);
+        Assert.Equal(false, noAbc.CompiledTm.Trace("ccabcaa").AcceptedDecision);
+
+        var noEndAbc = LanguageSpecCompiler.Compile("does not end with abc", LanguageSpecMode.Auto, new[] { 'a', 'b' });
+        Assert.True(noEndAbc.MinimalDfa!.Accepts("abca"));
+        Assert.True(noEndAbc.MinimalDfa.Accepts("ab"));
+        Assert.False(noEndAbc.MinimalDfa.Accepts("abc"));
+        Assert.False(noEndAbc.MinimalDfa.Accepts("bbabc"));
+        Assert.Equal(true, noEndAbc.CompiledTm.Trace("abca").AcceptedDecision);
+        Assert.Equal(false, noEndAbc.CompiledTm.Trace("bbabc").AcceptedDecision);
+
+        var contraction = LanguageSpecCompiler.Compile("doesn't end with abc");
+        Assert.True(FaOperations.AreEquivalent(noEndAbc.MinimalDfa, contraction.MinimalDfa!).Result);
     }
 
     [Fact]
