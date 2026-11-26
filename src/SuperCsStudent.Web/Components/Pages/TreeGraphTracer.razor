@@ -7,7 +7,7 @@
 @using SuperCsStudent.Structures.Presets
 @using SuperCsStudent.Structures.Trees
 
-<div class="flex flex-col h-full min-h-0">
+<div class="flex flex-col h-full min-h-0 min-w-0 w-full overflow-hidden">
     @* Studio Header Bar *@
     <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
         <div class="flex items-center gap-2.5 flex-wrap">
@@ -60,27 +60,27 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-                    <label class="bp-card p-2 flex items-center justify-between gap-2">
-                        <span>Neighbor order</span>
-                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_graphRuleset.NeighborOrder"
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
+                        <span class="text-[11px] font-medium" style="color: var(--muted);">Neighbor order</span>
+                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_graphRuleset.NeighborOrder"
                                 @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, NeighborOrder = Enum.Parse<NeighborOrder>(e.Value!.ToString()!) })">
                             <option value="@NeighborOrder.AlphabeticalAsc">A → Z</option>
                             <option value="@NeighborOrder.AlphabeticalDesc">Z → A</option>
                             <option value="@NeighborOrder.InsertionOrder">Insertion</option>
                         </select>
                     </label>
-                    <label class="bp-card p-2 flex items-center justify-between gap-2">
-                        <span>DFS mode</span>
-                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_graphRuleset.DfsMode"
+                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
+                        <span class="text-[11px] font-medium" style="color: var(--muted);">DFS mode</span>
+                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_graphRuleset.DfsMode"
                                 @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, DfsMode = Enum.Parse<DfsMode>(e.Value!.ToString()!) })">
                             <option value="@DfsMode.Recursive">Recursive</option>
                             <option value="@DfsMode.IterativeStack">Iterative Stack</option>
                         </select>
                     </label>
-                    <label class="bp-card p-2 flex items-center justify-between gap-2">
-                        <span>BFS mode</span>
-                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_graphRuleset.BfsMode"
+                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
+                        <span class="text-[11px] font-medium" style="color: var(--muted);">BFS mode</span>
+                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_graphRuleset.BfsMode"
                                 @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, BfsMode = Enum.Parse<BfsMode>(e.Value!.ToString()!) })">
                             <option value="@BfsMode.QueueBased">Queue</option>
                             <option value="@BfsMode.LevelByLevel">Level-by-Level</option>
@@ -110,19 +110,19 @@
                     <span class="text-xs" style="color: var(--muted);">Switching rules replays the active script automatically.</span>
                 </div>
 
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                    <label class="bp-card p-2 flex items-center justify-between gap-2">
-                        <span>2-Child delete</span>
-                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.DeletionReplacement"
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
+                        <span class="text-[11px] font-medium" style="color: var(--muted);">2-Child delete</span>
+                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.DeletionReplacement"
                                 @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, DeletionReplacement = Enum.Parse<DeletionReplacement>(e.Value!.ToString()!) })">
                             <option value="@DeletionReplacement.InOrderSuccessor">In-Order Successor</option>
                             <option value="@DeletionReplacement.InOrderPredecessor">In-Order Predecessor</option>
                         </select>
                     </label>
 
-                    <label class="bp-card p-2 flex items-center justify-between gap-2">
-                        <span>Splay delete</span>
-                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.SplayDeleteStrategy"
+                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
+                        <span class="text-[11px] font-medium" style="color: var(--muted);">Splay delete</span>
+                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.SplayDeleteStrategy"
                                 @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, SplayDeleteStrategy = Enum.Parse<SplayDeleteStrategy>(e.Value!.ToString()!) })">
                             <option value="@SplayDeleteStrategy.BstDeleteThenSplayParent">BST Delete → Splay Parent</option>
                             <option value="@SplayDeleteStrategy.SplayTargetRemoveThenSplayMaxLeft">Splay Target → Max(Left)</option>
@@ -130,36 +130,36 @@
                         </select>
                     </label>
 
-                    <label class="bp-card p-2 flex items-center justify-between gap-2">
-                        <span>(2,4) split key</span>
-                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.TwoFourSplitPromotion"
+                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
+                        <span class="text-[11px] font-medium" style="color: var(--muted);">(2,4) split key</span>
+                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.TwoFourSplitPromotion"
                                 @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourSplitPromotion = Enum.Parse<TwoFourSplitPromotion>(e.Value!.ToString()!) })">
                             <option value="@TwoFourSplitPromotion.ThirdKeyRightMiddle">3rd key (k3, right-mid)</option>
                             <option value="@TwoFourSplitPromotion.SecondKeyLeftMiddle">2nd key (k2, left-mid)</option>
                         </select>
                     </label>
 
-                    <label class="bp-card p-2 flex items-center justify-between gap-2">
-                        <span>(2,4) underflow</span>
-                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.TwoFourUnderflowSibling"
+                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
+                        <span class="text-[11px] font-medium" style="color: var(--muted);">(2,4) underflow</span>
+                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.TwoFourUnderflowSibling"
                                 @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourUnderflowSibling = Enum.Parse<TwoFourUnderflowSibling>(e.Value!.ToString()!) })">
                             <option value="@TwoFourUnderflowSibling.RightSiblingFirst">Right sibling first</option>
                             <option value="@TwoFourUnderflowSibling.LeftSiblingFirst">Left sibling first</option>
                         </select>
                     </label>
 
-                    <label class="bp-card p-2 flex items-center justify-between gap-2">
-                        <span>AVL equal-height</span>
-                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.AvlEqualHeightTieBreaker"
+                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
+                        <span class="text-[11px] font-medium" style="color: var(--muted);">AVL equal-height</span>
+                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.AvlEqualHeightTieBreaker"
                                 @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, AvlEqualHeightTieBreaker = Enum.Parse<AvlEqualHeightTieBreaker>(e.Value!.ToString()!) })">
                             <option value="@AvlEqualHeightTieBreaker.SameSideSingleRotation">Same-side (single)</option>
                             <option value="@AvlEqualHeightTieBreaker.OppositeSideDoubleRotation">Opposite-side (double)</option>
                         </select>
                     </label>
 
-                    <label class="bp-card p-2 flex items-center justify-between gap-2">
-                        <span>Height base</span>
-                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.HeightConvention"
+                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
+                        <span class="text-[11px] font-medium" style="color: var(--muted);">Height base</span>
+                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.HeightConvention"
                                 @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, HeightConvention = Enum.Parse<HeightConvention>(e.Value!.ToString()!) })">
                             <option value="@HeightConvention.LeafIsOne">Leaf = 1 (null = 0)</option>
                             <option value="@HeightConvention.LeafIsZero">Edge-based (leaf = 0)</option>
@@ -252,14 +252,16 @@
                 </div>
             }
 
-            <div class="flex-1 min-h-0 grid @(_showIsomorphicMirror ? "grid-cols-1 xl:grid-cols-2 gap-2.5" : "grid-cols-1")">
-                <InteractiveSvgCanvas Scene="@ActiveScene"
-                                      SnapMotion="@AppState.SnapMotion"
-                                      ExportFileName="@($"{_category.ToString().ToLowerInvariant()}-trace.svg")" />
+            <div class="flex-1 min-h-0 min-w-0 grid @(_showIsomorphicMirror ? "grid-cols-1 lg:grid-cols-2 gap-2.5" : "grid-cols-1")">
+                <div class="relative min-h-[200px] min-w-0 overflow-hidden">
+                    <InteractiveSvgCanvas Scene="@ActiveScene"
+                                          SnapMotion="@AppState.SnapMotion"
+                                          ExportFileName="@($"{_category.ToString().ToLowerInvariant()}-trace.svg")" />
+                </div>
 
                 @if (_showIsomorphicMirror && ActiveTreeStep?.State.IsomorphicScene is not null)
                 {
-                    <div class="relative min-h-[220px]">
+                    <div class="relative min-h-[200px] min-w-0 overflow-hidden">
                         <InteractiveSvgCanvas Scene="@ActiveTreeStep.State.IsomorphicScene"
                                               SnapMotion="@AppState.SnapMotion"
                                               ExportFileName="rb-24-isomorphism.svg" />

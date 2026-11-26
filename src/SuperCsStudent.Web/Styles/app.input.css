@@ -259,6 +259,17 @@
   color: var(--faint);
 }
 
+select.bp-input {
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: normal;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .bp-textarea {
   background-color: var(--surface);
   color: var(--text);

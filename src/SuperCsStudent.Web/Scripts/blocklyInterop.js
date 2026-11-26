@@ -1,7 +1,7 @@
 import * as Blockly from "blockly";
-import { ContinuousToolbox, ContinuousFlyout, ContinuousMetrics } from "@blockly/continuous-toolbox";
 
 const workspaces = new WeakMap();
+const observers = new WeakMap();
 let registered = false;
 
 class DesktopZelosConstantProvider extends Blockly.zelos.ConstantProvider {
@@ -514,18 +514,21 @@ export function mountBlockly(container, dotNetRef, initialStateJson, isDark) {
     renderer: "desktop_zelos",
     theme: isDark ? themes.darkTheme : themes.lightTheme,
     toolbox: TOOLBOX,
-    plugins: {
-      toolbox: ContinuousToolbox,
-      flyoutsVerticalToolbox: ContinuousFlyout,
-      metricsManager: ContinuousMetrics
-    },
     grid: { spacing: 24, length: 2, colour: isDark ? "#262629" : "#dce2e8", snap: true },
-    zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 1.8, minScale: 0.5 },
+    zoom: { controls: true, wheel: true, startScale: 0.78, maxScale: 1.6, minScale: 0.45 },
     trashcan: true,
     move: { scrollbars: true, drag: true, wheel: true }
   });
 
   workspaces.set(container, ws);
+
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => {
+      Blockly.svgResize(ws);
+    });
+    ro.observe(container);
+    observers.set(container, ro);
+  }
 
   if (initialStateJson) {
     loadWorkspaceState(container, initialStateJson);
@@ -564,6 +567,7 @@ export function loadWorkspaceState(container, stateJson) {
     ws.clear();
     Blockly.serialization.workspaces.load(parsed, ws);
     Blockly.Events.enable();
+    ws.getToolbox()?.clearSelection();
     ws.scrollCenter();
   } catch {
     Blockly.Events.enable();
@@ -584,6 +588,11 @@ export function highlightBlock(container, blockId) {
 }
 
 export function disposeBlockly(container) {
+  const ro = observers.get(container);
+  if (ro) {
+    ro.disconnect();
+    observers.delete(container);
+  }
   const ws = workspaces.get(container);
   if (ws) {
     ws.dispose();

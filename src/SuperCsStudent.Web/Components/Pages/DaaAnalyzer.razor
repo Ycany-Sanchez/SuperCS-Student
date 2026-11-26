@@ -10,7 +10,7 @@
 @using SuperCsStudent.Algorithms.Presets
 @using SuperCsStudent.Algorithms.Symbolic
 
-<div class="flex flex-col h-full min-h-0">
+<div class="flex flex-col h-full min-h-0 min-w-0 w-full overflow-hidden">
     @* Studio Header Bar *@
     <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
         <div class="flex items-center gap-3 min-w-0">
@@ -85,7 +85,7 @@
             <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2.5 text-xs">
                 <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
                     <span>++ / -- cost</span>
-                    <select class="bp-input !h-6 !px-1.5 font-mono text-xs" value="@_profile.UnaryIncrementCost"
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.UnaryIncrementCost"
                             @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, UnaryIncrementCost = int.Parse(e.Value!.ToString()!) })">
                         <option value="1">1</option>
                         <option value="2">2</option>
@@ -94,7 +94,7 @@
 
                 <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
                     <span>+= / *= cost</span>
-                    <select class="bp-input !h-6 !px-1.5 font-mono text-xs" value="@_profile.CompoundAssignCost"
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.CompoundAssignCost"
                             @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CompoundAssignCost = int.Parse(e.Value!.ToString()!) })">
                         <option value="1">1</option>
                         <option value="2">2</option>
@@ -103,7 +103,7 @@
 
                 <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
                     <span>return keyword</span>
-                    <select class="bp-input !h-6 !px-1.5 font-mono text-xs" value="@_profile.ReturnKeywordCost"
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.ReturnKeywordCost"
                             @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ReturnKeywordCost = int.Parse(e.Value!.ToString()!) })">
                         <option value="0">0</option>
                         <option value="1">1</option>
@@ -112,7 +112,7 @@
 
                 <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
                     <span>array[i] access</span>
-                    <select class="bp-input !h-6 !px-1.5 font-mono text-xs" value="@_profile.ArrayIndexingCost"
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.ArrayIndexingCost"
                             @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ArrayIndexingCost = int.Parse(e.Value!.ToString()!) })">
                         <option value="1">1</option>
                         <option value="0">0</option>
@@ -128,7 +128,7 @@
 
                 <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
                     <span>Log loop (i*=b)</span>
-                    <select class="bp-input !h-6 !px-1.5 font-mono text-[11px]" value="@_profile.LogLoopConvention"
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-[11px]" value="@_profile.LogLoopConvention"
                             @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogLoopConvention = Enum.Parse<LogLoopConvention>(e.Value!.ToString()!) })">
                         <option value="@LogLoopConvention.ExactLogBase">log_b n</option>
                         <option value="@LogLoopConvention.FloorLogPlusOne">log_b n + 1</option>
@@ -141,18 +141,18 @@
     @* Main Workbench Body *@
     @if (!_recurrenceDirectMode)
     {
-        <div class="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-12 overflow-hidden">
+        <div class="flex-1 min-h-0 min-w-0 grid grid-cols-1 lg:grid-cols-12 overflow-y-auto lg:overflow-hidden">
             @* Left: Scratch-style Blockly Workspace (5 cols) *@
-            <div class="xl:col-span-5 flex flex-col min-h-[340px] xl:min-h-0" style="border-right: 1px solid var(--border);">
+            <div class="lg:col-span-5 flex flex-col min-w-0 min-h-[340px] lg:min-h-0" style="border-right: 1px solid var(--border);">
                 <div class="px-3 py-1.5 flex items-center justify-between text-xs shrink-0" style="border-bottom: 1px solid var(--border); color: var(--muted);">
                     <span>Scratch Block Workspace</span>
-                    <span class="font-mono">@(_currentAst?.Name ?? "algorithm")(@string.Join(", ", _currentAst?.Parameters ?? Array.Empty<string>()))</span>
+                    <span class="font-mono truncate">@(_currentAst?.Name ?? "algorithm")(@string.Join(", ", _currentAst?.Parameters ?? Array.Empty<string>()))</span>
                 </div>
-                <div @ref="_blocklyHost" class="flex-1 min-h-[300px] w-full"></div>
+                <div @ref="_blocklyHost" class="flex-1 min-h-[300px] w-full relative"></div>
             </div>
 
             @* Middle: 3-Column Annotated Code with Inline Operator Badges & T_in Boxes (3 cols) *@
-            <div class="xl:col-span-3 flex flex-col min-h-0 overflow-hidden" style="border-right: 1px solid var(--border);">
+            <div class="lg:col-span-3 flex flex-col min-w-0 min-h-0 overflow-hidden" style="border-right: 1px solid var(--border);">
                 <div class="px-3 py-1.5 flex items-center justify-between text-xs shrink-0" style="border-bottom: 1px solid var(--border);">
                     <span class="font-medium">Annotated Code (@(_activeCaseTab == "best" ? "Best" : "Worst"))</span>
                     <label class="flex items-center gap-1.5 cursor-pointer" style="color: var(--muted);">
@@ -210,12 +210,12 @@
             </div>
 
             @* Right: Symbolic T(n) Derivation, Big-O/Omega/Theta Proofs & D3 Growth Chart (4 cols) *@
-            <div class="xl:col-span-4 flex flex-col min-h-0 overflow-hidden">
-                <div class="px-3 flex items-center gap-1 shrink-0" style="border-bottom: 1px solid var(--border);">
-                    <button type="button" class="bp-tab" data-active="@(_activeCaseTab == "worst" ? "true" : "false")" @onclick='() => SetCaseTab("worst")'>Worst Case</button>
-                    <button type="button" class="bp-tab" data-active="@(_activeCaseTab == "best" ? "true" : "false")" @onclick='() => SetCaseTab("best")'>Best Case</button>
-                    <button type="button" class="bp-tab" data-active="@(_activeCaseTab == "asymptotic" ? "true" : "false")" @onclick='() => SetCaseTab("asymptotic")'>O / Ω / Θ</button>
-                    <button type="button" class="bp-tab" data-active="@(_activeCaseTab == "chart" ? "true" : "false")" @onclick='() => SetCaseTab("chart")'>Growth Chart</button>
+            <div class="lg:col-span-4 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                <div class="px-2 flex items-center gap-0.5 shrink-0 overflow-x-auto" style="border-bottom: 1px solid var(--border);">
+                    <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "worst" ? "true" : "false")" @onclick='() => SetCaseTab("worst")'>Worst Case</button>
+                    <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "best" ? "true" : "false")" @onclick='() => SetCaseTab("best")'>Best Case</button>
+                    <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "asymptotic" ? "true" : "false")" @onclick='() => SetCaseTab("asymptotic")'>O / Ω / Θ</button>
+                    <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "chart" ? "true" : "false")" @onclick='() => SetCaseTab("chart")'>Growth Chart</button>
                 </div>
 
                 <div class="flex-1 overflow-y-auto p-4 space-y-4">
@@ -381,8 +381,8 @@
                         <label class="space-y-1">
                             <span style="color: var(--muted);">Recurrence kind</span>
                             <select class="bp-input w-full" @bind="_recKind" @bind:after="SolveDirectRecurrence">
-                                <option value="divide">Divide: a·T(n / b) + f(n)</option>
-                                <option value="subtract">Subtract: a·T(n - c) + f(n)</option>
+                                <option value="divide">Divide: a·T(n/b) + f(n)</option>
+                                <option value="subtract">Subtract: a·T(n-c) + f(n)</option>
                             </select>
                         </label>
                         <label class="space-y-1">

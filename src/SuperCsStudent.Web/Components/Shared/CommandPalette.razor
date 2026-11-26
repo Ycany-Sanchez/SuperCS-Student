@@ -1,3 +1,4 @@
+@implements IDisposable
 @inject AppStateService AppState
 @inject NavigationManager Nav
 
@@ -62,6 +63,18 @@
 
 @code {
     private string _query = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += OnAppStateChanged;
+    }
+
+    private void OnAppStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        AppState.OnChange -= OnAppStateChanged;
+    }
 
     private IEnumerable<QuickCommandItem> Filtered =>
         string.IsNullOrWhiteSpace(_query)

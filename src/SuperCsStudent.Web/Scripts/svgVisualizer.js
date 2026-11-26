@@ -101,6 +101,10 @@ export function mountSvgCanvas(container, dotNetRef) {
     dragging: false,
     dragStart: { x: 0, y: 0 },
     lastScene: null,
+    lastOverlayTag: null,
+    lastViewBox: null,
+    userInteracted: false,
+    lastRect: { w: 0, h: 0 },
     nodePositions: new Map(),
     customOffsets: new Map(),
     draggingNodeId: null
@@ -112,6 +116,7 @@ export function mountSvgCanvas(container, dotNetRef) {
 
   svg.addEventListener("wheel", (e) => {
     e.preventDefault();
+    state.userInteracted = true;
     const factor = e.deltaY < 0 ? 1.1 : 0.91;
     const rect = svg.getBoundingClientRect();
     const mx = e.clientX - rect.left;
@@ -133,6 +138,7 @@ export function mountSvgCanvas(container, dotNetRef) {
       return;
     }
     state.dragging = true;
+    state.userInteracted = true;
     state.dragStart = { x: e.clientX - state.panX, y: e.clientY - state.panY };
     svg.setPointerCapture(e.pointerId);
   });
@@ -162,6 +168,23 @@ export function mountSvgCanvas(container, dotNetRef) {
 
   state.applyTransform = applyTransform;
   instances.set(container, state);
+
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      if (width <= 0 || height <= 0) return;
+      if (Math.abs(width - state.lastRect.w) > 4 || Math.abs(height - state.lastRect.h) > 4) {
+        state.lastRect = { w: width, h: height };
+        if (state.lastScene) {
+          fitCanvas(container);
+        }
+      }
+    });
+    ro.observe(container);
+    state.resizeObserver = ro;
+  }
 }
 
 function buildArrowMarker(id, color) {
@@ -191,9 +214,19 @@ export function renderScene(container, scene, snap = false) {
   if (!st || !scene) return;
 
   const isFirstRender = !st.lastScene;
+  const overlayChanged = st.lastOverlayTag !== (scene.overlayTag || null);
+  const vw = scene.viewBoxWidth || 680;
+  const vh = scene.viewBoxHeight || 360;
+  const viewBoxChanged = !st.lastViewBox || Math.abs(st.lastViewBox.w - vw) > 24 || Math.abs(st.lastViewBox.h - vh) > 24;
+  if (overlayChanged) {
+    st.userInteracted = false;
+    st.customOffsets.clear();
+  }
   const skipMotion = snap || prefersReducedMotion();
   const prevPositions = new Map(st.nodePositions);
   st.lastScene = scene;
+  st.lastOverlayTag = scene.overlayTag || null;
+  st.lastViewBox = { w: vw, h: vh };
 
   const nodes = scene.nodes || [];
   const edges = scene.edges || [];
@@ -361,7 +394,7 @@ export function renderScene(container, scene, snap = false) {
     }
   }
 
-  if (isFirstRender) {
+  if (isFirstRender || overlayChanged || (!st.userInteracted && viewBoxChanged)) {
     fitCanvas(container);
   }
 }
@@ -551,10 +584,12 @@ export function fitCanvas(container) {
   if (!st || !st.lastScene) return;
   const rect = st.svg.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return;
+  st.userInteracted = false;
+  st.lastRect = { w: rect.width, h: rect.height };
   const vw = st.lastScene.viewBoxWidth || 680;
   const vh = st.lastScene.viewBoxHeight || 360;
   const scale = Math.min(1.25, Math.min((rect.width - 32) / vw, (rect.height - 32) / vh));
-  st.scale = Math.max(0.4, scale);
+  st.scale = Math.max(0.32, scale);
   st.panX = (rect.width - vw * st.scale) / 2;
   st.panY = (rect.height - vh * st.scale) / 2;
   st.applyTransform();
