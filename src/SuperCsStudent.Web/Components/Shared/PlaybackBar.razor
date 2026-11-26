@@ -1,0 +1,171 @@
+@implements IDisposable
+
+<div class="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-xl bp-floating">
+    <div class="flex items-center gap-1.5">
+        <button type="button" class="bp-btn-secondary !h-8 !px-2" disabled="@(TotalSteps <= 1 || CurrentStep <= 0)"
+                title="First step" @onclick="() => JumpTo(0)">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 3.5v9M12.5 3.5L6.5 8l6 4.5z" /></svg>
+        </button>
+        <button type="button" class="bp-btn-secondary !h-8 !px-2.5" disabled="@(TotalSteps <= 1 || CurrentStep <= 0)"
+                title="Step backward" @onclick="StepPrev">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10.5 3.5L5.5 8l5 4.5" /></svg>
+        </button>
+
+        <button type="button" class="bp-btn-primary !h-8 !px-3" disabled="@(TotalSteps <= 1)"
+                title="Play / Pause (Space)" @onclick="TogglePlay">
+            @if (_isPlaying)
+            {
+                <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="0.6" /><rect x="9" y="3" width="3" height="10" rx="0.6" /></svg>
+                <span>Pause</span>
+            }
+            else
+            {
+                <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3.2L12.5 8l-8 4.8z" /></svg>
+                <span>Play</span>
+            }
+            <span class="bp-kbd !bg-transparent !border-white/30 !text-current text-[10px]">Space</span>
+        </button>
+
+        <button type="button" class="bp-btn-secondary !h-8 !px-2.5" disabled="@(TotalSteps <= 1 || CurrentStep >= TotalSteps - 1)"
+                title="Step forward" @onclick="StepNext">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5.5 3.5L10.5 8l-5 4.5" /></svg>
+        </button>
+        <button type="button" class="bp-btn-secondary !h-8 !px-2" disabled="@(TotalSteps <= 1 || CurrentStep >= TotalSteps - 1)"
+                title="Last step" @onclick="() => JumpTo(TotalSteps - 1)">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12.5 3.5v9M3.5 3.5L9.5 8l-6 4.5z" /></svg>
+        </button>
+    </div>
+
+    <div class="flex items-center gap-3 flex-1 min-w-[180px] max-w-md">
+        <input type="range"
+               class="w-full accent-[var(--accent)] cursor-pointer"
+               min="0"
+               max="@System.Math.Max(0, TotalSteps - 1)"
+               value="@CurrentStep"
+               disabled="@(TotalSteps <= 1)"
+               @oninput="OnSliderInput" />
+        <span class="font-mono text-xs tnum whitespace-nowrap" style="color: var(--muted);">
+            Step <strong style="color: var(--text);">@(TotalSteps == 0 ? 0 : CurrentStep + 1)</strong> / @TotalSteps
+        </span>
+    </div>
+
+    <div class="flex items-center gap-2">
+        <div class="flex items-center rounded-md p-0.5" style="background: var(--raised); border: 1px solid var(--border);">
+            @foreach (var sp in Speeds)
+            {
+                var active = System.Math.Abs(_speed - sp) < 0.01;
+                <button type="button"
+                        class="px-2 h-6 rounded text-xs font-mono tnum cursor-pointer transition-colors"
+                        style="@(active ? "background: var(--surface); color: var(--text); font-weight: 600;" : "color: var(--muted);")"
+                        @onclick="() => SetSpeed(sp)">
+                    @(sp)x
+                </button>
+            }
+        </div>
+
+        <button type="button"
+                class="bp-btn-secondary !h-7 !px-2 text-xs"
+                style="@(SnapMotion ? "border-color: var(--accent); color: var(--accent); background: var(--accent-soft);" : "")"
+                title="Toggle instant step transitions without animation"
+                @onclick="ToggleSnap">
+            Snap
+        </button>
+
+        @ExtraControls
+    </div>
+</div>
+
+@code {
+    private static readonly double[] Speeds = [0.5, 1.0, 2.0];
+    private double _speed = 1.0;
+    private bool _isPlaying;
+    private CancellationTokenSource? _playCts;
+
+    [Parameter] public int CurrentStep { get; set; }
+    [Parameter] public int TotalSteps { get; set; }
+    [Parameter] public EventCallback<int> CurrentStepChanged { get; set; }
+    [Parameter] public bool SnapMotion { get; set; }
+    [Parameter] public EventCallback<bool> SnapMotionChanged { get; set; }
+    [Parameter] public RenderFragment? ExtraControls { get; set; }
+
+    private async Task JumpTo(int step)
+    {
+        StopPlayback();
+        var clamped = TotalSteps == 0 ? 0 : System.Math.Clamp(step, 0, TotalSteps - 1);
+        await CurrentStepChanged.InvokeAsync(clamped);
+    }
+
+    private Task StepPrev() => JumpTo(CurrentStep - 1);
+    private Task StepNext() => JumpTo(CurrentStep + 1);
+
+    private async Task OnSliderInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var val))
+        {
+            await JumpTo(val);
+        }
+    }
+
+    private void SetSpeed(double sp) => _speed = sp;
+
+    private async Task ToggleSnap() => await SnapMotionChanged.InvokeAsync(!SnapMotion);
+
+    private async Task TogglePlay()
+    {
+        if (_isPlaying)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (TotalSteps <= 1) return;
+        if (CurrentStep >= TotalSteps - 1)
+        {
+            await CurrentStepChanged.InvokeAsync(0);
+        }
+
+        _isPlaying = true;
+        _playCts = new CancellationTokenSource();
+        var token = _playCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    var delayMs = (int)System.Math.Clamp(680.0 / _speed, 160, 1800);
+                    await Task.Delay(delayMs, token);
+                    if (token.IsCancellationRequested) break;
+
+                    await InvokeAsync(async () =>
+                    {
+                        if (CurrentStep < TotalSteps - 1)
+                        {
+                            await CurrentStepChanged.InvokeAsync(CurrentStep + 1);
+                        }
+                        else
+                        {
+                            StopPlayback();
+                            StateHasChanged();
+                        }
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // normal stop
+            }
+        }, token);
+    }
+
+    private void StopPlayback()
+    {
+        _isPlaying = false;
+        _playCts?.Cancel();
+        _playCts?.Dispose();
+        _playCts = null;
+    }
+
+    public void Dispose() => StopPlayback();
+}

@@ -1,0 +1,15 @@
+﻿<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <div class="p-8 max-w-lg">
+                <h1 class="text-xl font-semibold mb-2">Page not found</h1>
+                <p class="text-sm mb-4" style="color: var(--muted);">The requested studio route does not exist.</p>
+                <a href="/" class="bp-btn-primary">Return to Studio Hub</a>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>

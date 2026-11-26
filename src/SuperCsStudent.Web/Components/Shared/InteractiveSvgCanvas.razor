@@ -1,0 +1,84 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="relative w-full h-full overflow-hidden bp-well @Class">
+    <div @ref="_host" class="w-full h-full"></div>
+
+    @if (!string.IsNullOrWhiteSpace(Scene?.OverlayTag))
+    {
+        <div class="absolute top-3 left-3 bp-pill bp-pill-accent font-mono text-xs pointer-events-none">
+            @Scene.OverlayTag
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(ErrorBanner))
+    {
+        <div class="absolute top-3 left-3 right-28 rounded-md px-3 py-1.5 text-xs font-medium flex items-center gap-2"
+             style="background: var(--pill-negative-bg); color: var(--pill-negative-ink); border: 1px solid var(--negative);">
+            <span>Syntax error (showing last valid diagram): @ErrorBanner</span>
+        </div>
+    }
+
+    <div class="absolute bottom-3 right-3 flex items-center gap-1 p-1 rounded-lg bp-floating">
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs font-mono" title="Zoom out" @onclick="() => Zoom(0.85)">-</button>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Fit diagram" @onclick="Fit">Fit</button>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs font-mono" title="Zoom in" @onclick="() => Zoom(1.18)">+</button>
+        <span class="w-px h-4 mx-0.5" style="background: var(--border);"></span>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Reset node positions" @onclick="ResetLayout">Reset</button>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Export SVG" @onclick="ExportSvg">SVG</button>
+    </div>
+</div>
+
+@code {
+    private ElementReference _host;
+    private bool _mounted;
+    private DiagramScene? _lastScene;
+
+    [Parameter] public DiagramScene? Scene { get; set; }
+    [Parameter] public bool SnapMotion { get; set; }
+    [Parameter] public string? ErrorBanner { get; set; }
+    [Parameter] public string ExportFileName { get; set; } = "diagram.svg";
+    [Parameter] public string? Class { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("SuperCs.svg.mountSvgCanvas", _host, null);
+            _mounted = true;
+        }
+
+        if (_mounted && Scene is not null && !ReferenceEquals(_lastScene, Scene))
+        {
+            _lastScene = Scene;
+            await JS.InvokeVoidAsync("SuperCs.svg.renderScene", _host, Scene, SnapMotion);
+        }
+    }
+
+    public async Task Zoom(double factor)
+    {
+        if (_mounted) await JS.InvokeVoidAsync("SuperCs.svg.zoomCanvas", _host, factor);
+    }
+
+    public async Task Fit()
+    {
+        if (_mounted) await JS.InvokeVoidAsync("SuperCs.svg.fitCanvas", _host);
+    }
+
+    public async Task ResetLayout()
+    {
+        if (_mounted) await JS.InvokeVoidAsync("SuperCs.svg.resetNodeOffsets", _host);
+    }
+
+    private async Task ExportSvg()
+    {
+        if (!_mounted) return;
+        var markup = await JS.InvokeAsync<string>("SuperCs.svg.exportSvgMarkup", _host);
+        if (!string.IsNullOrWhiteSpace(markup))
+        {
+            await JS.InvokeVoidAsync("SuperCs.storage.downloadTextFile", ExportFileName, markup, "image/svg+xml;charset=utf-8");
+        }
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

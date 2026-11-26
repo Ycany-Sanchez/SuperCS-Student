@@ -1,0 +1,33 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<span @ref="_el" class="katex-host inline-block align-middle @Class">@Latex</span>
+
+@code {
+    private ElementReference _el;
+    private string? _lastRendered;
+    private bool _lastDisplay;
+
+    [Parameter] public string Latex { get; set; } = string.Empty;
+    [Parameter] public bool DisplayMode { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _lastRendered != Latex || _lastDisplay != DisplayMode)
+        {
+            _lastRendered = Latex;
+            _lastDisplay = DisplayMode;
+            try
+            {
+                await JS.InvokeVoidAsync("SuperCs.math.renderMath", _el, Latex, DisplayMode);
+            }
+            catch
+            {
+                // Ignored during prerender or disconnect
+            }
+        }
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

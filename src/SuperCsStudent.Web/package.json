@@ -1,0 +1,25 @@
+{
+  "name": "super-cs-student-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build:css": "tailwindcss -i ./Styles/app.input.css -o ./wwwroot/css/app.css --minify",
+    "build:js": "esbuild ./Scripts/main.js --bundle --format=esm --outdir=./wwwroot/js --minify --sourcemap",
+    "copy:katex": "node -e \"const fs=require('fs'); fs.mkdirSync('./wwwroot/vendor/katex/fonts',{recursive:true}); fs.copyFileSync('./node_modules/katex/dist/katex.min.css','./wwwroot/vendor/katex/katex.min.css'); for(const f of fs.readdirSync('./node_modules/katex/dist/fonts')) fs.copyFileSync('./node_modules/katex/dist/fonts/'+f,'./wwwroot/vendor/katex/fonts/'+f);\"",
+    "build:assets": "npm run copy:katex && npm run build:css && npm run build:js"
+  },
+  "dependencies": {
+    "@blockly/continuous-toolbox": "^13.5.0",
+    "blockly": "^13.5.0",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0",
+    "gsap": "^3.15.0",
+    "katex": "^0.16.21"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.0"
+  }
+}

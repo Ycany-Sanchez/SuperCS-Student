@@ -1,0 +1,100 @@
+@inject AppStateService AppState
+@inject IJSRuntime JS
+
+@if (AppState.SettingsOpen)
+{
+    <div class="fixed inset-0 z-50 flex justify-end"
+         style="background: rgba(0, 0, 0, 0.28);"
+         @onclick="Close">
+        <div class="w-full max-w-sm h-full flex flex-col bp-floating !rounded-none !rounded-l-2xl"
+             @onclick:stopPropagation="true">
+            <div class="flex items-center justify-between px-5 h-14" style="border-bottom: 1px solid var(--border);">
+                <h2 class="text-base font-semibold">Workspace settings</h2>
+                <button type="button" class="bp-btn-ghost !h-8 !px-2" @onclick="Close">Close</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-5 space-y-6">
+                <section class="space-y-2.5">
+                    <div class="text-sm font-medium">Appearance</div>
+                    <p class="text-xs" style="color: var(--muted);">Switch between Framed Blueprint light mode and True-Black dark mode.</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button type="button"
+                                class="bp-btn-secondary !h-9"
+                                style="@(!AppState.IsDark ? "border-color: var(--accent); background: var(--accent-soft); color: var(--accent);" : "")"
+                                @onclick='() => SetTheme("light")'>
+                            Light sheet
+                        </button>
+                        <button type="button"
+                                class="bp-btn-secondary !h-9"
+                                style="@(AppState.IsDark ? "border-color: var(--accent); background: var(--accent-soft); color: var(--accent);" : "")"
+                                @onclick='() => SetTheme("dark")'>
+                            True black
+                        </button>
+                    </div>
+                </section>
+
+                <hr style="border-color: var(--border);" />
+
+                <section class="space-y-3">
+                    <div class="text-sm font-medium">Formal notation defaults</div>
+
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <div class="text-xs font-medium">Empty string display</div>
+                            <div class="text-xs" style="color: var(--muted);">Aliases e, ε, λ are always accepted on input.</div>
+                        </div>
+                        <select class="bp-input !h-8 font-mono text-xs"
+                                @bind="AppState.EmptyStringSymbol"
+                                @bind:after="AppState.Notify">
+                            <option value="e">e</option>
+                            <option value="ε">ε</option>
+                            <option value="λ">λ</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <div class="text-xs font-medium">Tape blank symbol</div>
+                            <div class="text-xs" style="color: var(--muted);">Used in Turing Machine tape views.</div>
+                        </div>
+                        <select class="bp-input !h-8 font-mono text-xs"
+                                @bind="AppState.BlankTapeSymbol"
+                                @bind:after="AppState.Notify">
+                            <option value="#">#</option>
+                            <option value="␣">␣</option>
+                            <option value="_">_</option>
+                        </select>
+                    </div>
+                </section>
+
+                <hr style="border-color: var(--border);" />
+
+                <section class="space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="text-sm font-medium">Instant step transitions</div>
+                            <div class="text-xs" style="color: var(--muted);">Skip tween animations during diagram stepping.</div>
+                        </div>
+                        <input type="checkbox" class="w-4 h-4 accent-[var(--accent)] cursor-pointer"
+                               @bind="AppState.SnapMotion"
+                               @bind:after="AppState.Notify" />
+                    </div>
+                </section>
+            </div>
+
+            <div class="px-5 py-3 text-xs" style="border-top: 1px solid var(--border); color: var(--muted);">
+                All computation runs 100% locally in .NET 8 with zero external network calls.
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private async Task SetTheme(string theme)
+    {
+        AppState.SetTheme(theme);
+        await JS.InvokeVoidAsync("SuperCs.storage.applyTheme", theme);
+    }
+
+    private void Close() => AppState.SetSettingsOpen(false);
+}

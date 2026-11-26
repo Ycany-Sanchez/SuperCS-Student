@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SuperCsStudent.Core\SuperCsStudent.Core.csproj" />
+    <ProjectReference Include="..\SuperCsStudent.Automata\SuperCsStudent.Automata.csproj" />
+    <ProjectReference Include="..\SuperCsStudent.Algorithms\SuperCsStudent.Algorithms.csproj" />
+    <ProjectReference Include="..\SuperCsStudent.Structures\SuperCsStudent.Structures.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

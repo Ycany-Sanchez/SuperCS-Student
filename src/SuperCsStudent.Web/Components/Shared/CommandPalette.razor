@@ -1,0 +1,98 @@
+@inject AppStateService AppState
+@inject NavigationManager Nav
+
+@if (AppState.CommandPaletteOpen)
+{
+    <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4"
+         style="background: rgba(0, 0, 0, 0.35);"
+         @onclick="Close">
+        <div class="w-full max-w-xl rounded-xl overflow-hidden bp-floating"
+             @onclick:stopPropagation="true">
+            <div class="flex items-center gap-2 px-3.5 h-12" style="border-bottom: 1px solid var(--border);">
+                <svg class="w-4 h-4 shrink-0" style="color: var(--muted);" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <circle cx="9" cy="9" r="6" />
+                    <path d="M13.5 13.5L17 17" stroke-linecap="round" />
+                </svg>
+                <input type="text"
+                       class="w-full bg-transparent text-sm focus:outline-none"
+                       style="color: var(--text);"
+                       placeholder="Jump to studio or load a preset..."
+                       @bind="_query"
+                       @bind:event="oninput"
+                       @onkeydown="HandleKeyDown"
+                       autofocus />
+                <button type="button" class="bp-kbd cursor-pointer" @onclick="Close">Esc</button>
+            </div>
+
+            <div class="max-h-80 overflow-y-auto p-1.5">
+                @if (!Filtered.Any())
+                {
+                    <div class="px-3 py-8 text-center text-sm" style="color: var(--muted);">
+                        No matching studios or presets for "@_query".
+                    </div>
+                }
+                else
+                {
+                    @foreach (var group in Filtered.GroupBy(c => c.Category))
+                    {
+                        <div class="px-2.5 pt-2 pb-1 text-xs font-medium" style="color: var(--muted);">
+                            @group.Key
+                        </div>
+                        @foreach (var item in group)
+                        {
+                            <button type="button"
+                                    class="w-full flex items-center justify-between gap-3 px-2.5 py-2 rounded-md text-left transition-colors cursor-pointer hover:bg-[var(--active)]"
+                                    @onclick="() => Select(item)">
+                                <div class="min-w-0">
+                                    <div class="text-sm font-medium truncate" style="color: var(--text);">@item.Title</div>
+                                    <div class="text-xs truncate" style="color: var(--muted);">@item.Subtitle</div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(item.PresetKey))
+                                {
+                                    <span class="bp-pill bp-pill-neutral font-mono text-[11px]">Preset</span>
+                                }
+                            </button>
+                        }
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _query = string.Empty;
+
+    private IEnumerable<QuickCommandItem> Filtered =>
+        string.IsNullOrWhiteSpace(_query)
+            ? AppState.GetQuickCommands()
+            : AppState.GetQuickCommands().Where(c =>
+                c.Title.Contains(_query, StringComparison.OrdinalIgnoreCase) ||
+                c.Subtitle.Contains(_query, StringComparison.OrdinalIgnoreCase) ||
+                c.Category.Contains(_query, StringComparison.OrdinalIgnoreCase));
+
+    private void Select(QuickCommandItem item)
+    {
+        AppState.PendingPresetKey = item.PresetKey;
+        AppState.SetCommandPalette(false);
+        _query = string.Empty;
+        Nav.NavigateTo(item.Route);
+        AppState.Notify();
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+        else if (e.Key == "Enter")
+        {
+            var first = Filtered.FirstOrDefault();
+            if (first is not null) Select(first);
+        }
+    }
+
+    private void Close()
+    {
+        _query = string.Empty;
+        AppState.SetCommandPalette(false);
+    }
+}

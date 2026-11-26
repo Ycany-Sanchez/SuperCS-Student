@@ -1,0 +1,23 @@
+# .NET build artifacts
+bin/
+obj/
+*.user
+*.suo
+*.cache
+.vs/
+.vscode/
+.idea/
+TestResults/
+
+# Node / frontend tooling
+node_modules/
+npm-debug.log*
+.npm/
+
+# OS & misc
+.DS_Store
+Thumbs.db
+*.log
+graphify-out/
+.taste-skill/
+.impeccable/
