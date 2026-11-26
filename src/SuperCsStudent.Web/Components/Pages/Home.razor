@@ -5,198 +5,251 @@
 
 @using System.Text.Json
 
-<div class="flex-1 overflow-y-auto px-6 py-6">
-    <div class="max-w-6xl mx-auto space-y-6">
-        <header class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-            <div class="min-w-0 flex-1">
-                <h1 class="text-[22px] font-semibold tracking-tight" style="color: var(--text);">Super CS Student</h1>
-                <p class="text-sm mt-1" style="color: var(--muted);">
-                    Deterministic formal automata, exact a priori runtime analysis, and configurable tree & graph tracing.
+<div class="flex-1 overflow-y-auto px-6 py-7">
+    <div class="max-w-6xl mx-auto space-y-7">
+        @* Command-First Studio Launcher Hero *@
+        <header class="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
+            <div class="space-y-1.5 max-w-2xl">
+                <h1 class="text-[26px] font-bold tracking-[-0.025em] leading-tight" style="color: var(--text);">
+                    Super CS Student
+                </h1>
+                <p class="text-sm leading-relaxed" style="color: var(--muted);">
+                    An offline drafting studio for formal automata, exact symbolic runtime proofs, and step-by-step tree and graph traces.
                 </p>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-                <button type="button" class="bp-btn-secondary whitespace-nowrap" @onclick="() => AppState.SetCommandPalette(true)">
-                    Quick preset <span class="bp-kbd">⌘K</span>
-                </button>
-                <a href="/automata" class="bp-btn-primary whitespace-nowrap">Open Automata Studio</a>
-            </div>
+
+            <button type="button"
+                    class="w-full lg:w-[340px] h-10 px-3.5 rounded-xl flex items-center justify-between gap-3 text-left text-xs transition-colors cursor-pointer bp-card hover:bg-[var(--raised)] shrink-0"
+                    style="color: var(--muted);"
+                    @onclick="() => AppState.SetCommandPalette(true)">
+                <span class="flex items-center gap-2.5 truncate">
+                    <svg class="w-4 h-4 shrink-0" style="color: var(--accent);" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L13.5 13.5" stroke-linecap="round" /></svg>
+                    <span class="truncate">Jump to any preset or studio...</span>
+                </span>
+                <span class="bp-kbd">⌘K</span>
+            </button>
         </header>
 
-        @* Studio Bento Grid (3 equal-bottom studio modules with real miniature vector previews) *@
-        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            @* Pillar 1: Automata *@
-            <article class="bp-card p-5 flex flex-col justify-between gap-4">
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between gap-2">
-                        <h2 class="text-base font-semibold">Automata & Formal Languages</h2>
-                        <span class="bp-pill bp-pill-neutral font-mono">5 models</span>
+        @* Asymmetric 12-Column Drafting Bento *@
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            @* Featured Wide Tile: Automata & Formal Languages (7 cols) *@
+            <article class="lg:col-span-7 bp-card p-5 flex flex-col justify-between gap-4">
+                <div class="space-y-3.5">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="space-y-1">
+                            <h2 class="text-base font-semibold tracking-tight">Automata &amp; Formal Languages</h2>
+                            <p class="text-xs leading-relaxed max-w-lg" style="color: var(--muted);">
+                                Compile regular expressions, Boolean constraints, grammars, pushdown stacks, and Turing machine schemas into formal tables and step traces.
+                            </p>
+                        </div>
+                        <a href="/automata" class="bp-btn-primary shrink-0">Open studio</a>
                     </div>
-                    <p class="text-xs leading-relaxed" style="color: var(--muted);">
-                        Compile regex, Boolean regular constraints, CFGs, PDAs, and Turing Machine schemas into formal definitions and step traces.
-                    </p>
 
-                    <div class="bp-well p-3 h-32 flex items-center justify-center">
-                        <svg viewBox="0 0 280 96" class="w-full h-full" aria-hidden="true">
+                    <div class="bp-well-grid p-4 h-40 flex items-center justify-center">
+                        <svg viewBox="0 0 420 112" class="w-full h-full" aria-hidden="true">
                             <defs>
                                 <marker id="hub-arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
                                     <path d="M0 1.5L9 5L0 8.5z" fill="var(--accent)" />
                                 </marker>
+                                <marker id="hub-arr-pos" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                                    <path d="M0 1.5L9 5L0 8.5z" fill="var(--positive)" />
+                                </marker>
                             </defs>
-                            <path d="M16 42 L25 48 L16 54" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" />
-                            <rect x="32" y="32" width="48" height="32" rx="7" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.8" />
-                            <text x="56" y="52" text-anchor="middle" fill="var(--text)" font-family="var(--font-mono)" font-size="12" font-weight="600">L_# R</text>
-                            <path d="M80 48 L116 48" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#hub-arr)" />
-                            <text x="98" y="42" text-anchor="middle" fill="var(--muted)" font-family="var(--font-mono)" font-size="10">a</text>
-                            <rect x="115" y="32" width="70" height="32" rx="7" fill="var(--pill-warning-bg)" stroke="var(--warning)" stroke-width="1.8" />
-                            <text x="150" y="52" text-anchor="middle" fill="var(--text)" font-family="var(--font-mono)" font-size="11" font-weight="600"># R_# S_L</text>
-                            <path d="M185 48 L216 48" stroke="var(--positive)" stroke-width="1.6" marker-end="url(#hub-arr)" />
-                            <circle cx="240" cy="48" r="18" fill="var(--pill-positive-bg)" stroke="var(--positive)" stroke-width="1.8" />
-                            <circle cx="240" cy="48" r="13.5" fill="none" stroke="var(--positive)" stroke-width="1.3" />
-                            <text x="240" y="52" text-anchor="middle" fill="var(--pill-positive-ink)" font-family="var(--font-mono)" font-size="12" font-weight="600">Y</text>
-                        </svg>
-                    </div>
+                            <path d="M22 50 L32 56 L22 62" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                            <rect x="38" y="34" width="76" height="44" rx="10" fill="none" stroke="var(--accent)" stroke-width="3" stroke-opacity="0.18" />
+                            <rect x="42" y="38" width="68" height="36" rx="8" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.8" />
+                            <text x="76" y="60" text-anchor="middle" fill="var(--text)" font-family="var(--font-mono)" font-size="12" font-weight="600">L_# R</text>
 
-                    <div class="space-y-1 pt-1">
-                        <button type="button" class="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded hover:bg-[var(--raised)] cursor-pointer"
-                                @onclick='() => OpenPreset("/automata", "tm-palindrome")'>
-                            <span>TM Schema: Palindromes (w = w^R)</span>
-                            <span class="font-mono" style="color: var(--accent);">Open</span>
-                        </button>
-                        <button type="button" class="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded hover:bg-[var(--raised)] cursor-pointer"
-                                @onclick='() => OpenPreset("/automata", "pda-anbn")'>
-                            <span>PDA 5-Column Trace: a^n b^n</span>
-                            <span class="font-mono" style="color: var(--accent);">Open</span>
-                        </button>
+                            <path d="M110 56 C 132 56, 138 56, 158 56" fill="none" stroke="var(--accent)" stroke-width="1.8" marker-end="url(#hub-arr)" />
+                            <rect x="122" y="32" width="22" height="17" rx="5" fill="var(--surface)" stroke="var(--border)" />
+                            <text x="133" y="44" text-anchor="middle" fill="var(--accent)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">a</text>
+
+                            <rect x="162" y="38" width="94" height="36" rx="8" fill="var(--pill-warning-bg)" stroke="var(--warning)" stroke-width="1.8" />
+                            <text x="209" y="60" text-anchor="middle" fill="var(--text)" font-family="var(--font-mono)" font-size="11.5" font-weight="600"># R_# S_L</text>
+
+                            <path d="M256 56 C 276 56, 286 56, 304 56" fill="none" stroke="var(--positive)" stroke-width="1.8" marker-end="url(#hub-arr-pos)" />
+                            <rect x="270" y="32" width="22" height="17" rx="5" fill="var(--surface)" stroke="var(--border)" />
+                            <text x="281" y="44" text-anchor="middle" fill="var(--positive)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">#</text>
+
+                            <circle cx="336" cy="56" r="24" fill="none" stroke="var(--positive)" stroke-width="3" stroke-opacity="0.18" />
+                            <circle cx="336" cy="56" r="20" fill="var(--pill-positive-bg)" stroke="var(--positive)" stroke-width="1.8" />
+                            <circle cx="336" cy="56" r="15" fill="none" stroke="var(--positive)" stroke-width="1.3" />
+                            <text x="336" y="60" text-anchor="middle" fill="var(--pill-positive-ink)" font-family="var(--font-mono)" font-size="12.5" font-weight="600">Y</text>
+
+                            @* Mini tape preview *@
+                            <g transform="translate(106, 86)">
+                                <rect x="0" y="0" width="24" height="20" rx="4" fill="var(--raised)" stroke="var(--border)" />
+                                <text x="12" y="14" text-anchor="middle" fill="var(--faint)" font-family="var(--font-mono)" font-size="10.5">#</text>
+                                <rect x="28" y="0" width="24" height="20" rx="4" fill="var(--surface)" stroke="var(--control)" />
+                                <text x="40" y="14" text-anchor="middle" fill="var(--text)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">a</text>
+                                <rect x="56" y="0" width="24" height="20" rx="4" fill="var(--surface)" stroke="var(--control)" />
+                                <text x="68" y="14" text-anchor="middle" fill="var(--text)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">b</text>
+                                <rect x="84" y="0" width="24" height="20" rx="4" fill="var(--surface)" stroke="var(--control)" />
+                                <text x="96" y="14" text-anchor="middle" fill="var(--text)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">b</text>
+                                <rect x="112" y="0" width="24" height="20" rx="4" fill="var(--surface)" stroke="var(--control)" />
+                                <text x="124" y="14" text-anchor="middle" fill="var(--text)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">a</text>
+                                <rect x="140" y="0" width="24" height="20" rx="4" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6" />
+                                <text x="152" y="14" text-anchor="middle" fill="var(--accent)" font-family="var(--font-mono)" font-size="10.5" font-weight="700">#</text>
+                            </g>
+                        </svg>
                     </div>
                 </div>
 
-                <a href="/automata" class="bp-btn-secondary w-full">Launch Automata Studio</a>
+                <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                    <button type="button" class="bp-chip font-mono" @onclick='() => OpenPreset("/automata", "tm-palindrome")'>Palindromes TM</button>
+                    <button type="button" class="bp-chip font-mono" @onclick='() => OpenPreset("/automata", "pda-anbn")'>a^n b^n PDA</button>
+                    <button type="button" class="bp-chip font-mono" @onclick='() => OpenPreset("/automata", "dfa-contains-aba")'>Contains "aba" DFA</button>
+                    <button type="button" class="bp-chip font-mono" @onclick='() => OpenPreset("/automata", "cfg-arith")'>Arithmetic CFG</button>
+                </div>
             </article>
 
-            @* Pillar 2: DAA Runtime Analyzer *@
-            <article class="bp-card p-5 flex flex-col justify-between gap-4">
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between gap-2">
-                        <h2 class="text-base font-semibold">Algorithm Runtime Analyzer</h2>
-                        <span class="bp-pill bp-pill-neutral font-mono">Exact T(n)</span>
-                    </div>
-                    <p class="text-xs leading-relaxed" style="color: var(--muted);">
-                        Snap interlocking algorithm blocks, toggle operation weights, and inspect inline annotations, T_in derivations, and Master Theorem proofs.
-                    </p>
-
-                    <div class="bp-well p-3 h-32 flex flex-col justify-between font-mono text-xs">
+            @* Right Companion Tile: Algorithm Runtime Analyzer (5 cols) *@
+            <article class="lg:col-span-5 bp-card p-5 flex flex-col justify-between gap-4">
+                <div class="space-y-3.5">
+                    <div class="flex items-start justify-between gap-3">
                         <div class="space-y-1">
-                            <div class="flex items-center justify-between">
-                                <span class="px-2 py-0.5 rounded text-white text-[11px]" style="background: var(--accent);">for i = 1; i &lt;= n; i++</span>
-                                <span class="tnum" style="color: var(--muted);">n + 1</span>
+                            <h2 class="text-base font-semibold tracking-tight">Algorithm Runtime Analyzer</h2>
+                            <p class="text-xs leading-relaxed" style="color: var(--muted);">
+                                Snap interlocking blocks, customize elementary operation weights, and inspect exact rational summations and Master Theorem proofs.
+                            </p>
+                        </div>
+                        <a href="/daa" class="bp-btn-secondary shrink-0">Open</a>
+                    </div>
+
+                    <div class="bp-well-grid p-3.5 h-40 flex flex-col justify-between font-mono text-xs">
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="px-2.5 py-1 rounded-md text-white text-[11px] font-medium" style="background: var(--accent);">for i = 1; i &lt;= n; i++</span>
+                                <span class="tnum text-[11px]" style="color: var(--muted);">n + 1</span>
                             </div>
-                            <div class="ml-3 pl-2 py-1 rounded border border-dashed" style="border-color: var(--warning); background: var(--surface);">
-                                <div class="flex items-center justify-between text-[11px]">
-                                    <span>for j = 1; j &lt;= i; j++</span>
-                                    <span style="color: var(--warning);">T_in(i) = 4i + 2</span>
-                                </div>
+                            <div class="ml-3 px-2.5 py-2 rounded-lg border border-dashed flex items-center justify-between gap-2"
+                                 style="border-color: var(--warning); background: var(--surface);">
+                                <span class="text-[11px] truncate">for j = 1; j &lt;= i; j++</span>
+                                <span class="text-[11px] font-semibold shrink-0" style="color: var(--warning);">T_in(i) = 4i + 2</span>
                             </div>
                         </div>
-                        <div class="flex items-center justify-between pt-1" style="border-top: 1px solid var(--border);">
-                            <span style="color: var(--text); font-weight: 600;">T(n) = 2n² + 6n + 3</span>
+                        <div class="flex items-center justify-between pt-2" style="border-top: 1px solid var(--border);">
+                            <span class="font-semibold tnum" style="color: var(--text);">T(n) = 2n² + 6n + 3</span>
                             <span class="bp-pill bp-pill-accent text-[11px]">Θ(n²)</span>
                         </div>
                     </div>
-
-                    <div class="space-y-1 pt-1">
-                        <button type="button" class="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded hover:bg-[var(--raised)] cursor-pointer"
-                                @onclick='() => OpenPreset("/daa", "nested-3")'>
-                            <span>3-Level Nested Loop: (2/3)n³ + 4n²</span>
-                            <span class="font-mono" style="color: var(--accent);">Open</span>
-                        </button>
-                        <button type="button" class="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded hover:bg-[var(--raised)] cursor-pointer"
-                                @onclick='() => OpenPreset("/daa", "recur-nlogn")'>
-                            <span>Recurrence: T(n) = 2T(n/2) + n</span>
-                            <span class="font-mono" style="color: var(--accent);">Open</span>
-                        </button>
-                    </div>
                 </div>
 
-                <a href="/daa" class="bp-btn-secondary w-full">Launch Runtime Analyzer</a>
+                <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                    <button type="button" class="bp-chip font-mono" @onclick='() => OpenPreset("/daa", "nested-3")'>3-Level Nested Loop</button>
+                    <button type="button" class="bp-chip font-mono" @onclick='() => OpenPreset("/daa", "log-base2")'>Log Loop (i *= 2)</button>
+                    <button type="button" class="bp-chip font-mono" @onclick='() => OpenPreset("/daa", "recur-nlogn")'>2T(n/2) + n</button>
+                </div>
             </article>
 
-            @* Pillar 3: Trees & Graphs *@
-            <article class="bp-card p-5 flex flex-col justify-between gap-4">
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between gap-2">
-                        <h2 class="text-base font-semibold">Tree & Graph Tracer</h2>
-                        <span class="bp-pill bp-pill-neutral font-mono">Configurable</span>
-                    </div>
-                    <p class="text-xs leading-relaxed" style="color: var(--muted);">
-                        Step forward and backward through Binary, BST, AVL, Splay, (2,4), Red-Black trees and Graphs with customizable rulesets and live logs.
-                    </p>
-
-                    <div class="bp-well p-3 h-32 flex items-center justify-center">
-                        <svg viewBox="0 0 260 96" class="w-full h-full" aria-hidden="true">
-                            <line x1="130" y1="22" x2="78" y2="58" stroke="var(--control)" stroke-width="1.6" />
-                            <line x1="130" y1="22" x2="182" y2="58" stroke="var(--accent)" stroke-width="2" />
-                            <line x1="182" y1="58" x2="152" y2="82" stroke="var(--control)" stroke-width="1.4" />
-                            <line x1="182" y1="58" x2="212" y2="82" stroke="var(--control)" stroke-width="1.4" />
-                            <circle cx="130" cy="22" r="14" fill="var(--rb-black-bg)" />
-                            <text x="130" y="26" text-anchor="middle" fill="#fff" font-family="var(--font-mono)" font-size="11" font-weight="600">20</text>
-                            <circle cx="78" cy="58" r="13" fill="var(--rb-red-bg)" />
-                            <text x="78" y="62" text-anchor="middle" fill="#fff" font-family="var(--font-mono)" font-size="11" font-weight="600">10</text>
-                            <circle cx="182" cy="58" r="13" fill="var(--rb-red-bg)" />
-                            <text x="182" y="62" text-anchor="middle" fill="#fff" font-family="var(--font-mono)" font-size="11" font-weight="600">30</text>
-                            <rect x="145" y="75" width="14" height="14" rx="2" fill="var(--rb-black-bg)" />
-                            <rect x="205" y="75" width="14" height="14" rx="2" fill="var(--rb-black-bg)" />
-                        </svg>
+            @* Full-Width Horizontal Showcase: Tree & Graph Tracer (12 cols) *@
+            <article class="lg:col-span-12 bp-card p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+                <div class="lg:col-span-5 space-y-3.5">
+                    <div class="space-y-1">
+                        <h2 class="text-base font-semibold tracking-tight">Tree &amp; Graph Tracer</h2>
+                        <p class="text-xs leading-relaxed" style="color: var(--muted);">
+                            Step backward and forward through balanced trees and weighted graphs with synchronized pseudocode, four live graph representations, click-to-build editing, and configurable rulesets.
+                        </p>
                     </div>
 
-                    <div class="space-y-1 pt-1">
-                        <button type="button" class="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded hover:bg-[var(--raised)] cursor-pointer"
-                                @onclick='() => OpenPreset("/structures", "splay-delete")'>
-                            <span>Splay Deletion (3 Strategy Toggles)</span>
-                            <span class="font-mono" style="color: var(--accent);">Open</span>
-                        </button>
-                        <button type="button" class="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded hover:bg-[var(--raised)] cursor-pointer"
-                                @onclick='() => OpenPreset("/structures", "graph-airport")'>
-                            <span>Weighted Graph: Dijkstra & MST</span>
-                            <span class="font-mono" style="color: var(--accent);">Open</span>
-                        </button>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <button type="button" class="bp-chip" @onclick='() => OpenPreset("/structures", "splay-delete")'>Splay Deletion</button>
+                        <button type="button" class="bp-chip" @onclick='() => OpenPreset("/structures", "tree24-split")'>(2,4) Overflow</button>
+                        <button type="button" class="bp-chip" @onclick='() => OpenPreset("/structures", "rb-demo")'>Red-Black Mirror</button>
+                        <button type="button" class="bp-chip" @onclick='() => OpenPreset("/structures", "graph-airport")'>Dijkstra &amp; MST</button>
+                    </div>
+
+                    <div class="pt-1">
+                        <a href="/structures" class="bp-btn-secondary">Open Tree &amp; Graph Tracer</a>
                     </div>
                 </div>
 
-                <a href="/structures" class="bp-btn-secondary w-full">Launch Tree & Graph Tracer</a>
+                <div class="lg:col-span-7 bp-well-grid p-4 h-36 flex items-center justify-center">
+                    <svg viewBox="0 0 540 110" class="w-full h-full" aria-hidden="true">
+                        @* Left mini Red-Black tree with smooth cubic curves *@
+                        <g transform="translate(20, 4)">
+                            <path d="M90 22 C 90 42, 46 42, 46 62" fill="none" stroke="var(--control)" stroke-width="1.6" />
+                            <path d="M90 22 C 90 42, 134 42, 134 62" fill="none" stroke="var(--accent)" stroke-width="2" />
+                            <path d="M134 62 C 134 78, 108 78, 108 90" fill="none" stroke="var(--control)" stroke-width="1.4" />
+                            <path d="M134 62 C 134 78, 160 78, 160 90" fill="none" stroke="var(--control)" stroke-width="1.4" />
+                            <circle cx="90" cy="22" r="15" fill="var(--rb-black-bg)" />
+                            <text x="90" y="26" text-anchor="middle" fill="#fff" font-family="var(--font-mono)" font-size="11" font-weight="600">20</text>
+                            <circle cx="46" cy="62" r="14" fill="var(--rb-red-bg)" />
+                            <text x="46" y="66" text-anchor="middle" fill="#fff" font-family="var(--font-mono)" font-size="11" font-weight="600">10</text>
+                            <circle cx="134" cy="62" r="18" fill="none" stroke="var(--rb-red-bg)" stroke-width="3" stroke-opacity="0.22" />
+                            <circle cx="134" cy="62" r="14" fill="var(--rb-red-bg)" />
+                            <text x="134" y="66" text-anchor="middle" fill="#fff" font-family="var(--font-mono)" font-size="11" font-weight="600">30</text>
+                            <rect x="102" y="84" width="12" height="12" rx="2.5" fill="var(--rb-black-bg)" />
+                            <rect x="154" y="84" width="12" height="12" rx="2.5" fill="var(--rb-black-bg)" />
+                        </g>
+
+                        @* Divider *@
+                        <line x1="255" y1="16" x2="255" y2="94" stroke="var(--border)" stroke-dasharray="3 3" />
+
+                        @* Right mini Weighted Graph *@
+                        <g transform="translate(295, 6)">
+                            <line x1="36" y1="30" x2="118" y2="20" stroke="var(--positive)" stroke-width="2.2" />
+                            <line x1="36" y1="30" x2="96" y2="82" stroke="var(--control)" stroke-width="1.6" />
+                            <line x1="118" y1="20" x2="196" y2="54" stroke="var(--accent)" stroke-width="2.2" />
+                            <line x1="96" y1="82" x2="196" y2="54" stroke="var(--control)" stroke-width="1.6" />
+                            <circle cx="36" cy="30" r="17" fill="var(--pill-positive-bg)" stroke="var(--positive)" stroke-width="1.8" />
+                            <text x="36" y="34" text-anchor="middle" fill="var(--pill-positive-ink)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">BWI</text>
+                            <circle cx="118" cy="20" r="17" fill="var(--pill-positive-bg)" stroke="var(--positive)" stroke-width="1.8" />
+                            <text x="118" y="24" text-anchor="middle" fill="var(--pill-positive-ink)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">JFK</text>
+                            <circle cx="196" cy="54" r="21" fill="none" stroke="var(--accent)" stroke-width="3" stroke-opacity="0.22" />
+                            <circle cx="196" cy="54" r="17" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.8" />
+                            <text x="196" y="58" text-anchor="middle" fill="var(--accent)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">ORD</text>
+                            <circle cx="96" cy="82" r="16" fill="var(--surface)" stroke="var(--control)" stroke-width="1.5" />
+                            <text x="96" y="86" text-anchor="middle" fill="var(--text)" font-family="var(--font-mono)" font-size="10.5" font-weight="600">MIA</text>
+                            <rect x="65" y="10" width="28" height="16" rx="4" fill="var(--surface)" stroke="var(--border)" />
+                            <text x="79" y="21" text-anchor="middle" fill="var(--positive)" font-family="var(--font-mono)" font-size="9.5" font-weight="600">184</text>
+                            <rect x="148" y="26" width="28" height="16" rx="4" fill="var(--surface)" stroke="var(--border)" />
+                            <text x="162" y="37" text-anchor="middle" fill="var(--accent)" font-family="var(--font-mono)" font-size="9.5" font-weight="600">740</text>
+                        </g>
+                    </svg>
+                </div>
             </article>
         </section>
 
-        @* Recent Workspaces Section *@
+        @* Recent Workspaces Ledger *@
         <section class="space-y-2.5">
             <div class="flex items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
                     <h2 class="text-sm font-semibold">Recent session activity</h2>
-                    <span class="text-xs tnum" style="color: var(--muted);">@AppState.RecentWorkspaces.Count saved</span>
+                    <span class="bp-pill bp-pill-neutral font-mono tnum">@AppState.RecentWorkspaces.Count saved</span>
                 </div>
                 <button type="button" class="bp-btn-ghost !h-7 text-xs" @onclick="() => AppState.SetSettingsOpen(true)">
-                    Backup / Import JSON
+                    Backup or import JSON
                 </button>
             </div>
 
             @if (AppState.RecentWorkspaces.Count == 0)
             {
-                <div class="rounded-lg px-4 py-3 text-xs border border-dashed" style="border-color: var(--control); color: var(--muted);">
-                    No recent sessions yet. Open any workbench above or pick a preset to begin tracing.
+                <div class="rounded-xl px-4 py-3.5 text-xs flex flex-wrap items-center justify-between gap-3 border border-dashed"
+                     style="border-color: var(--control); color: var(--muted);">
+                    <span>No saved sessions yet. Launch any preset above to begin recording your study history locally.</span>
+                    <button type="button" class="bp-btn-secondary !h-7 text-xs" @onclick='() => OpenPreset("/automata", "tm-palindrome")'>
+                        Try Palindromes TM
+                    </button>
                 </div>
             }
             else
             {
-                <div class="bp-card divide-y" style="border-color: var(--border);">
+                <div class="bp-card divide-y overflow-hidden" style="border-color: var(--border);">
                     @foreach (var doc in AppState.RecentWorkspaces)
                     {
                         <button type="button"
                                 class="w-full text-left flex items-center justify-between gap-4 px-4 py-2.5 hover:bg-[var(--raised)] transition-colors cursor-pointer"
+                                style="border-color: var(--rule);"
                                 @onclick="() => OpenRecent(doc)">
                             <div class="min-w-0">
                                 <div class="text-sm font-medium truncate">@doc.Title</div>
                                 <div class="text-xs truncate" style="color: var(--muted);">@doc.Subtitle</div>
                             </div>
-                            <span class="text-xs font-mono tnum shrink-0" style="color: var(--muted);">@doc.UpdatedAt.ToLocalTime().ToString("HH:mm")</span>
+                            <div class="flex items-center gap-2.5 shrink-0">
+                                <span class="bp-pill bp-pill-neutral text-[11px]">@doc.Studio</span>
+                                <span class="text-xs font-mono tnum" style="color: var(--faint);">@doc.UpdatedAt.ToLocalTime().ToString("HH:mm")</span>
+                            </div>
                         </button>
                     }
                 </div>

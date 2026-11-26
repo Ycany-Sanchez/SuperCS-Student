@@ -1,32 +1,33 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="relative w-full h-full overflow-hidden bp-well @Class">
+<div class="relative w-full h-full overflow-hidden bp-well-grid @Class">
     <div @ref="_host" class="w-full h-full"></div>
 
     @if (!string.IsNullOrWhiteSpace(Scene?.OverlayTag))
     {
-        <div class="absolute top-3 left-3 bp-pill bp-pill-accent font-mono text-xs pointer-events-none">
+        <div class="absolute top-3 left-3 bp-pill bp-pill-accent font-mono text-[11px] pointer-events-none">
             @Scene.OverlayTag
         </div>
     }
 
     @if (!string.IsNullOrWhiteSpace(ErrorBanner))
     {
-        <div class="absolute top-3 left-3 right-28 rounded-md px-3 py-1.5 text-xs font-medium flex items-center gap-2"
+        <div role="alert"
+             class="absolute top-3 left-3 right-28 rounded-lg px-3 py-1.5 text-xs font-medium flex items-center gap-2"
              style="background: var(--pill-negative-bg); color: var(--pill-negative-ink); border: 1px solid var(--negative);">
             <span>Syntax error (showing last valid diagram): @ErrorBanner</span>
         </div>
     }
 
-    <div class="absolute bottom-3 right-3 flex items-center gap-1 p-1 rounded-lg bp-floating">
-        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs font-mono" title="Zoom out" @onclick="() => Zoom(0.85)">-</button>
-        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Fit diagram" @onclick="Fit">Fit</button>
-        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs font-mono" title="Zoom in" @onclick="() => Zoom(1.18)">+</button>
+    <div class="absolute bottom-3 right-3 flex items-center gap-0.5 p-1 rounded-xl bp-floating">
+        <button type="button" class="bp-btn-ghost !h-7 !w-7 !p-0 text-xs font-mono" title="Zoom out" aria-label="Zoom out" @onclick="() => Zoom(0.85)">-</button>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Fit diagram" aria-label="Fit diagram to canvas" @onclick="Fit">Fit</button>
+        <button type="button" class="bp-btn-ghost !h-7 !w-7 !p-0 text-xs font-mono" title="Zoom in" aria-label="Zoom in" @onclick="() => Zoom(1.18)">+</button>
         <span class="w-px h-4 mx-0.5" style="background: var(--border);"></span>
-        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Reset node positions" @onclick="ResetLayout">Reset</button>
-        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Export SVG" @onclick="ExportSvg">SVG</button>
-        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Export PNG" @onclick="ExportPng">PNG</button>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Reset node positions" aria-label="Reset node positions" @onclick="ResetLayout">Reset</button>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Export SVG" aria-label="Export diagram as SVG" @onclick="ExportSvg">SVG</button>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Export PNG" aria-label="Export diagram as PNG" @onclick="ExportPng">PNG</button>
     </div>
 </div>
 

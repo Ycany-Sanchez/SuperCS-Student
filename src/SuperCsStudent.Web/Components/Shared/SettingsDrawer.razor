@@ -5,7 +5,11 @@
 @if (AppState.SettingsOpen)
 {
     <div class="fixed inset-0 z-50 flex justify-end"
-         style="background: rgba(0, 0, 0, 0.28);"
+         style="background: rgba(0, 0, 0, 0.38);"
+         role="dialog"
+         aria-modal="true"
+         aria-label="Workspace settings"
+         @onkeydown="HandleKeyDown"
          @onclick="Close">
         <div class="w-full max-w-sm h-full flex flex-col bp-floating !rounded-none !rounded-l-2xl"
              @onclick:stopPropagation="true">
@@ -180,6 +184,11 @@
         await JS.InvokeVoidAsync("SuperCs.storage.applyTheme", "light");
         _workspaceError = false;
         _workspaceStatus = "Workspace reset to defaults.";
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
     }
 
     private void Close() => AppState.SetSettingsOpen(false);

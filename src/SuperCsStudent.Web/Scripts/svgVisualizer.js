@@ -71,6 +71,21 @@ export function mountSvgCanvas(container, dotNetRef) {
   });
 
   const defs = createEl("defs");
+  const shadow = createEl("filter", {
+    id: "node-elev",
+    x: "-25%",
+    y: "-25%",
+    width: "150%",
+    height: "160%"
+  });
+  shadow.appendChild(createEl("feDropShadow", {
+    dx: "0",
+    dy: "2",
+    stdDeviation: "3",
+    "flood-color": "#0f172a",
+    "flood-opacity": "0.10"
+  }));
+  defs.appendChild(shadow);
   defs.appendChild(buildArrowMarker("arrow-default", "var(--muted)"));
   defs.appendChild(buildArrowMarker("arrow-active", "var(--warning)"));
   defs.appendChild(buildArrowMarker("arrow-accepted", "var(--positive)"));
@@ -277,17 +292,18 @@ export function renderScene(container, scene, snap = false) {
     const tgt = resolved.get(e.targetId);
     if (!src || !tgt) continue;
 
-    const { d, labelX, labelY } = computeEdgePath(src, tgt, e.curveOffset || 0);
+    const { d, labelX, labelY } = computeEdgePath(src, tgt, e.curveOffset || 0, Boolean(e.isDirected));
     const stroke = edgeColor(e.semanticState);
     const isActive = e.semanticState === "active" || e.semanticState === "accepted" || e.semanticState === "frontier";
     const pathEl = createEl("path", {
       d,
       fill: "none",
       stroke,
-      "stroke-width": isActive ? "2.3" : "1.5",
+      "stroke-width": isActive ? "2.4" : "1.5",
+      "stroke-linecap": "round",
       "stroke-dasharray": e.isDashed ? "5 4" : null,
       "marker-end": e.isDirected ? markerForState(e.semanticState) : null,
-      opacity: e.isDimmed ? "0.24" : "1"
+      opacity: e.isDimmed ? "0.22" : (isActive ? "1" : "0.72")
     });
     st.edgesLayer.appendChild(pathEl);
 
@@ -296,14 +312,17 @@ export function renderScene(container, scene, snap = false) {
     }
 
     if (e.label) {
+      const pillW = Math.max(24, e.label.length * 7.5 + 14);
       const labelBg = createEl("rect", {
-        x: labelX - Math.max(11, e.label.length * 4 + 6),
+        x: labelX - pillW / 2,
         y: labelY - 10,
-        width: Math.max(22, e.label.length * 8 + 12),
-        height: 18,
-        rx: 4,
-        fill: "var(--canvas-well)",
-        opacity: e.isDimmed ? "0.4" : "0.94"
+        width: pillW,
+        height: 19,
+        rx: 6,
+        fill: "var(--surface)",
+        stroke: isActive ? stroke : "var(--border)",
+        "stroke-width": isActive ? "1.2" : "1",
+        opacity: e.isDimmed ? "0.35" : "0.96"
       });
       const labelTxt = createEl("text", {
         x: labelX,
@@ -311,7 +330,7 @@ export function renderScene(container, scene, snap = false) {
         "text-anchor": "middle",
         fill: isActive ? stroke : "var(--text)",
         "font-family": "var(--font-mono)",
-        "font-size": "11.5",
+        "font-size": "11",
         "font-weight": isActive ? "600" : "500",
         opacity: e.isDimmed ? "0.3" : "1"
       });
@@ -424,13 +443,15 @@ export function renderScene(container, scene, snap = false) {
 }
 
 function drawNodeShape(g, n, colors) {
+  const showHalo = n.semanticState === "active" || n.semanticState === "violation" || n.semanticState === "frontier" || n.semanticState === "accepted";
+
   if (n.shape === "sentinel") {
     g.appendChild(createEl("rect", {
       x: -7,
       y: -7,
       width: 14,
       height: 14,
-      rx: 2,
+      rx: 3,
       fill: "var(--rb-black-bg)",
       stroke: "var(--control)",
       "stroke-width": "1"
@@ -442,16 +463,30 @@ function drawNodeShape(g, n, colors) {
     const keys = n.multiKeys;
     const cellW = 34;
     const totalW = Math.max(n.width, keys.length * cellW);
-    const h = 34;
+    const h = 36;
+    if (showHalo) {
+      g.appendChild(createEl("rect", {
+        x: -totalW / 2 - 4,
+        y: -h / 2 - 4,
+        width: totalW + 8,
+        height: h + 8,
+        rx: 10,
+        fill: "none",
+        stroke: colors.stroke,
+        "stroke-width": "3",
+        "stroke-opacity": "0.22"
+      }));
+    }
     g.appendChild(createEl("rect", {
       x: -totalW / 2,
       y: -h / 2,
       width: totalW,
       height: h,
-      rx: 6,
+      rx: 8,
       fill: colors.fill,
       stroke: colors.stroke,
-      "stroke-width": colors.strokeWidth
+      "stroke-width": colors.strokeWidth,
+      filter: "url(#node-elev)"
     }));
     keys.forEach((k, idx) => {
       const cx = -totalW / 2 + (idx + 0.5) * (totalW / keys.length);
@@ -482,7 +517,20 @@ function drawNodeShape(g, n, colors) {
   }
 
   if (n.shape === "schema-node" || n.shape === "box" || n.shape === "pill") {
-    const rx = n.shape === "pill" ? n.height / 2 : 8;
+    const rx = n.shape === "pill" ? n.height / 2 : 10;
+    if (showHalo) {
+      g.appendChild(createEl("rect", {
+        x: -n.width / 2 - 4,
+        y: -n.height / 2 - 4,
+        width: n.width + 8,
+        height: n.height + 8,
+        rx: rx + 3,
+        fill: "none",
+        stroke: colors.stroke,
+        "stroke-width": "3",
+        "stroke-opacity": "0.22"
+      }));
+    }
     g.appendChild(createEl("rect", {
       x: -n.width / 2,
       y: -n.height / 2,
@@ -491,17 +539,30 @@ function drawNodeShape(g, n, colors) {
       rx,
       fill: colors.fill,
       stroke: colors.stroke,
-      "stroke-width": colors.strokeWidth
+      "stroke-width": colors.strokeWidth,
+      filter: "url(#node-elev)"
     }));
   } else {
     const r = Math.min(n.width, n.height) / 2;
+    if (showHalo) {
+      g.appendChild(createEl("circle", {
+        cx: 0,
+        cy: 0,
+        r: r + 5,
+        fill: "none",
+        stroke: colors.stroke,
+        "stroke-width": "3.5",
+        "stroke-opacity": "0.22"
+      }));
+    }
     g.appendChild(createEl("circle", {
       cx: 0,
       cy: 0,
       r,
       fill: colors.fill,
       stroke: colors.stroke,
-      "stroke-width": colors.strokeWidth
+      "stroke-width": colors.strokeWidth,
+      filter: "url(#node-elev)"
     }));
     if (n.isAccepting || n.shape === "double-circle") {
       g.appendChild(createEl("circle", {
@@ -539,14 +600,14 @@ function drawNodeShape(g, n, colors) {
   g.appendChild(label);
 }
 
-function computeEdgePath(src, tgt, curveOffset) {
+function computeEdgePath(src, tgt, curveOffset, isDirected) {
   if (src.id === tgt.id) {
     const r = Math.min(src.width, src.height) / 2;
     const x1 = src.x - r * 0.45;
     const y1 = src.y - r * 0.85;
     const x2 = src.x + r * 0.45;
     const y2 = src.y - r * 0.85;
-    const topY = src.y - r - 42;
+    const topY = src.y - r - 44;
     return {
       d: `M ${x1} ${y1} C ${src.x - 36} ${topY}, ${src.x + 36} ${topY}, ${x2} ${y2}`,
       labelX: src.x,
@@ -559,6 +620,18 @@ function computeEdgePath(src, tgt, curveOffset) {
   const dist = Math.hypot(dx, dy) || 1;
   const ux = dx / dist;
   const uy = dy / dist;
+
+  // Smooth cubic Bezier S-curve for hierarchical tree edges (undirected downward connections)
+  if (!isDirected && !curveOffset && dy > 24 && Math.abs(dx) > 4) {
+    const sy = src.y + src.height / 2;
+    const ty = tgt.y - tgt.height / 2;
+    const midY = (sy + ty) / 2;
+    return {
+      d: `M ${src.x} ${sy} C ${src.x} ${midY}, ${tgt.x} ${midY}, ${tgt.x} ${ty}`,
+      labelX: (src.x + tgt.x) / 2,
+      labelY: midY
+    };
+  }
 
   const srcR = (src.shape === "circle" || src.shape === "double-circle")
     ? Math.min(src.width, src.height) / 2
@@ -575,8 +648,8 @@ function computeEdgePath(src, tgt, curveOffset) {
   if (!curveOffset) {
     return {
       d: `M ${sx} ${sy} L ${tx} ${ty}`,
-      labelX: (sx + tx) / 2 - uy * 12,
-      labelY: (sy + ty) / 2 + ux * 12
+      labelX: (sx + tx) / 2 - uy * 13,
+      labelY: (sy + ty) / 2 + ux * 13
     };
   }
 

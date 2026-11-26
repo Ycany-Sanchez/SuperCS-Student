@@ -12,10 +12,11 @@
 
 <div class="flex flex-col h-full min-h-0 min-w-0 w-full overflow-hidden">
     @* Studio Header Bar *@
-    <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
-        <div class="flex items-center gap-3 min-w-0">
-            <h1 class="text-base font-semibold tracking-tight whitespace-nowrap">Runtime Analyzer</h1>
-            <select class="bp-input !h-8 text-xs max-w-[260px]"
+    <div class="px-4 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
+        <div class="flex items-center gap-2.5 min-w-0 flex-wrap">
+            <h1 class="text-[15px] font-semibold tracking-tight whitespace-nowrap">Runtime Analyzer</h1>
+            <select class="bp-input !h-8 text-xs max-w-[240px]"
+                    aria-label="Select algorithm preset"
                     value="@_selectedPresetKey"
                     @onchange="OnPresetChanged">
                 @foreach (var grp in AlgorithmPresets.All.GroupBy(p => p.Category))
@@ -30,21 +31,24 @@
             </select>
         </div>
 
-        <div class="flex items-center gap-2">
-            <div class="flex items-center rounded-md p-0.5" style="background: var(--raised); border: 1px solid var(--border);">
-                <button type="button"
-                        class="px-2.5 h-7 rounded text-xs font-medium cursor-pointer transition-colors"
-                        style="@(!_recurrenceDirectMode ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                        @onclick="() => _recurrenceDirectMode = false">
+        <div class="flex items-center gap-2 flex-wrap">
+            <div class="bp-seg" role="tablist" aria-label="Analyzer mode">
+                <button type="button" class="bp-seg-btn" data-active="@(!_recurrenceDirectMode ? "true" : "false")" @onclick="() => _recurrenceDirectMode = false">
                     Block Builder
                 </button>
-                <button type="button"
-                        class="px-2.5 h-7 rounded text-xs font-medium cursor-pointer transition-colors"
-                        style="@(_recurrenceDirectMode ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                        @onclick="SwitchToRecurrenceMode">
+                <button type="button" class="bp-seg-btn" data-active="@(_recurrenceDirectMode ? "true" : "false")" @onclick="SwitchToRecurrenceMode">
                     Recurrence Solver
                 </button>
             </div>
+
+            @if (!_recurrenceDirectMode)
+            {
+                <div class="bp-seg hidden xl:inline-flex" role="group" aria-label="Pane focus">
+                    <button type="button" class="bp-seg-btn !px-2" data-active="@(_layoutFocus == "split" ? "true" : "false")" @onclick='() => _layoutFocus = "split"'>Split</button>
+                    <button type="button" class="bp-seg-btn !px-2" data-active="@(_layoutFocus == "blocks" ? "true" : "false")" @onclick='() => _layoutFocus = "blocks"'>Blocks</button>
+                    <button type="button" class="bp-seg-btn !px-2" data-active="@(_layoutFocus == "proof" ? "true" : "false")" @onclick='() => _layoutFocus = "proof"'>Proof</button>
+                </div>
+            }
 
             <button type="button"
                     class="bp-btn-secondary !h-8 text-xs"
@@ -59,126 +63,117 @@
         </div>
     </div>
 
-    @* Collapsible Cost Rules Configuration Strip *@
+    @* Collapsible Segmented Cost Rules Strip (Zero Raw OS Select Grids) *@
     @if (_rulesOpen)
     {
-        <div class="px-4 py-3 shrink-0 space-y-3" style="background: var(--raised); border-bottom: 1px solid var(--border);">
+        <div class="px-4 py-3 shrink-0 space-y-2.5" style="background: var(--canvas-well); border-bottom: 1px solid var(--border);">
             <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                     <span class="text-xs font-semibold">Operation Cost Profile</span>
-                    <button type="button"
-                            class="bp-btn-secondary !h-7 !px-2.5 text-xs"
-                            style="@(_profile.Preset == CostProfilePreset.StandardUnitCost ? "border-color: var(--accent); color: var(--accent); background: var(--accent-soft);" : "")"
-                            @onclick="() => ApplyProfilePreset(CostProfilePreset.StandardUnitCost)">
-                        Standard Unit-Cost
-                    </button>
-                    <button type="button"
-                            class="bp-btn-secondary !h-7 !px-2.5 text-xs"
-                            style="@(_profile.Preset == CostProfilePreset.StrictSeparateOp ? "border-color: var(--accent); color: var(--accent); background: var(--accent-soft);" : "")"
-                            @onclick="() => ApplyProfilePreset(CostProfilePreset.StrictSeparateOp)">
-                        Strict Separate-Op
-                    </button>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !text-[11px]"
+                                data-active="@(_profile.Preset == CostProfilePreset.StandardUnitCost ? "true" : "false")"
+                                @onclick="() => ApplyProfilePreset(CostProfilePreset.StandardUnitCost)">
+                            Standard Unit-Cost
+                        </button>
+                        <button type="button" class="bp-seg-btn !h-6 !text-[11px]"
+                                data-active="@(_profile.Preset == CostProfilePreset.StrictSeparateOp ? "true" : "false")"
+                                @onclick="() => ApplyProfilePreset(CostProfilePreset.StrictSeparateOp)">
+                            Strict Separate-Op
+                        </button>
+                    </div>
                 </div>
                 <span class="text-xs" style="color: var(--muted);">Changes recalculate T(n), inline counts, and proofs live.</span>
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2.5 text-xs">
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>++ / -- cost</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.UnaryIncrementCost"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, UnaryIncrementCost = int.Parse(e.Value!.ToString()!) })">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                    </select>
-                </label>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-6 text-xs">
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">++ / -- cost</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.UnaryIncrementCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, UnaryIncrementCost = 1 })">1</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.UnaryIncrementCost == 2 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, UnaryIncrementCost = 2 })">2</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>+= / *= cost</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.CompoundAssignCost"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CompoundAssignCost = int.Parse(e.Value!.ToString()!) })">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                    </select>
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">+= / *= cost</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.CompoundAssignCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CompoundAssignCost = 1 })">1</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.CompoundAssignCost == 2 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CompoundAssignCost = 2 })">2</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>return keyword</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.ReturnKeywordCost"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ReturnKeywordCost = int.Parse(e.Value!.ToString()!) })">
-                        <option value="0">0</option>
-                        <option value="1">1</option>
-                    </select>
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">return keyword</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ReturnKeywordCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ReturnKeywordCost = 0 })">0</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ReturnKeywordCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ReturnKeywordCost = 1 })">1</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>array[i] access</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.ArrayIndexingCost"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ArrayIndexingCost = int.Parse(e.Value!.ToString()!) })">
-                        <option value="1">1</option>
-                        <option value="0">0</option>
-                    </select>
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">array[i] access</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ArrayIndexingCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ArrayIndexingCost = 1 })">1</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ArrayIndexingCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ArrayIndexingCost = 0 })">0</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>Bound arith</span>
-                    <input type="checkbox" class="accent-[var(--accent)]"
-                           checked="@_profile.CountLoopBoundArithmetic"
-                           @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CountLoopBoundArithmetic = (bool)e.Value! })" />
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">Var declare</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.DeclarationCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, DeclarationCost = 0 })">0</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.DeclarationCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, DeclarationCost = 1 })">1</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>Log loop (i*=b)</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-[11px]" value="@_profile.LogLoopConvention"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogLoopConvention = Enum.Parse<LogLoopConvention>(e.Value!.ToString()!) })">
-                        <option value="@LogLoopConvention.ExactLogBase">log_b n</option>
-                        <option value="@LogLoopConvention.FloorLogPlusOne">log_b n + 1</option>
-                    </select>
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">Logical &amp;&amp; / ||</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogicalOperatorCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogicalOperatorCost = 0 })">0</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogicalOperatorCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogicalOperatorCost = 1 })">1</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>Stride (i+=s)</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-[11px]" value="@_profile.StepLoopConvention"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, StepLoopConvention = Enum.Parse<StepLoopConvention>(e.Value!.ToString()!) })">
-                        <option value="@StepLoopConvention.AlgebraicRatio">n / s</option>
-                        <option value="@StepLoopConvention.CeilingOffset">ceil offset</option>
-                    </select>
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">Function call</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.FunctionCallCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, FunctionCallCost = 1 })">1</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.FunctionCallCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, FunctionCallCost = 0 })">0</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>Var declare</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.DeclarationCost"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, DeclarationCost = int.Parse(e.Value!.ToString()!) })">
-                        <option value="0">0</option>
-                        <option value="1">1</option>
-                    </select>
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">Switch case</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.SwitchCaseComparisonCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, SwitchCaseComparisonCost = 1 })">1</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.SwitchCaseComparisonCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, SwitchCaseComparisonCost = 0 })">0</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>Logical &amp;&amp;/||</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.LogicalOperatorCost"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogicalOperatorCost = int.Parse(e.Value!.ToString()!) })">
-                        <option value="0">0</option>
-                        <option value="1">1</option>
-                    </select>
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">Bound arith</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(!_profile.CountLoopBoundArithmetic ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CountLoopBoundArithmetic = false })">Off</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_profile.CountLoopBoundArithmetic ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CountLoopBoundArithmetic = true })">Count</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>Function call</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.FunctionCallCost"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, FunctionCallCost = int.Parse(e.Value!.ToString()!) })">
-                        <option value="1">1</option>
-                        <option value="0">0</option>
-                    </select>
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">Log loop (i*=b)</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogLoopConvention == LogLoopConvention.ExactLogBase ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogLoopConvention = LogLoopConvention.ExactLogBase })">log_b n</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogLoopConvention == LogLoopConvention.FloorLogPlusOne ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogLoopConvention = LogLoopConvention.FloorLogPlusOne })">+1</button>
+                    </div>
+                </div>
 
-                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                    <span>Switch case</span>
-                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.SwitchCaseComparisonCost"
-                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, SwitchCaseComparisonCost = int.Parse(e.Value!.ToString()!) })">
-                        <option value="1">1</option>
-                        <option value="0">0</option>
-                    </select>
-                </label>
+                <div class="bp-rule-row">
+                    <span style="color: var(--muted);">Stride (i+=s)</span>
+                    <div class="bp-seg">
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.StepLoopConvention == StepLoopConvention.AlgebraicRatio ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, StepLoopConvention = StepLoopConvention.AlgebraicRatio })">n / s</button>
+                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.StepLoopConvention == StepLoopConvention.CeilingOffset ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, StepLoopConvention = StepLoopConvention.CeilingOffset })">ceil</button>
+                    </div>
+                </div>
             </div>
         </div>
     }
@@ -187,8 +182,8 @@
     @if (!_recurrenceDirectMode)
     {
         <div class="flex-1 min-h-0 min-w-0 grid grid-cols-1 lg:grid-cols-12 overflow-y-auto lg:overflow-hidden">
-            @* Left: Scratch-style Blockly Workspace (5 cols) *@
-            <div class="lg:col-span-5 flex flex-col min-w-0 min-h-[340px] lg:min-h-0" style="border-right: 1px solid var(--border);">
+            @* Left: Scratch-style Blockly Workspace *@
+            <div class="@BlocklyColClass flex flex-col min-w-0 min-h-[340px] lg:min-h-0" style="border-right: 1px solid var(--border);">
                 <div class="px-3 py-1.5 flex items-center justify-between text-xs shrink-0" style="border-bottom: 1px solid var(--border); color: var(--muted);">
                     <span>Scratch Block Workspace</span>
                     <span class="font-mono truncate">@(_currentAst?.Name ?? "algorithm")(@string.Join(", ", _currentAst?.Parameters ?? Array.Empty<string>()))</span>
@@ -196,8 +191,8 @@
                 <div @ref="_blocklyHost" class="flex-1 min-h-[300px] w-full relative"></div>
             </div>
 
-            @* Middle: 3-Column Annotated Code with Inline Operator Badges & T_in Boxes (3 cols) *@
-            <div class="lg:col-span-3 flex flex-col min-w-0 min-h-0 overflow-hidden" style="border-right: 1px solid var(--border);">
+            @* Middle: Annotated Code with Inline Operator Badges & T_in Boxes *@
+            <div class="@CodeColClass flex flex-col min-w-0 min-h-0 overflow-hidden" style="border-right: 1px solid var(--border);">
                 <div class="px-3 py-1.5 flex items-center justify-between text-xs shrink-0" style="border-bottom: 1px solid var(--border);">
                     <span class="font-medium">Annotated Code (@(_activeCaseTab == "best" ? "Best" : "Worst"))</span>
                     <label class="flex items-center gap-1.5 cursor-pointer" style="color: var(--muted);">
@@ -233,7 +228,7 @@
                                                 <div class="flex flex-wrap gap-1 mt-1" style="padding-left: @(line.IndentLevel * 12)px;">
                                                     @foreach (var badge in line.InlineBadges)
                                                     {
-                                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] tnum"
+                                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] tnum whitespace-nowrap"
                                                               style="background: var(--raised); border: 1px solid var(--border); color: var(--muted);"
                                                               title="@badge.Description">
                                                             <strong style="color: var(--text);">@badge.Token</strong>
@@ -254,8 +249,8 @@
                 </div>
             </div>
 
-            @* Right: Symbolic T(n) Derivation, Big-O/Omega/Theta Proofs & D3 Growth Chart (4 cols) *@
-            <div class="lg:col-span-4 flex flex-col min-w-0 min-h-0 overflow-hidden">
+            @* Right: Symbolic T(n) Derivation, Big-O/Omega/Theta Proofs & D3 Growth Chart *@
+            <div class="@ProofColClass flex flex-col min-w-0 min-h-0 overflow-hidden">
                 <div class="px-2 flex items-center gap-0.5 shrink-0 overflow-x-auto" style="border-bottom: 1px solid var(--border);">
                     <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "worst" ? "true" : "false")" @onclick='() => SetCaseTab("worst")'>Worst Case</button>
                     <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "best" ? "true" : "false")" @onclick='() => SetCaseTab("best")'>Best Case</button>
@@ -277,6 +272,11 @@
                                     <span class="bp-pill @(_analysis.Asymptotic.IsTight ? "bp-pill-positive" : "bp-pill-neutral") font-mono">
                                         @(_analysis.Asymptotic.IsTight ? _analysis.Asymptotic.BigTheta : "Θ: Not tight")
                                     </span>
+                                    <button type="button" class="bp-btn-ghost !h-6 !px-1.5 text-[11px] font-mono"
+                                            title="Copy T(n) LaTeX"
+                                            @onclick="CopyHeadlineLatex">
+                                        @(_copiedLatex ? "Copied" : "LaTeX")
+                                    </button>
                                 </div>
                             </div>
                             <div class="overflow-x-auto py-1">
@@ -502,10 +502,33 @@
     private RuntimeAnalysisResult? _analysis;
 
     private string _activeCaseTab = "worst";
+    private string _layoutFocus = "split";
     private bool _rulesOpen;
+    private bool _copiedLatex;
     private bool _showInlineBadges = true;
     private string? _hoveredBlockId;
     private bool _needsChartRender;
+
+    private string BlocklyColClass => _layoutFocus switch
+    {
+        "blocks" => "lg:col-span-7",
+        "proof" => "lg:col-span-3",
+        _ => "lg:col-span-5"
+    };
+
+    private string CodeColClass => _layoutFocus switch
+    {
+        "blocks" => "lg:col-span-5",
+        "proof" => "lg:col-span-4",
+        _ => "lg:col-span-3"
+    };
+
+    private string ProofColClass => _layoutFocus switch
+    {
+        "blocks" => "hidden",
+        "proof" => "lg:col-span-5",
+        _ => "lg:col-span-4"
+    };
 
     private bool _recurrenceDirectMode;
     private string _recKind = "divide";
@@ -690,6 +713,18 @@
             }).ToArray()
         };
         await JS.InvokeVoidAsync("SuperCs.charts.renderGrowthChart", _chartHost, payload);
+    }
+
+    private async Task CopyHeadlineLatex()
+    {
+        if (_analysis is null || ActiveCase is null) return;
+        var latex = $"T({_analysis.PrimaryVariable}) = {ActiveCase.Latex}";
+        await JS.InvokeAsync<bool>("SuperCs.storage.copyText", latex);
+        _copiedLatex = true;
+        StateHasChanged();
+        await Task.Delay(1400);
+        _copiedLatex = false;
+        StateHasChanged();
     }
 
     private async Task ExportReportMarkdown()

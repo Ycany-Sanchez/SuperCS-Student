@@ -5,7 +5,10 @@
 @if (AppState.CommandPaletteOpen)
 {
     <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4"
-         style="background: rgba(0, 0, 0, 0.35);"
+         style="background: rgba(0, 0, 0, 0.42);"
+         role="dialog"
+         aria-modal="true"
+         aria-label="Command palette"
          @onclick="Close">
         <div class="w-full max-w-xl rounded-xl overflow-hidden bp-floating"
              @onclick:stopPropagation="true">

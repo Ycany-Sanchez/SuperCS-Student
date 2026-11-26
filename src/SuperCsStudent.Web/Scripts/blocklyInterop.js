@@ -30,18 +30,18 @@ function defineThemes() {
   const lightTheme = Blockly.Theme.defineTheme("blueprintLight", {
     base: Blockly.Themes.Zelos,
     componentStyles: {
-      workspaceBackgroundColour: "#f4f6f8",
+      workspaceBackgroundColour: "#f8f9fb",
       toolboxBackgroundColour: "#ffffff",
-      toolboxForegroundColour: "#131416",
-      flyoutBackgroundColour: "#eef2f5",
-      flyoutForegroundColour: "#131416",
-      flyoutOpacity: 0.96,
-      scrollbarColour: "#cfd5db",
-      insertionMarkerColour: "#1b6c80",
+      toolboxForegroundColour: "#111318",
+      flyoutBackgroundColour: "#ffffff",
+      flyoutForegroundColour: "#111318",
+      flyoutOpacity: 0.97,
+      scrollbarColour: "#cbd2dc",
+      insertionMarkerColour: "#0e6e85",
       insertionMarkerOpacity: 0.35
     },
     fontStyle: {
-      family: '"IBM Plex Sans", sans-serif',
+      family: '"Plus Jakarta Sans", sans-serif',
       weight: "500",
       size: 11
     }
@@ -50,18 +50,18 @@ function defineThemes() {
   const darkTheme = Blockly.Theme.defineTheme("blueprintDark", {
     base: Blockly.Themes.Zelos,
     componentStyles: {
-      workspaceBackgroundColour: "#0a0a0b",
-      toolboxBackgroundColour: "#111111",
-      toolboxForegroundColour: "#ffffff",
-      flyoutBackgroundColour: "#18181b",
-      flyoutForegroundColour: "#ffffff",
+      workspaceBackgroundColour: "#0d1016",
+      toolboxBackgroundColour: "#11141b",
+      toolboxForegroundColour: "#f3f5f9",
+      flyoutBackgroundColour: "#181c26",
+      flyoutForegroundColour: "#f3f5f9",
       flyoutOpacity: 0.98,
-      scrollbarColour: "#3f3f44",
+      scrollbarColour: "#374151",
       insertionMarkerColour: "#38bdf8",
       insertionMarkerOpacity: 0.45
     },
     fontStyle: {
-      family: '"IBM Plex Sans", sans-serif',
+      family: '"Plus Jakarta Sans", sans-serif',
       weight: "500",
       size: 11
     }

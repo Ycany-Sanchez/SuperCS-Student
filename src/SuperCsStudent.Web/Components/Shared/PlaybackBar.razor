@@ -1,19 +1,19 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-xl bp-floating">
-    <div class="flex items-center gap-1.5">
-        <button type="button" class="bp-btn-secondary !h-8 !px-2" disabled="@(TotalSteps <= 1 || CurrentStep <= 0)"
-                title="First step" @onclick="() => JumpTo(0)">
+<div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 px-2.5 py-1.5 rounded-xl bp-floating">
+    <div class="flex items-center gap-1 shrink-0">
+        <button type="button" class="bp-btn-ghost !h-8 !w-8 !p-0" disabled="@(TotalSteps <= 1 || CurrentStep <= 0)"
+                title="First step" aria-label="Jump to first step" @onclick="() => JumpTo(0)">
             <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 3.5v9M12.5 3.5L6.5 8l6 4.5z" /></svg>
         </button>
-        <button type="button" class="bp-btn-secondary !h-8 !px-2.5" disabled="@(TotalSteps <= 1 || CurrentStep <= 0)"
-                title="Step backward (←)" @onclick="StepPrev">
+        <button type="button" class="bp-btn-ghost !h-8 !w-8 !p-0" disabled="@(TotalSteps <= 1 || CurrentStep <= 0)"
+                title="Step backward (←)" aria-label="Step backward" @onclick="StepPrev">
             <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10.5 3.5L5.5 8l5 4.5" /></svg>
         </button>
 
         <button type="button" class="bp-btn-primary !h-8 !px-3" disabled="@(TotalSteps <= 1)"
-                title="Play / Pause (Space)" @onclick="TogglePlay">
+                title="Play / Pause (Space)" aria-label="@(_isPlaying ? "Pause playback" : "Play trace")" @onclick="TogglePlay">
             @if (_isPlaying)
             {
                 <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="0.6" /><rect x="9" y="3" width="3" height="10" rx="0.6" /></svg>
@@ -24,50 +24,47 @@
                 <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3.2L12.5 8l-8 4.8z" /></svg>
                 <span>Play</span>
             }
-            <span class="bp-kbd !bg-transparent !border-white/30 !text-current text-[10px]">Space</span>
+            <span class="bp-kbd !bg-transparent !border-white/30 !text-current text-[10px] hidden sm:inline-flex">Space</span>
         </button>
 
-        <button type="button" class="bp-btn-secondary !h-8 !px-2.5" disabled="@(TotalSteps <= 1 || CurrentStep >= TotalSteps - 1)"
-                title="Step forward (→)" @onclick="StepNext">
+        <button type="button" class="bp-btn-ghost !h-8 !w-8 !p-0" disabled="@(TotalSteps <= 1 || CurrentStep >= TotalSteps - 1)"
+                title="Step forward (→)" aria-label="Step forward" @onclick="StepNext">
             <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5.5 3.5L10.5 8l-5 4.5" /></svg>
         </button>
-        <button type="button" class="bp-btn-secondary !h-8 !px-2" disabled="@(TotalSteps <= 1 || CurrentStep >= TotalSteps - 1)"
-                title="Last step" @onclick="() => JumpTo(TotalSteps - 1)">
+        <button type="button" class="bp-btn-ghost !h-8 !w-8 !p-0" disabled="@(TotalSteps <= 1 || CurrentStep >= TotalSteps - 1)"
+                title="Last step" aria-label="Jump to last step" @onclick="() => JumpTo(TotalSteps - 1)">
             <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12.5 3.5v9M3.5 3.5L9.5 8l-6 4.5z" /></svg>
         </button>
     </div>
 
-    <div class="flex items-center gap-3 flex-1 min-w-[180px] max-w-md">
+    <div class="flex items-center gap-2.5 flex-1 min-w-[120px]">
         <input type="range"
                class="w-full accent-[var(--accent)] cursor-pointer"
+               aria-label="Trace step scrubber"
                min="0"
                max="@System.Math.Max(0, TotalSteps - 1)"
                value="@CurrentStep"
                disabled="@(TotalSteps <= 1)"
                @oninput="OnSliderInput" />
-        <span class="font-mono text-xs tnum whitespace-nowrap" style="color: var(--muted);">
-            Step <strong style="color: var(--text);">@(TotalSteps == 0 ? 0 : CurrentStep + 1)</strong> / @TotalSteps
+        <span class="font-mono text-xs tnum whitespace-nowrap shrink-0" style="color: var(--muted);" aria-live="polite">
+            <strong style="color: var(--text);">@(TotalSteps == 0 ? 0 : CurrentStep + 1)</strong> / @TotalSteps
         </span>
     </div>
 
-    <div class="flex items-center gap-2">
-        <div class="flex items-center rounded-md p-0.5" style="background: var(--raised); border: 1px solid var(--border);">
-            @foreach (var sp in Speeds)
-            {
-                var active = System.Math.Abs(_speed - sp) < 0.01;
-                <button type="button"
-                        class="px-2 h-6 rounded text-xs font-mono tnum cursor-pointer transition-colors"
-                        style="@(active ? "background: var(--surface); color: var(--text); font-weight: 600;" : "color: var(--muted);")"
-                        @onclick="() => SetSpeed(sp)">
-                    @(sp)x
-                </button>
-            }
-        </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+        <button type="button"
+                class="bp-btn-secondary !h-7 !px-2 font-mono text-xs tnum"
+                title="Cycle playback speed (0.25x – 4x)"
+                aria-label="Cycle playback speed"
+                @onclick="CycleSpeed">
+            @(_speed)x
+        </button>
 
         <button type="button"
                 class="bp-btn-secondary !h-7 !px-2 text-xs"
                 style="@(SnapMotion ? "border-color: var(--accent); color: var(--accent); background: var(--accent-soft);" : "")"
                 title="Toggle instant step transitions without animation"
+                aria-pressed="@SnapMotion"
                 @onclick="ToggleSnap">
             Snap
         </button>
@@ -128,6 +125,12 @@
     }
 
     private void SetSpeed(double sp) => _speed = sp;
+
+    private void CycleSpeed()
+    {
+        var idx = Array.FindIndex(Speeds, s => System.Math.Abs(s - _speed) < 0.01);
+        _speed = Speeds[(idx + 1) % Speeds.Length];
+    }
 
     private async Task ToggleSnap() => await SnapMotionChanged.InvokeAsync(!SnapMotion);
 

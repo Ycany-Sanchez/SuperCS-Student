@@ -9,17 +9,17 @@
 
 <div class="flex flex-col h-full min-h-0 min-w-0 w-full overflow-hidden">
     @* Studio Header Bar *@
-    <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
+    <div class="px-4 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
         <div class="flex items-center gap-2.5 flex-wrap">
-            <h1 class="text-base font-semibold tracking-tight whitespace-nowrap">Tree & Graph Tracer</h1>
+            <h1 class="text-[15px] font-semibold tracking-tight whitespace-nowrap">Tree &amp; Graph Tracer</h1>
 
-            <div class="flex items-center rounded-md p-0.5 flex-wrap" style="background: var(--raised); border: 1px solid var(--border);">
+            <div class="bp-seg flex-wrap" role="tablist" aria-label="Structure category">
                 @foreach (var cat in Categories)
                 {
                     var active = _category == cat.Kind;
                     <button type="button"
-                            class="px-2.5 h-7 rounded text-xs font-medium cursor-pointer transition-colors"
-                            style="@(active ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                            class="bp-seg-btn"
+                            data-active="@(active ? "true" : "false")"
                             @onclick="() => SwitchCategory(cat.Kind)">
                         @cat.Label
                     </button>
@@ -27,8 +27,9 @@
             </div>
         </div>
 
-        <div class="flex items-center gap-2">
-            <select class="bp-input !h-8 text-xs max-w-[240px]"
+        <div class="flex items-center gap-2 flex-wrap">
+            <select class="bp-input !h-8 text-xs max-w-[230px]"
+                    aria-label="Select tree or graph preset"
                     value="@_selectedPresetKey"
                     @onchange="OnPresetChanged">
                 @foreach (var p in StructurePresets.All)
@@ -43,140 +44,161 @@
                     @onclick="() => _rulesOpen = !_rulesOpen">
                 Ruleset: @(_category == StructureCategory.Graph ? _graphRuleset.Name : _treeRuleset.Name)
             </button>
+
+            <button type="button"
+                    class="bp-btn-ghost !h-8 !px-2 text-xs hidden lg:inline-flex"
+                    title="@(_inspectorCollapsed ? "Show inspector" : "Hide inspector for full-bleed canvas")"
+                    aria-label="@(_inspectorCollapsed ? "Show inspector panel" : "Hide inspector panel")"
+                    @onclick="() => _inspectorCollapsed = !_inspectorCollapsed">
+                @(_inspectorCollapsed ? "Show panel" : "Full canvas")
+            </button>
         </div>
     </div>
 
-    @* Collapsible Ruleset Config Strip *@
+    @* Collapsible Segmented Ruleset Strip (Zero Raw OS Select Grids) *@
     @if (_rulesOpen)
     {
-        <div class="px-4 py-3 shrink-0 space-y-2.5" style="background: var(--raised); border-bottom: 1px solid var(--border);">
+        <div class="px-4 py-3 shrink-0 space-y-2.5" style="background: var(--canvas-well); border-bottom: 1px solid var(--border);">
             @if (_category == StructureCategory.Graph)
             {
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-xs font-semibold">Graph Algorithm Ruleset</span>
-                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyGraphRuleset(GraphRuleset.CourseStandard)">Course Standard</button>
-                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyGraphRuleset(GraphRuleset.ClassicTextbook)">Level-By-Level + Full</button>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !text-[11px]"
+                                    data-active="@(_graphRuleset.Name == GraphRuleset.CourseStandard.Name ? "true" : "false")"
+                                    @onclick="() => ApplyGraphRuleset(GraphRuleset.CourseStandard)">Course Standard</button>
+                            <button type="button" class="bp-seg-btn !h-6 !text-[11px]"
+                                    data-active="@(_graphRuleset.Name == GraphRuleset.ClassicTextbook.Name ? "true" : "false")"
+                                    @onclick="() => ApplyGraphRuleset(GraphRuleset.ClassicTextbook)">Level-By-Level + Full</button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
-                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
-                        <span class="text-[11px] font-medium" style="color: var(--muted);">Neighbor order</span>
-                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_graphRuleset.NeighborOrder"
-                                @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, NeighborOrder = Enum.Parse<NeighborOrder>(e.Value!.ToString()!) })">
-                            <option value="@NeighborOrder.AlphabeticalAsc">A → Z</option>
-                            <option value="@NeighborOrder.AlphabeticalDesc">Z → A</option>
-                            <option value="@NeighborOrder.InsertionOrder">Insertion</option>
-                        </select>
-                    </label>
-                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
-                        <span class="text-[11px] font-medium" style="color: var(--muted);">DFS mode</span>
-                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_graphRuleset.DfsMode"
-                                @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, DfsMode = Enum.Parse<DfsMode>(e.Value!.ToString()!) })">
-                            <option value="@DfsMode.Recursive">Recursive</option>
-                            <option value="@DfsMode.IterativeStack">Iterative Stack</option>
-                        </select>
-                    </label>
-                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
-                        <span class="text-[11px] font-medium" style="color: var(--muted);">BFS mode</span>
-                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_graphRuleset.BfsMode"
-                                @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, BfsMode = Enum.Parse<BfsMode>(e.Value!.ToString()!) })">
-                            <option value="@BfsMode.QueueBased">Queue</option>
-                            <option value="@BfsMode.LevelByLevel">Level-by-Level</option>
-                        </select>
-                    </label>
-                    <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                        <span>Disconnected</span>
-                        <input type="checkbox" class="accent-[var(--accent)]" checked="@_graphRuleset.TraverseDisconnected"
-                               @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, TraverseDisconnected = (bool)e.Value! })" />
-                    </label>
-                    <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                        <span>Edge labels</span>
-                        <input type="checkbox" class="accent-[var(--accent)]" checked="@_graphRuleset.ShowEdgeClassification"
-                               @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, ShowEdgeClassification = (bool)e.Value! })" />
-                    </label>
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-6 text-xs">
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">Neighbor order</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_graphRuleset.NeighborOrder == NeighborOrder.AlphabeticalAsc ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, NeighborOrder = NeighborOrder.AlphabeticalAsc })">A–Z</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_graphRuleset.NeighborOrder == NeighborOrder.AlphabeticalDesc ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, NeighborOrder = NeighborOrder.AlphabeticalDesc })">Z–A</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_graphRuleset.NeighborOrder == NeighborOrder.InsertionOrder ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, NeighborOrder = NeighborOrder.InsertionOrder })">Insert</button>
+                        </div>
+                    </div>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">DFS mode</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_graphRuleset.DfsMode == DfsMode.Recursive ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, DfsMode = DfsMode.Recursive })">Recursive</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_graphRuleset.DfsMode == DfsMode.IterativeStack ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, DfsMode = DfsMode.IterativeStack })">Stack</button>
+                        </div>
+                    </div>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">BFS mode</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_graphRuleset.BfsMode == BfsMode.QueueBased ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, BfsMode = BfsMode.QueueBased })">Queue</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_graphRuleset.BfsMode == BfsMode.LevelByLevel ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, BfsMode = BfsMode.LevelByLevel })">Levels</button>
+                        </div>
+                    </div>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">Disconnected components</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(!_graphRuleset.TraverseDisconnected ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, TraverseDisconnected = false })">Off</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_graphRuleset.TraverseDisconnected ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, TraverseDisconnected = true })">Traverse</button>
+                        </div>
+                    </div>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">Edge classification</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(!_graphRuleset.ShowEdgeClassification ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, ShowEdgeClassification = false })">Off</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_graphRuleset.ShowEdgeClassification ? "true" : "false")" @onclick="() => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, ShowEdgeClassification = true })">Show</button>
+                        </div>
+                    </div>
                 </div>
             }
             else
             {
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-xs font-semibold">Tree Algorithm Ruleset</span>
-                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyTreeRuleset(TreeRuleset.CourseStandard)">Course Standard</button>
-                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyTreeRuleset(TreeRuleset.ClassicTextbook)">Classic Textbook</button>
-                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyTreeRuleset(TreeRuleset.StandardRotations)">Standard Rotations</button>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !text-[11px]"
+                                    data-active="@(_treeRuleset.Name == TreeRuleset.CourseStandard.Name ? "true" : "false")"
+                                    @onclick="() => ApplyTreeRuleset(TreeRuleset.CourseStandard)">Course Standard</button>
+                            <button type="button" class="bp-seg-btn !h-6 !text-[11px]"
+                                    data-active="@(_treeRuleset.Name == TreeRuleset.ClassicTextbook.Name ? "true" : "false")"
+                                    @onclick="() => ApplyTreeRuleset(TreeRuleset.ClassicTextbook)">Classic Textbook</button>
+                            <button type="button" class="bp-seg-btn !h-6 !text-[11px]"
+                                    data-active="@(_treeRuleset.Name == TreeRuleset.StandardRotations.Name ? "true" : "false")"
+                                    @onclick="() => ApplyTreeRuleset(TreeRuleset.StandardRotations)">Standard Rotations</button>
+                        </div>
                     </div>
                     <span class="text-xs" style="color: var(--muted);">Switching rules replays the active script automatically.</span>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
-                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
-                        <span class="text-[11px] font-medium" style="color: var(--muted);">2-Child delete</span>
-                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.DeletionReplacement"
-                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, DeletionReplacement = Enum.Parse<DeletionReplacement>(e.Value!.ToString()!) })">
-                            <option value="@DeletionReplacement.InOrderSuccessor">In-Order Successor</option>
-                            <option value="@DeletionReplacement.InOrderPredecessor">In-Order Predecessor</option>
-                        </select>
-                    </label>
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-6 text-xs">
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">2-Child delete</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_treeRuleset.DeletionReplacement == DeletionReplacement.InOrderSuccessor ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, DeletionReplacement = DeletionReplacement.InOrderSuccessor })">Successor</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_treeRuleset.DeletionReplacement == DeletionReplacement.InOrderPredecessor ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, DeletionReplacement = DeletionReplacement.InOrderPredecessor })">Predecessor</button>
+                        </div>
+                    </div>
 
-                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
-                        <span class="text-[11px] font-medium" style="color: var(--muted);">Splay delete</span>
-                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.SplayDeleteStrategy"
-                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, SplayDeleteStrategy = Enum.Parse<SplayDeleteStrategy>(e.Value!.ToString()!) })">
-                            <option value="@SplayDeleteStrategy.BstDeleteThenSplayParent">BST Delete → Splay Parent</option>
-                            <option value="@SplayDeleteStrategy.SplayTargetRemoveThenSplayMaxLeft">Splay Target → Max(Left)</option>
-                            <option value="@SplayDeleteStrategy.SplayTargetRemoveThenSplayMinRight">Splay Target → Min(Right)</option>
-                        </select>
-                    </label>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">Splay delete</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-1.5 !text-[11px]" data-active="@(_treeRuleset.SplayDeleteStrategy == SplayDeleteStrategy.BstDeleteThenSplayParent ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, SplayDeleteStrategy = SplayDeleteStrategy.BstDeleteThenSplayParent })">Parent</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-1.5 !text-[11px]" data-active="@(_treeRuleset.SplayDeleteStrategy == SplayDeleteStrategy.SplayTargetRemoveThenSplayMaxLeft ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, SplayDeleteStrategy = SplayDeleteStrategy.SplayTargetRemoveThenSplayMaxLeft })">Max(L)</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-1.5 !text-[11px]" data-active="@(_treeRuleset.SplayDeleteStrategy == SplayDeleteStrategy.SplayTargetRemoveThenSplayMinRight ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, SplayDeleteStrategy = SplayDeleteStrategy.SplayTargetRemoveThenSplayMinRight })">Min(R)</button>
+                        </div>
+                    </div>
 
-                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
-                        <span class="text-[11px] font-medium" style="color: var(--muted);">(2,4) split key</span>
-                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.TwoFourSplitPromotion"
-                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourSplitPromotion = Enum.Parse<TwoFourSplitPromotion>(e.Value!.ToString()!) })">
-                            <option value="@TwoFourSplitPromotion.ThirdKeyRightMiddle">3rd key (k3, right-mid)</option>
-                            <option value="@TwoFourSplitPromotion.SecondKeyLeftMiddle">2nd key (k2, left-mid)</option>
-                        </select>
-                    </label>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">(2,4) split key</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_treeRuleset.TwoFourSplitPromotion == TwoFourSplitPromotion.ThirdKeyRightMiddle ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourSplitPromotion = TwoFourSplitPromotion.ThirdKeyRightMiddle })">k3</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_treeRuleset.TwoFourSplitPromotion == TwoFourSplitPromotion.SecondKeyLeftMiddle ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourSplitPromotion = TwoFourSplitPromotion.SecondKeyLeftMiddle })">k2</button>
+                        </div>
+                    </div>
 
-                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
-                        <span class="text-[11px] font-medium" style="color: var(--muted);">(2,4) underflow</span>
-                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.TwoFourUnderflowSibling"
-                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourUnderflowSibling = Enum.Parse<TwoFourUnderflowSibling>(e.Value!.ToString()!) })">
-                            <option value="@TwoFourUnderflowSibling.RightSiblingFirst">Right sibling first</option>
-                            <option value="@TwoFourUnderflowSibling.LeftSiblingFirst">Left sibling first</option>
-                        </select>
-                    </label>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">(2,4) underflow</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_treeRuleset.TwoFourUnderflowSibling == TwoFourUnderflowSibling.RightSiblingFirst ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourUnderflowSibling = TwoFourUnderflowSibling.RightSiblingFirst })">Right</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_treeRuleset.TwoFourUnderflowSibling == TwoFourUnderflowSibling.LeftSiblingFirst ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourUnderflowSibling = TwoFourUnderflowSibling.LeftSiblingFirst })">Left</button>
+                        </div>
+                    </div>
 
-                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
-                        <span class="text-[11px] font-medium" style="color: var(--muted);">AVL equal-height</span>
-                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.AvlEqualHeightTieBreaker"
-                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, AvlEqualHeightTieBreaker = Enum.Parse<AvlEqualHeightTieBreaker>(e.Value!.ToString()!) })">
-                            <option value="@AvlEqualHeightTieBreaker.SameSideSingleRotation">Same-side (single)</option>
-                            <option value="@AvlEqualHeightTieBreaker.OppositeSideDoubleRotation">Opposite-side (double)</option>
-                        </select>
-                    </label>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">AVL equal-height</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_treeRuleset.AvlEqualHeightTieBreaker == AvlEqualHeightTieBreaker.SameSideSingleRotation ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, AvlEqualHeightTieBreaker = AvlEqualHeightTieBreaker.SameSideSingleRotation })">Single</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_treeRuleset.AvlEqualHeightTieBreaker == AvlEqualHeightTieBreaker.OppositeSideDoubleRotation ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, AvlEqualHeightTieBreaker = AvlEqualHeightTieBreaker.OppositeSideDoubleRotation })">Double</button>
+                        </div>
+                    </div>
 
-                    <label class="bp-card p-2 flex flex-col gap-1 min-w-0">
-                        <span class="text-[11px] font-medium" style="color: var(--muted);">Height base</span>
-                        <select class="bp-input !h-7 !px-2 text-[11px] w-full" value="@_treeRuleset.HeightConvention"
-                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, HeightConvention = Enum.Parse<HeightConvention>(e.Value!.ToString()!) })">
-                            <option value="@HeightConvention.LeafIsOne">Leaf = 1 (null = 0)</option>
-                            <option value="@HeightConvention.LeafIsZero">Edge-based (leaf = 0)</option>
-                        </select>
-                    </label>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">Height base</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_treeRuleset.HeightConvention == HeightConvention.LeafIsOne ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, HeightConvention = HeightConvention.LeafIsOne })">Leaf=1</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_treeRuleset.HeightConvention == HeightConvention.LeafIsZero ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, HeightConvention = HeightConvention.LeafIsZero })">Leaf=0</button>
+                        </div>
+                    </div>
 
-                    <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                        <span>Sentinel □ leaves</span>
-                        <input type="checkbox" class="accent-[var(--accent)]" checked="@_treeRuleset.ShowExternalSentinels"
-                               @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowExternalSentinels = (bool)e.Value! })" />
-                    </label>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">Sentinel □ leaves</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(!_treeRuleset.ShowExternalSentinels ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowExternalSentinels = false })">Hide</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_treeRuleset.ShowExternalSentinels ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowExternalSentinels = true })">Show</button>
+                        </div>
+                    </div>
 
-                    <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
-                        <span>RB ↔ (2,4) mirror</span>
-                        <input type="checkbox" class="accent-[var(--accent)]" checked="@_treeRuleset.ShowTwoFourIsomorphism"
-                               @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowTwoFourIsomorphism = (bool)e.Value! })" />
-                    </label>
+                    <div class="bp-rule-row">
+                        <span style="color: var(--muted);">RB ↔ (2,4) mirror</span>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(!_treeRuleset.ShowTwoFourIsomorphism ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowTwoFourIsomorphism = false })">Off</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_treeRuleset.ShowTwoFourIsomorphism ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowTwoFourIsomorphism = true })">Mirror</button>
+                        </div>
+                    </div>
                 </div>
             }
         </div>
@@ -243,10 +265,10 @@
         }
     </div>
 
-    @* Main Canvas + Right Inspector *@
+    @* Main Canvas + Collapsible Right Inspector *@
     <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
         @* Left/Center Canvas Stage *@
-        <div class="lg:col-span-8 flex flex-col min-h-[340px] lg:min-h-0 p-3 gap-2.5 overflow-hidden">
+        <div class="@(_inspectorCollapsed ? "lg:col-span-12" : "lg:col-span-8") flex flex-col min-h-[340px] lg:min-h-0 p-3 gap-2.5 overflow-hidden">
             @if (_category == StructureCategory.Graph && _graphBuildMode)
             {
                 <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs"
@@ -315,6 +337,8 @@
         </div>
 
         @* Right Inspector: Step Caption, Pseudocode, Operation Log, Traversals / 4-Representations *@
+        @if (!_inspectorCollapsed)
+        {
         <div class="lg:col-span-4 flex flex-col min-h-0 overflow-hidden" style="border-left: 1px solid var(--border);">
             <div class="px-3 flex items-center gap-1 shrink-0" style="border-bottom: 1px solid var(--border);">
                 <button type="button" class="bp-tab" data-active="@(_inspectorTab == "trace" ? "true" : "false")" @onclick='() => _inspectorTab = "trace"'>Trace</button>
@@ -577,6 +601,7 @@
                 }
             </div>
         </div>
+        }
     </div>
 </div>
 
@@ -599,6 +624,7 @@
     private GraphRuleset _graphRuleset = GraphRuleset.CourseStandard;
 
     private bool _rulesOpen;
+    private bool _inspectorCollapsed;
     private bool _graphEditorOpen;
     private bool _graphBuildMode;
     private string? _graphSelectedSource;
