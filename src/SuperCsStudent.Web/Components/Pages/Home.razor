@@ -279,11 +279,27 @@
 
     private void OpenRecent(WorkspaceDocument doc)
     {
-        if (doc.Payload.ValueKind == JsonValueKind.Object &&
-            doc.Payload.TryGetProperty("preset", out var presetProp) &&
-            presetProp.ValueKind == JsonValueKind.String)
+        AppState.PendingPresetKey = null;
+        AppState.PendingAutomataSpec = null;
+        AppState.PendingAutomataAlphabet = null;
+
+        if (doc.Payload.ValueKind == JsonValueKind.Object)
         {
-            AppState.PendingPresetKey = presetProp.GetString();
+            if (doc.Payload.TryGetProperty("customSpec", out var specProp) &&
+                specProp.ValueKind == JsonValueKind.String)
+            {
+                AppState.PendingAutomataSpec = specProp.GetString();
+                if (doc.Payload.TryGetProperty("alphabet", out var alphaProp) &&
+                    alphaProp.ValueKind == JsonValueKind.String)
+                {
+                    AppState.PendingAutomataAlphabet = alphaProp.GetString();
+                }
+            }
+            else if (doc.Payload.TryGetProperty("preset", out var presetProp) &&
+                presetProp.ValueKind == JsonValueKind.String)
+            {
+                AppState.PendingPresetKey = presetProp.GetString();
+            }
         }
 
         var target = doc.Studio switch

@@ -78,9 +78,10 @@
 
                         <input type="text"
                                class="bp-input !h-8 font-mono text-xs flex-1 min-w-[220px]"
-                               placeholder="e.g. starts with bb AND contains bab AND ends with aa | a^n b^n | palindromes | (a|b)*aba(a|b)*"
+                               placeholder="e.g. a^n b^m where n > m | a^n b^m c^k where n + m = k | does not contain abc | (x|y)*z+"
                                @bind="_specText"
-                               @bind:event="oninput" />
+                               @bind:event="oninput"
+                               @onkeydown="OnSpecKeyDown" />
 
                         <input type="text"
                                class="bp-input !h-8 font-mono text-xs w-36"
@@ -91,7 +92,114 @@
                         <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="CompileSpec">
                             Compile
                         </button>
+
+                        <button type="button"
+                                class="bp-btn-secondary !h-8 text-xs"
+                                aria-expanded="@_showCustomBuilder"
+                                @onclick="() => _showCustomBuilder = !_showCustomBuilder">
+                            @(_showCustomBuilder ? "Hide Builder" : "+ Custom Builder")
+                        </button>
                     </div>
+
+                    @if (_showCustomBuilder)
+                    {
+                        <div class="p-2.5 rounded-lg space-y-2" style="background: var(--raised); border: 1px solid var(--border);">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="text-[11px] font-semibold" style="color: var(--muted);">Pattern</span>
+                                    <div class="bp-seg">
+                                        <button type="button" class="bp-seg-btn" data-active="@(_builderTemplate == "2block" ? "true" : "false")" @onclick='() => SetBuilderTemplate("2block")'>s₁ⁿ s₂ᵐ</button>
+                                        <button type="button" class="bp-seg-btn" data-active="@(_builderTemplate == "3block" ? "true" : "false")" @onclick='() => SetBuilderTemplate("3block")'>s₁ⁿ s₂ᵐ s₃ᵏ</button>
+                                        <button type="button" class="bp-seg-btn" data-active="@(_builderTemplate == "count" ? "true" : "false")" @onclick='() => SetBuilderTemplate("count")'>#s₁ vs #s₂</button>
+                                    </div>
+
+                                    <label class="flex items-center gap-1 text-[11px]" style="color: var(--muted);">
+                                        <span>Symbols</span>
+                                        <input type="text"
+                                               class="bp-input !h-7 font-mono text-xs w-24"
+                                               placeholder="a,b"
+                                               @bind="_builderSymbols"
+                                               @bind:event="oninput" />
+                                    </label>
+                                </div>
+
+                                <div class="flex items-center gap-1.5">
+                                    <code class="px-2 py-1 rounded text-[11px] font-mono" style="background: var(--surface); border: 1px solid var(--border); color: var(--accent);">
+                                        @BuildCustomSpecPreview()
+                                    </code>
+                                    <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ApplyCustomBuilder">
+                                        Build &amp; Compile
+                                    </button>
+                                </div>
+                            </div>
+
+                            @if (_builderTemplate == "3block")
+                            {
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <span class="text-[11px] font-medium" style="color: var(--faint);">Condition:</span>
+                                    @foreach (var rel in ThreeBlockBuilderRelations)
+                                    {
+                                        <button type="button"
+                                                class="bp-chip font-mono"
+                                                style="@(_builderThreeRel == rel.Expr ? "background: var(--accent-soft); color: var(--accent); border-color: var(--accent);" : "")"
+                                                @onclick="() => _builderThreeRel = rel.Expr">
+                                            @rel.Label
+                                        </button>
+                                    }
+                                    <div class="bp-seg ml-1">
+                                        <button type="button" class="bp-seg-btn" data-active="@(_builderMinBound == 0 ? "true" : "false")" @onclick="() => _builderMinBound = 0">≥ 0</button>
+                                        <button type="button" class="bp-seg-btn" data-active="@(_builderMinBound == 1 ? "true" : "false")" @onclick="() => _builderMinBound = 1">≥ 1</button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="text-[11px] font-medium" style="color: var(--faint);">Relation:</span>
+                                    <div class="bp-seg">
+                                        @foreach (var op in BuilderOps)
+                                        {
+                                            <button type="button"
+                                                    class="bp-seg-btn font-mono"
+                                                    data-active="@(_builderOp == op ? "true" : "false")"
+                                                    @onclick="() => _builderOp = op">@op</button>
+                                        }
+                                    </div>
+
+                                    <span class="text-[11px] font-medium" style="color: var(--faint);">Scale:</span>
+                                    <div class="bp-seg">
+                                        @foreach (var mult in new[] { 1, 2, 3 })
+                                        {
+                                            <button type="button"
+                                                    class="bp-seg-btn font-mono"
+                                                    data-active="@(_builderMultiplier == mult ? "true" : "false")"
+                                                    @onclick="() => _builderMultiplier = mult">@($"{mult}×")</button>
+                                        }
+                                    </div>
+
+                                    <span class="text-[11px] font-medium" style="color: var(--faint);">Offset:</span>
+                                    <div class="bp-seg">
+                                        @foreach (var off in new[] { -1, 0, 1 })
+                                        {
+                                            <button type="button"
+                                                    class="bp-seg-btn font-mono"
+                                                    data-active="@(_builderOffset == off ? "true" : "false")"
+                                                    @onclick="() => _builderOffset = off">@(off > 0 ? $"+{off}" : off.ToString())</button>
+                                        }
+                                    </div>
+
+                                    @if (_builderTemplate == "2block")
+                                    {
+                                        <span class="text-[11px] font-medium" style="color: var(--faint);">Min:</span>
+                                        <div class="bp-seg">
+                                            <button type="button" class="bp-seg-btn" data-active="@(_builderMinBound == 0 ? "true" : "false")" @onclick="() => _builderMinBound = 0">≥ 0</button>
+                                            <button type="button" class="bp-seg-btn" data-active="@(_builderMinBound == 1 ? "true" : "false")" @onclick="() => _builderMinBound = 1">≥ 1</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
 
                     <div class="flex flex-wrap items-center gap-1.5">
                         <span class="text-[11px] font-medium" style="color: var(--faint);">Examples:</span>
@@ -158,7 +266,15 @@
                 @if (_compiledSpec is not null)
                 {
                     <div class="bp-card p-3 space-y-2">
-                        <div class="text-xs font-semibold">Open Generated Artifact in Workbench</div>
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs font-semibold">Open Generated Artifact in Workbench</span>
+                            <button type="button"
+                                    class="bp-btn-ghost !h-7 !px-2 text-[11px]"
+                                    title="Save this custom problem to your local workspace history"
+                                    @onclick="SaveCustomProblemToWorkspace">
+                                @(_savedProblemNotice ? "Saved ✓" : "Save Problem")
+                            </button>
+                        </div>
                         <div class="grid grid-cols-2 gap-1.5">
                             @if (_compiledSpec.MinimalDfa is not null)
                             {
@@ -185,7 +301,7 @@
                     </div>
 
                     <div class="bp-card p-3 space-y-2.5">
-                        <div class="flex items-center justify-between">
+                        <div class="flex items-center justify-between gap-2">
                             <span class="text-xs font-semibold">Test Input Against Spec</span>
                             <span class="text-[11px] font-mono" style="color: var(--faint);">Empty string = e</span>
                         </div>
@@ -198,6 +314,15 @@
                             <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="RunCompilerTest">
                                 Test
                             </button>
+                            @if (_compiledSpec.SuggestedTests is { Count: > 0 })
+                            {
+                                <button type="button"
+                                        class="bp-btn-secondary !h-8 text-xs shrink-0"
+                                        title="Run auto-generated positive & negative boundary tests"
+                                        @onclick="RunAutoTestSuite">
+                                    Auto Suite (@_compiledSpec.SuggestedTests.Count)
+                                </button>
+                            }
                         </div>
 
                         @if (_compilerTestRows.Count > 0)
@@ -208,7 +333,7 @@
                                         <tr>
                                             <th class="px-2.5 py-1.5 font-medium">Input</th>
                                             <th class="px-2.5 py-1.5 font-medium">Result</th>
-                                            <th class="px-2.5 py-1.5 font-medium">TM Tape / Detail</th>
+                                            <th class="px-2.5 py-1.5 font-medium">Detail</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -217,20 +342,36 @@
                                             <tr style="border-bottom: 1px solid var(--rule);">
                                                 <td class="px-2.5 py-1.5 font-mono">@row.Input</td>
                                                 <td class="px-2.5 py-1.5">
-                                                    @if (row.Accepted is true)
-                                                    {
-                                                        <span class="bp-pill bp-pill-positive text-[11px]">Accept</span>
-                                                    }
-                                                    else if (row.Accepted is false)
-                                                    {
-                                                        <span class="bp-pill bp-pill-negative text-[11px]">Reject</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="bp-pill bp-pill-accent text-[11px]">Halted</span>
-                                                    }
+                                                    <div class="flex items-center gap-1">
+                                                        @if (row.Accepted is true)
+                                                        {
+                                                            <span class="bp-pill bp-pill-positive text-[11px]">Accept</span>
+                                                        }
+                                                        else if (row.Accepted is false)
+                                                        {
+                                                            <span class="bp-pill bp-pill-negative text-[11px]">Reject</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="bp-pill bp-pill-accent text-[11px]">Halted</span>
+                                                        }
+                                                        @if (row.Expected.HasValue)
+                                                        {
+                                                            <span class="text-[10px] font-mono"
+                                                                  style="color: @(row.Accepted == row.Expected ? "var(--positive)" : "var(--negative)");"
+                                                                  title="@(row.Reason ?? "")">
+                                                                @(row.Accepted == row.Expected ? "✓" : "✗")
+                                                            </span>
+                                                        }
+                                                    </div>
                                                 </td>
-                                                <td class="px-2.5 py-1.5 font-mono text-[11px]" style="color: var(--muted);">@row.Detail</td>
+                                                <td class="px-2.5 py-1.5 font-mono text-[11px]" style="color: var(--muted);">
+                                                    @if (!string.IsNullOrEmpty(row.Reason))
+                                                    {
+                                                        <span>@row.Reason · </span>
+                                                    }
+                                                    @row.Detail
+                                                </td>
                                             </tr>
                                         }
                                     </tbody>
@@ -1090,8 +1231,22 @@
 
     private sealed record TabItem(StudioMode Mode, string Label);
     private sealed record CompilerExample(string Label, string Spec, string SampleInput);
-    private sealed record CompilerTestRow(string Input, bool? Accepted, string Detail);
+    private sealed record CompilerTestRow(string Input, bool? Accepted, string Detail, bool? Expected = null, string? Reason = null);
     private sealed record TapeSnapshot(string StateLabel, string Summary, string Tape, int HeadIndex);
+    private sealed record ThreeBlockRelOption(string Label, string Expr);
+
+    private static readonly string[] BuilderOps = [">", ">=", "<", "<=", "=", "!="];
+    private static readonly ThreeBlockRelOption[] ThreeBlockBuilderRelations =
+    [
+        new("n + m = k", "n + m = k"),
+        new("n + m > k", "n + m > k"),
+        new("n > m > k", "n > m > k"),
+        new("n >= m >= k", "n >= m >= k"),
+        new("n = m or m = k", "n = m or m = k"),
+        new("n > m", "n > m"),
+        new("n = k", "n = k"),
+        new("n = m and m = k", "n = m and m = k")
+    ];
 
     private static readonly TabItem[] StudioTabs =
     [
@@ -1104,17 +1259,17 @@
 
     private static readonly CompilerExample[] CompilerExamples =
     [
-        new("starts bb ∧ contains bab ∧ ends aa", "starts with bb AND contains bab AND ends with aa", "bbabaa"),
-        new("contains aba", "contains aba", "bbabaa"),
+        new("aⁿbᵐ (n > m)", "a^n b^m where n > m", "aab"),
+        new("aⁿbᵐ (n ≠ m)", "a^n b^m where n != m", "abb"),
+        new("aⁿbᵐcᵏ (n+m=k)", "a^n b^m c^k where n + m = k", "abbccc"),
+        new("aⁿbᵐcᵏ (n>m>k)", "a^n b^m c^k where n > m > k", "aaabbc"),
+        new("starts bb ∧ bab ∧ aa", "starts with bb AND contains bab AND ends with aa", "bbabaa"),
         new("even b ∧ ¬aba", "even b AND does not contain aba", "bbaa"),
-        new("a*b*a*", "a*b*a*", "abba"),
         new("palindromes", "palindromes", "abba"),
-        new("a^n b^n", "a^n b^n", "aabb"),
         new("a^2n b^n", "a^2n b^n", "aaaabb"),
         new("a^n b^n c^n", "a^n b^n c^n", "aabbcc"),
         new("#a > #b", "#a > #b", "aab"),
         new("invert a and b", "invert a and b", "aab"),
-        new("snake_case to camelCase", "snake_case to camelCase", "my_var_name"),
         new("XOR", "XOR", "1011")
     ];
 
@@ -1124,14 +1279,23 @@
 
     // --- Compiler Tab State ---
     private LanguageSpecMode _specMode = LanguageSpecMode.Auto;
-    private string _specText = "starts with bb AND contains bab AND ends with aa";
+    private string _specText = "a^n b^m where n > m";
     private string _specAlphabetText = string.Empty;
     private string _compilerPreviewKind = "dfa";
-    private string _compilerTestInput = "bbabaa";
+    private string _compilerTestInput = "aab";
     private string? _compilerError;
     private LanguageSpecCompilationResult? _compiledSpec;
     private DiagramScene? _lastValidCompilerScene;
     private readonly List<CompilerTestRow> _compilerTestRows = new();
+    private bool _showCustomBuilder;
+    private string _builderTemplate = "2block";
+    private string _builderSymbols = "a,b";
+    private string _builderOp = ">";
+    private int _builderMultiplier = 1;
+    private int _builderOffset = 0;
+    private int _builderMinBound = 0;
+    private string _builderThreeRel = "n + m = k";
+    private bool _savedProblemNotice;
 
     // --- DFA/NFA Tab State ---
     private string _faSourceKind = "regex";
@@ -1196,11 +1360,25 @@
         ParseCfgAndInput();
         ParseAndTracePda();
 
+        var pendingSpec = AppState.PendingAutomataSpec;
+        var pendingAlpha = AppState.PendingAutomataAlphabet;
+        AppState.PendingAutomataSpec = null;
+        AppState.PendingAutomataAlphabet = null;
+
         var initialKey = !string.IsNullOrWhiteSpace(AppState.PendingPresetKey) && AutomataPresets.ByKey.ContainsKey(AppState.PendingPresetKey)
             ? AppState.PendingPresetKey
             : "tm-palindrome";
         AppState.PendingPresetKey = null;
         LoadPreset(initialKey);
+
+        if (!string.IsNullOrWhiteSpace(pendingSpec))
+        {
+            _specMode = LanguageSpecMode.Auto;
+            _specText = pendingSpec;
+            _specAlphabetText = pendingAlpha ?? string.Empty;
+            _activeMode = StudioMode.Compiler;
+            CompileSpec();
+        }
     }
 
     private void SwitchMode(StudioMode mode)
@@ -1317,11 +1495,100 @@
 
     // ==================== COMPILER MODE ====================
 
+    private void OnSpecKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            CompileSpec();
+        }
+    }
+
+    private void SetBuilderTemplate(string template)
+    {
+        _builderTemplate = template;
+        var curSyms = ParseAlphabetInput(_builderSymbols)?.ToList() ?? new List<char>();
+        if (template == "3block" && curSyms.Count < 3)
+        {
+            _builderSymbols = curSyms.Count == 2 && curSyms[0] == 'x' && curSyms[1] == 'y'
+                ? "x,y,z"
+                : "a,b,c";
+        }
+        else if (template != "3block" && curSyms.Count >= 3)
+        {
+            _builderSymbols = $"{curSyms[0]},{curSyms[1]}";
+        }
+    }
+
+    private string BuildCustomSpecPreview()
+    {
+        var syms = ParseAlphabetInput(_builderSymbols)?
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .Distinct()
+            .ToList() ?? new List<char>();
+
+        var s1 = syms.Count > 0 ? syms[0] : 'a';
+        var s2 = syms.Count > 1 ? syms[1] : (s1 == 'a' ? 'b' : 'y');
+        var s3 = syms.Count > 2 ? syms[2] : (s2 == 'b' ? 'c' : 'z');
+
+        if (_builderTemplate == "3block")
+        {
+            var boundSuffix = _builderMinBound > 0 ? $", n, m, k >= {_builderMinBound}" : "";
+            return $"{s1}^n {s2}^m {s3}^k where {_builderThreeRel}{boundSuffix}";
+        }
+
+        var rhsMul = _builderMultiplier == 1 ? "m" : $"{_builderMultiplier}m";
+        var rhsOff = _builderOffset switch
+        {
+            > 0 => $" + {_builderOffset}",
+            < 0 => $" - {System.Math.Abs(_builderOffset)}",
+            _ => ""
+        };
+
+        if (_builderTemplate == "count")
+        {
+            var cRhs = _builderMultiplier == 1 ? $"#{s2}" : $"{_builderMultiplier}*#{s2}";
+            var extraAlpha = syms.Count > 2 ? $"{{ w in {{{string.Join(",", syms)}}}* | #{s1}(w) {_builderOp} {cRhs}{rhsOff} }}" : $"#{s1} {_builderOp} {cRhs}{rhsOff}";
+            return extraAlpha;
+        }
+
+        var minPart = _builderMinBound > 0 ? $", n, m >= {_builderMinBound}" : "";
+        return $"{s1}^n {s2}^m where n {_builderOp} {rhsMul}{rhsOff}{minPart}";
+    }
+
+    private void ApplyCustomBuilder()
+    {
+        _specMode = LanguageSpecMode.Auto;
+        _specText = BuildCustomSpecPreview();
+        _specAlphabetText = string.Empty;
+        CompileSpec();
+        RunAutoTestSuite();
+    }
+
+    private void SaveCustomProblemToWorkspace()
+    {
+        if (_compiledSpec is null) return;
+        var id = $"auto-custom-{Math.Abs(_compiledSpec.Specification.GetHashCode())}";
+        AppState.RecordRecent(new WorkspaceDocument(
+            id,
+            _compiledSpec.Title,
+            StudioKind.Automata,
+            $"{_compiledSpec.LanguageClass} · {_compiledSpec.Specification}",
+            DateTimeOffset.UtcNow,
+            JsonSerializer.SerializeToElement(new
+            {
+                customSpec = _compiledSpec.Specification,
+                alphabet = _specAlphabetText
+            })));
+        _savedProblemNotice = true;
+    }
+
     private void CompileSpec()
     {
         try
         {
             _compilerError = null;
+            _savedProblemNotice = false;
             var alpha = ParseAlphabetInput(_specAlphabetText);
             _compiledSpec = LanguageSpecCompiler.Compile(_specText, _specMode, alpha);
             _compilerPreviewKind = _compiledSpec.MinimalDfa is not null
@@ -1330,6 +1597,11 @@
                     ? "pda"
                     : "tm";
             _lastValidCompilerScene = GetCompilerPreviewScene();
+            if (_compiledSpec.SuggestedTests is { Count: > 0 } tests)
+            {
+                var firstPos = tests.FirstOrDefault(t => t.ExpectedAccept) ?? tests[0];
+                _compilerTestInput = firstPos.Input;
+            }
             _compilerTestRows.Clear();
             RunCompilerTest();
         }
@@ -1376,7 +1648,31 @@
             : $"TM: {tmRes.TrimmedTape} ({tmRes.MacroTrace.Count - 1} macro / {tmRes.MicroTrace.Count - 1} micro)";
 
         _compilerTestRows.Insert(0, new CompilerTestRow(input, accepted, detail));
-        if (_compilerTestRows.Count > 8) _compilerTestRows.RemoveAt(_compilerTestRows.Count - 1);
+        if (_compilerTestRows.Count > 10) _compilerTestRows.RemoveAt(_compilerTestRows.Count - 1);
+    }
+
+    private void RunAutoTestSuite()
+    {
+        if (_compiledSpec?.SuggestedTests is null) return;
+        _compilerTestRows.Clear();
+        foreach (var tc in _compiledSpec.SuggestedTests)
+        {
+            var tmRes = _compiledSpec.CompiledTm.Trace(tc.Input);
+            bool? accepted = _compiledSpec.MinimalDfa is not null
+                ? _compiledSpec.MinimalDfa.Accepts(tc.Input)
+                : tmRes.AcceptedDecision;
+            var detail = $"{tmRes.MacroTrace.Count - 1} macro / {tmRes.MicroTrace.Count - 1} micro";
+            _compilerTestRows.Add(new CompilerTestRow(tc.Input, accepted, detail, tc.ExpectedAccept, tc.Reason));
+        }
+    }
+
+    private IReadOnlyList<string> BuildCompiledSampleInputs(IReadOnlyList<string> fallback)
+    {
+        if (_compiledSpec?.SuggestedTests is { Count: > 0 } tests)
+        {
+            return tests.Select(t => t.Input).Distinct().Take(6).ToArray();
+        }
+        return fallback;
     }
 
     private void OpenCompiledInDfa()
@@ -1389,6 +1685,7 @@
         _faAlphabetText = _specAlphabetText;
         _faSourceKind = _compiledSpec.ResolvedMode == LanguageSpecMode.Constraint ? "constraint" : "regex";
         _faViewKind = "min";
+        _faSampleInputs = BuildCompiledSampleInputs(_faSampleInputs);
         _faInput = _compilerTestInput;
         _faError = null;
         TraceFa();
@@ -1399,6 +1696,7 @@
     {
         if (_compiledSpec?.Grammar is null) return;
         _cfgText = _compiledSpec.Grammar.ToGrammarText();
+        _cfgSampleInputs = BuildCompiledSampleInputs(_cfgSampleInputs);
         _cfgInput = _compilerTestInput;
         ParseCfgAndInput();
         _activeMode = StudioMode.Cfg;
@@ -1408,6 +1706,7 @@
     {
         if (_compiledSpec?.Pda is null) return;
         _pdaTransitionsText = _compiledSpec.Pda.ToTransitionsText();
+        _pdaSampleInputs = BuildCompiledSampleInputs(_pdaSampleInputs);
         _pdaInput = _compilerTestInput;
         ParseAndTracePda();
         _activeMode = StudioMode.Pda;
@@ -1417,6 +1716,7 @@
     {
         if (_compiledSpec is null) return;
         _tmDslText = _compiledSpec.TmSchema.ToDslText();
+        _tmSampleInputs = BuildCompiledSampleInputs(_tmSampleInputs);
         _tmInput = _compilerTestInput;
         _tmHeadStart = _compiledSpec.TmSchema.HeadStart;
         CompileAndRunTmDsl();

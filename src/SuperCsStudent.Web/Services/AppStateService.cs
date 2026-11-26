@@ -31,6 +31,8 @@ public sealed class AppStateService
     public bool CommandPaletteOpen { get; set; } = false;
     public bool SettingsOpen { get; set; } = false;
     public string? PendingPresetKey { get; set; }
+    public string? PendingAutomataSpec { get; set; }
+    public string? PendingAutomataAlphabet { get; set; }
     public bool HasHydratedStorage { get; private set; }
 
     public List<WorkspaceDocument> RecentWorkspaces { get; } = new();
