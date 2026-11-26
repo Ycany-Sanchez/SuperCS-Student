@@ -268,6 +268,9 @@ public sealed class TmSchemaBuilder
         return Node(id, operations);
     }
 
+    public bool ContainsNode(string id) =>
+        _nodes.Any(n => string.Equals(n.Id, id, StringComparison.Ordinal));
+
     public TmSchemaBuilder Node(string id, string operations)
     {
         _nodes.Add(TmSchemaNode.Create(id, operations));

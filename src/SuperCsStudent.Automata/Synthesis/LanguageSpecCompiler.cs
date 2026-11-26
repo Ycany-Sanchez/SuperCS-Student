@@ -33,7 +33,8 @@ public sealed record LanguageSpecCompilationResult(
     Cfg? Grammar,
     PushdownAutomaton? Pda,
     TmSchema TmSchema,
-    TmCompiledSchema CompiledTm);
+    TmCompiledSchema CompiledTm,
+    IReadOnlyList<LanguageTestCase>? SuggestedTests = null);
 
 /// <summary>
 /// 100% deterministic formal-language specification compiler supporting:
@@ -113,7 +114,8 @@ public static class LanguageSpecCompiler
             Grammar: rg,
             Pda: null,
             TmSchema: schema,
-            CompiledTm: compiledTm);
+            CompiledTm: compiledTm,
+            SuggestedTests: GenerateDfaSuggestedTests(minDfa));
     }
 
     public static LanguageSpecCompilationResult CompileConstraint(string constraintSpec, IEnumerable<char>? alphabet = null)
@@ -134,7 +136,57 @@ public static class LanguageSpecCompiler
             Grammar: rg,
             Pda: null,
             TmSchema: schema,
-            CompiledTm: compiledTm);
+            CompiledTm: compiledTm,
+            SuggestedTests: GenerateDfaSuggestedTests(dfa));
+    }
+
+    internal static IReadOnlyList<LanguageTestCase> GenerateDfaSuggestedTests(Dfa dfa)
+    {
+        var positives = new List<LanguageTestCase>();
+        var negatives = new List<LanguageTestCase>();
+        var alpha = dfa.OrderedAlphabet;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void TryWord(string w)
+        {
+            var disp = w.Length == 0 ? "e" : w;
+            if (!seen.Add(disp)) return;
+            var acc = dfa.Accepts(w);
+            var tc = new LanguageTestCase(disp, acc, acc ? "accepted by DFA" : "rejected by DFA");
+            if (acc) { if (positives.Count < 4) positives.Add(tc); }
+            else { if (negatives.Count < 4) negatives.Add(tc); }
+        }
+
+        TryWord("");
+        var queue = new Queue<string>();
+        queue.Enqueue("");
+        var maxLen = alpha.Count <= 2 ? 7 : 5;
+        while (queue.Count > 0 && (positives.Count < 4 || negatives.Count < 4) && seen.Count < 400)
+        {
+            var cur = queue.Dequeue();
+            if (cur.Length >= maxLen) continue;
+            foreach (var c in alpha)
+            {
+                var next = cur + c;
+                TryWord(next);
+                if (positives.Count >= 4 && negatives.Count >= 4) break;
+                queue.Enqueue(next);
+            }
+        }
+
+        // If shortest accepted/rejected witness is longer than maxLen, use DFA shortest-path BFS
+        if (positives.Count == 0)
+        {
+            var witness = FaOperations.IsEmpty(dfa).Counterexample;
+            if (witness is not null) TryWord(witness == AutomataSymbols.Empty ? "" : witness);
+        }
+        if (negatives.Count == 0)
+        {
+            var witness = FaOperations.IsUniversal(dfa).Counterexample;
+            if (witness is not null) TryWord(witness == AutomataSymbols.Empty ? "" : witness);
+        }
+
+        return positives.Concat(negatives).ToList();
     }
 
     /// <summary>
@@ -272,6 +324,15 @@ public static class LanguageSpecCompiler
         var norm = Regex.Replace(rawSpec.Trim().ToLowerInvariant(), @"\s+", " ");
         var compact = norm.Replace(" ", string.Empty);
         var customAlpha = explicitAlphabet?.Where(c => c != AutomataSymbols.DefaultBlank).Distinct().OrderBy(c => c).ToList();
+
+        // 0. Generalized user-authored parametric language compiler
+        //    Handles arbitrary block-exponent specs (e.g. a^n b^m where n > m, a^n b^m c^k where n + m = k,
+        //    a^n b^m c^k where n > m > k, { x^i y^j | i >= 2j, j >= 1 }) and symbol-count specs (#x >= #y)
+        var generalized = ParametricLanguageCompiler.TryCompile(rawSpec, explicitAlphabet);
+        if (generalized is not null)
+        {
+            return generalized;
+        }
 
         // 1. Generalized s1^n s2^n s3^n (e.g. a^n b^n c^n, x^n y^n z^n, 0^n 1^n 2^n)
         var mTriples = Regex.Match(compact, @"^\{?([a-z0-9])\^n([a-z0-9])\^n([a-z0-9])\^n\}?$");
