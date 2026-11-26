@@ -65,7 +65,7 @@ public static class LanguageSpecCompiler
 
         if (mode == LanguageSpecMode.Parametric)
         {
-            return TryCompileParametric(trimmed)
+            return TryCompileParametric(trimmed, alphabet)
                 ?? throw new FormatException($"Unrecognized parametric specification: '{trimmed}'.");
         }
 
@@ -80,7 +80,7 @@ public static class LanguageSpecCompiler
         }
 
         // Auto-detection: Parametric -> Constraint -> Regex
-        var parametric = TryCompileParametric(trimmed);
+        var parametric = TryCompileParametric(trimmed, alphabet);
         if (parametric is not null)
         {
             return parametric;
@@ -267,93 +267,123 @@ public static class LanguageSpecCompiler
 
     // --- Parametric Non-Regular Languages & Transducers ---
 
-    private static LanguageSpecCompilationResult? TryCompileParametric(string rawSpec)
+    private static LanguageSpecCompilationResult? TryCompileParametric(string rawSpec, IEnumerable<char>? explicitAlphabet = null)
     {
         var norm = Regex.Replace(rawSpec.Trim().ToLowerInvariant(), @"\s+", " ");
         var compact = norm.Replace(" ", string.Empty);
+        var customAlpha = explicitAlphabet?.Where(c => c != AutomataSymbols.DefaultBlank).Distinct().OrderBy(c => c).ToList();
 
-        // 1. a^n b^n c^n
-        if (compact is "a^nb^nc^n" or "anbncn" or "{a^nb^nc^n}")
+        // 1. Generalized s1^n s2^n s3^n (e.g. a^n b^n c^n, x^n y^n z^n, 0^n 1^n 2^n)
+        var mTriples = Regex.Match(compact, @"^\{?([a-z0-9])\^n([a-z0-9])\^n([a-z0-9])\^n\}?$");
+        if (compact is "anbncn" || (mTriples.Success && mTriples.Groups[1].Value != mTriples.Groups[2].Value && mTriples.Groups[2].Value != mTriples.Groups[3].Value && mTriples.Groups[1].Value != mTriples.Groups[3].Value))
         {
-            var schema = BuildAnBnCnSchema();
+            var s1 = mTriples.Success ? mTriples.Groups[1].Value[0] : 'a';
+            var s2 = mTriples.Success ? mTriples.Groups[2].Value[0] : 'b';
+            var s3 = mTriples.Success ? mTriples.Groups[3].Value[0] : 'c';
+            var schema = BuildAnBnCnSchema(s1, s2, s3);
             return BuildParametricResult(rawSpec, LanguageClass.ContextSensitive,
-                "L = { aⁿbⁿcⁿ | n ≥ 0 }",
-                "Context-sensitive language decided by marking matching triples (a, b, c) -> (X, Q, Z).",
+                $"L = {{ {s1}ⁿ{s2}ⁿ{s3}ⁿ | n ≥ 0 }}",
+                $"Context-sensitive language decided by marking matching triples ({s1}, {s2}, {s3}).",
                 null, null, schema);
         }
 
-        // 2. a^2n b^m c^n
-        if (compact is "a^2nb^mc^n" or "a^(2n)b^mc^n" or "a2nbmcn" or "{a^2nb^mc^n}")
+        // 2. Generalized s1^2n s2^m s3^n (e.g. a^2n b^m c^n, x^2n y^m z^n)
+        var m2nm = Regex.Match(compact, @"^\{?([a-z0-9])\^(?:2n|\(2n\))([a-z0-9])\^m([a-z0-9])\^n\}?$");
+        if (compact is "a2nbmcn" || (m2nm.Success && m2nm.Groups[1].Value != m2nm.Groups[2].Value && m2nm.Groups[2].Value != m2nm.Groups[3].Value && m2nm.Groups[1].Value != m2nm.Groups[3].Value))
         {
-            var cfg = Cfg.ParseFromText("S -> aaSc | B\nB -> bB | e");
+            var s1 = m2nm.Success ? m2nm.Groups[1].Value[0] : 'a';
+            var s2 = m2nm.Success ? m2nm.Groups[2].Value[0] : 'b';
+            var s3 = m2nm.Success ? m2nm.Groups[3].Value[0] : 'c';
+            var cfg = Cfg.ParseFromText($"S -> {s1}{s1}S{s3} | B\nB -> {s2}B | e");
             var pda = CfgToPdaConverter.Convert(cfg);
-            var schema = BuildA2nBmCnSchema();
+            var schema = BuildA2nBmCnSchema(s1, s2, s3);
             return BuildParametricResult(rawSpec, LanguageClass.ContextFree,
-                "L = { a²ⁿbᵐcⁿ | n, m ≥ 0 }",
-                "Context-free language matching two leading a's per trailing c around an arbitrary block of b's.",
+                $"L = {{ {s1}²ⁿ{s2}ᵐ{s3}ⁿ | n, m ≥ 0 }}",
+                $"Context-free language matching two leading {s1}'s per trailing {s3} around any number of {s2}'s.",
                 cfg, pda, schema);
         }
 
-        // 3. a^n b^n c^m
-        if (compact is "a^nb^nc^m" or "anbncm" or "{a^nb^nc^m}")
+        // 3. Generalized s1^n s2^n s3^m (e.g. a^n b^n c^m, x^n y^n z^m)
+        var mnnm = Regex.Match(compact, @"^\{?([a-z0-9])\^n([a-z0-9])\^n([a-z0-9])\^m\}?$");
+        if (compact is "anbncm" || (mnnm.Success && mnnm.Groups[1].Value != mnnm.Groups[2].Value && mnnm.Groups[2].Value != mnnm.Groups[3].Value && mnnm.Groups[1].Value != mnnm.Groups[3].Value))
         {
-            var cfg = Cfg.ParseFromText("S -> AC\nA -> aAb | e\nC -> cC | e");
+            var s1 = mnnm.Success ? mnnm.Groups[1].Value[0] : 'a';
+            var s2 = mnnm.Success ? mnnm.Groups[2].Value[0] : 'b';
+            var s3 = mnnm.Success ? mnnm.Groups[3].Value[0] : 'c';
+            var cfg = Cfg.ParseFromText($"S -> AC\nA -> {s1}A{s2} | e\nC -> {s3}C | e");
             var pda = CfgToPdaConverter.Convert(cfg);
-            var schema = BuildAnBnCmSchema();
+            var schema = BuildAnBnCmSchema(s1, s2, s3);
             return BuildParametricResult(rawSpec, LanguageClass.ContextFree,
-                "L = { aⁿbⁿcᵐ | n, m ≥ 0 }",
-                "Context-free language matching equal a's and b's followed by any number of c's.",
+                $"L = {{ {s1}ⁿ{s2}ⁿ{s3}ᵐ | n, m ≥ 0 }}",
+                $"Context-free language matching equal {s1}'s and {s2}'s followed by any number of {s3}'s.",
                 cfg, pda, schema);
         }
 
-        // 4. a^2n b^n
-        if (compact is "a^2nb^n" or "a^(2n)b^n" or "a2nbn" or "{a^2nb^n}")
+        // 4. Generalized s1^2n s2^n (e.g. a^2n b^n, x^2n y^n, 0^2n 1^n)
+        var m2n = Regex.Match(compact, @"^\{?([a-z0-9])\^(?:2n|\(2n\))([a-z0-9])\^n\}?$");
+        if (compact is "a2nbn" || (m2n.Success && m2n.Groups[1].Value != m2n.Groups[2].Value))
         {
-            var cfg = Cfg.ParseFromText("S -> aaSb | e");
+            var s1 = m2n.Success ? m2n.Groups[1].Value[0] : 'a';
+            var s2 = m2n.Success ? m2n.Groups[2].Value[0] : 'b';
+            var cfg = Cfg.ParseFromText($"S -> {s1}{s1}S{s2} | e");
             var pda = PushdownAutomaton.ParseTransitions(
-                "start: s\naccept: f\n((s, aa, e), (s, a))\n((s, e, e), (f, e))\n((f, b, a), (f, e))");
-            var schema = BuildA2nBnSchema();
+                $"start: s\naccept: f\n((s, {s1}{s1}, e), (s, {s1}))\n((s, e, e), (f, e))\n((f, {s2}, {s1}), (f, e))");
+            var schema = BuildA2nBnSchema(s1, s2);
             return BuildParametricResult(rawSpec, LanguageClass.ContextFree,
-                "L = { a²ⁿbⁿ | n ≥ 0 }",
-                "Context-free language with twice as many leading a's as trailing b's.",
+                $"L = {{ {s1}²ⁿ{s2}ⁿ | n ≥ 0 }}",
+                $"Context-free language with twice as many leading {s1}'s as trailing {s2}'s.",
                 cfg, pda, schema);
         }
 
-        // 5. a^n b^n
-        if (compact is "a^nb^n" or "anbn" or "{a^nb^n}")
+        // 5. Generalized s1^n s2^n (e.g. a^n b^n, x^n y^n, 0^n 1^n)
+        var mnn = Regex.Match(compact, @"^\{?([a-z0-9])\^n([a-z0-9])\^n\}?$");
+        if (compact is "anbn" || (mnn.Success && mnn.Groups[1].Value != mnn.Groups[2].Value))
         {
-            var cfg = Cfg.ParseFromText("S -> aSb | e");
+            var s1 = mnn.Success ? mnn.Groups[1].Value[0] : 'a';
+            var s2 = mnn.Success ? mnn.Groups[2].Value[0] : 'b';
+            var cfg = Cfg.ParseFromText($"S -> {s1}S{s2} | e");
             var pda = PushdownAutomaton.ParseTransitions(
-                "start: s\naccept: f\n((s, a, e), (s, a))\n((s, e, e), (f, e))\n((f, b, a), (f, e))");
-            var schema = BuildAnBnSchema();
+                $"start: s\naccept: f\n((s, {s1}, e), (s, {s1}))\n((s, e, e), (f, e))\n((f, {s2}, {s1}), (f, e))");
+            var schema = BuildAnBnSchema(s1, s2);
             return BuildParametricResult(rawSpec, LanguageClass.ContextFree,
-                "L = { aⁿbⁿ | n ≥ 0 }",
-                "Classic context-free language decided by stripping matching outer (a, b) pairs via R_# S_L.",
+                $"L = {{ {s1}ⁿ{s2}ⁿ | n ≥ 0 }}",
+                $"Classic context-free language decided by stripping matching outer ({s1}, {s2}) pairs via R_# S_L.",
                 cfg, pda, schema);
         }
 
-        // 6. even palindromes
+        // 6. even palindromes (supports custom Σ e.g. x,y,z or 0,1)
         if (norm is "even palindromes" or "even palindrome" || compact is "ww^r" or "evenpalindromes")
         {
-            var cfg = Cfg.ParseFromText("S -> aSa | bSb | e");
-            var pda = PushdownAutomaton.ParseTransitions(
-                "start: s\naccept: f\n((s, a, e), (s, a))\n((s, b, e), (s, b))\n((s, e, e), (f, e))\n((f, a, a), (f, e))\n((f, b, b), (f, e))");
-            var schema = BuildPalindromeSchema(evenOnly: true);
+            var syms = customAlpha is { Count: >= 2 } ? customAlpha : new List<char> { 'a', 'b' };
+            var cfgRules = string.Join(" | ", syms.Select(c => $"{c}S{c}")) + " | e";
+            var cfg = Cfg.ParseFromText($"S -> {cfgRules}");
+            var pdaLines = new List<string> { "start: s", "accept: f" };
+            foreach (var c in syms) pdaLines.Add($"((s, {c}, e), (s, {c}))");
+            pdaLines.Add("((s, e, e), (f, e))");
+            foreach (var c in syms) pdaLines.Add($"((f, {c}, {c}), (f, e))");
+            var pda = PushdownAutomaton.ParseTransitions(string.Join('\n', pdaLines));
+            var schema = BuildPalindromeSchema(evenOnly: true, symbols: syms);
             return BuildParametricResult(rawSpec, LanguageClass.ContextFree,
-                "Even Palindromes { w wᴿ | w ∈ {a, b}* }",
+                $"Even Palindromes {{ w wᴿ | w ∈ {{{string.Join(", ", syms)}}}* }}",
                 "Even-length palindromes decided by peeling matching outer symbols with R_# S_L.",
                 cfg, pda, schema);
         }
 
-        // 7. palindromes (w = w^R)
+        // 7. palindromes (w = w^R) over any Σ
         if (norm is "palindromes" or "palindrome" || compact is "w=w^r" or "palindromes(w=w^r)")
         {
-            var cfg = Cfg.ParseFromText("S -> aSa | bSb | a | b | e");
-            var pda = PushdownAutomaton.ParseTransitions(
-                "start: s\naccept: f\n((s, a, e), (s, a))\n((s, b, e), (s, b))\n((s, e, e), (f, e))\n((s, a, e), (f, e))\n((s, b, e), (f, e))\n((f, a, a), (f, e))\n((f, b, b), (f, e))");
-            var schema = BuildPalindromeSchema(evenOnly: false);
+            var syms = customAlpha is { Count: >= 2 } ? customAlpha : new List<char> { 'a', 'b' };
+            var cfgRules = string.Join(" | ", syms.Select(c => $"{c}S{c}")) + " | " + string.Join(" | ", syms) + " | e";
+            var cfg = Cfg.ParseFromText($"S -> {cfgRules}");
+            var pdaLines = new List<string> { "start: s", "accept: f" };
+            foreach (var c in syms) pdaLines.Add($"((s, {c}, e), (s, {c}))");
+            pdaLines.Add("((s, e, e), (f, e))");
+            foreach (var c in syms) pdaLines.Add($"((s, {c}, e), (f, e))");
+            foreach (var c in syms) pdaLines.Add($"((f, {c}, {c}), (f, e))");
+            var pda = PushdownAutomaton.ParseTransitions(string.Join('\n', pdaLines));
+            var schema = BuildPalindromeSchema(evenOnly: false, symbols: syms);
             return BuildParametricResult(rawSpec, LanguageClass.ContextFree,
-                "Palindromes { w ∈ {a, b}* | w = wᴿ }",
+                $"Palindromes {{ w ∈ {{{string.Join(", ", syms)}}}* | w = wᴿ }}",
                 "Palindromes of any length decided by peeling outer matching characters via # R_# S_L.",
                 cfg, pda, schema);
         }
@@ -371,55 +401,64 @@ public static class LanguageSpecCompiler
                 cfg, pda, schema);
         }
 
-        // 9. #a > #b
-        if (compact is "#a>#b" or "count(a)>count(b)" || norm is "more a than b")
+        // 9. Generalized #s1 > #s2 (e.g. #a > #b, #x > #y, #1 > #0)
+        var mMore = Regex.Match(compact, @"^#([a-z0-9])>#([a-z0-9])$");
+        if (compact is "count(a)>count(b)" || norm is "more a than b" || (mMore.Success && mMore.Groups[1].Value != mMore.Groups[2].Value))
         {
-            var cfg = Cfg.ParseFromText("S -> E a S | E a E\nE -> a E b E | b E a E | e");
+            var s1 = mMore.Success ? mMore.Groups[1].Value[0] : 'a';
+            var s2 = mMore.Success ? mMore.Groups[2].Value[0] : 'b';
+            var cfg = Cfg.ParseFromText($"S -> E {s1} S | E {s1} E\nE -> {s1} E {s2} E | {s2} E {s1} E | e");
             var pda = CfgToPdaConverter.Convert(cfg);
-            var schema = BuildMoreAThanBSchema();
+            var schema = BuildMoreAThanBSchema(s1, s2);
             return BuildParametricResult(rawSpec, LanguageClass.ContextFree,
-                "L = { w ∈ {a, b}* | #a(w) > #b(w) }",
-                "Strings containing strictly more a's than b's, decided by pairwise cancellation.",
+                $"L = {{ w ∈ {{{s1}, {s2}}}* | #{s1}(w) > #{s2}(w) }}",
+                $"Strings containing strictly more {s1}'s than {s2}'s, decided by pairwise cancellation.",
                 cfg, pda, schema);
         }
 
-        // 10. #a = #b
-        if (compact is "#a=#b" or "#a==#b" or "count(a)=count(b)" || norm is "equal a and b" or "equal #a and #b")
+        // 10. Generalized #s1 = #s2 (e.g. #a = #b, #x = #y, #0 = #1)
+        var mEq = Regex.Match(compact, @"^#([a-z0-9])==?#([a-z0-9])$");
+        if (compact is "count(a)=count(b)" || norm is "equal a and b" or "equal #a and #b" || (mEq.Success && mEq.Groups[1].Value != mEq.Groups[2].Value))
         {
-            var cfg = Cfg.ParseFromText("S -> aSbS | bSaS | e");
+            var s1 = mEq.Success ? mEq.Groups[1].Value[0] : 'a';
+            var s2 = mEq.Success ? mEq.Groups[2].Value[0] : 'b';
+            var cfg = Cfg.ParseFromText($"S -> {s1}S{s2}S | {s2}S{s1}S | e");
             var pda = PushdownAutomaton.ParseTransitions(
-                "start: s\naccept: s\n((s, a, b), (s, e))\n((s, a, e), (s, a))\n((s, b, a), (s, e))\n((s, b, e), (s, b))");
-            var schema = BuildEqualABSchema();
+                $"start: s\naccept: s\n((s, {s1}, {s2}), (s, e))\n((s, {s1}, e), (s, {s1}))\n((s, {s2}, {s1}), (s, e))\n((s, {s2}, e), (s, {s2}))");
+            var schema = BuildEqualABSchema(s1, s2);
             return BuildParametricResult(rawSpec, LanguageClass.ContextFree,
-                "L = { w ∈ {a, b}* | #a(w) = #b(w) }",
-                "Strings with equal counts of a and b, decided by pairwise cancellation.",
+                $"L = {{ w ∈ {{{s1}, {s2}}}* | #{s1}(w) = #{s2}(w) }}",
+                $"Strings with equal counts of {s1} and {s2}, decided by pairwise cancellation.",
                 cfg, pda, schema);
         }
 
-        // 11. invert a and b / complement
-        if (norm is "invert a and b" or "invert a/b" or "invert" or "complement" or "complement a and b" or "flip a and b")
+        // 11. Generalized invert s1 and s2 / complement
+        var mInv = Regex.Match(norm, @"^(?:invert|complement|flip)\s+([a-z0-9])\s*(?:and|/|↔|<->)\s*([a-z0-9])$");
+        if (norm is "invert" or "complement" || (mInv.Success && mInv.Groups[1].Value != mInv.Groups[2].Value))
         {
-            var schema = BuildInvertABSchema();
+            var s1 = mInv.Success ? mInv.Groups[1].Value[0] : (customAlpha is { Count: >= 2 } ? customAlpha[0] : 'a');
+            var s2 = mInv.Success ? mInv.Groups[2].Value[0] : (customAlpha is { Count: >= 2 } ? customAlpha[1] : 'b');
+            var schema = BuildInvertABSchema(s1, s2);
             return BuildParametricResult(rawSpec, LanguageClass.Transducer,
-                "Invert a ↔ b Transducer",
-                "Replaces every 'a' with 'b' and every 'b' with 'a' across the tape (#aab# → #bba#).",
+                $"Invert {s1} ↔ {s2} Transducer",
+                $"Replaces every '{s1}' with '{s2}' and every '{s2}' with '{s1}' across the tape.",
                 null, null, schema);
         }
 
-        // 12. shift left (S_L)
+        // 12. shift left (S_L) over custom or default Σ
         if (norm is "shift left" or "s_l" or "shift left (s_l)" || compact is "shiftleft" or "s_l")
         {
-            var schema = BuildShiftLeftSchema();
+            var schema = BuildShiftLeftSchema(customAlpha);
             return BuildParametricResult(rawSpec, LanguageClass.Transducer,
                 "Shift Left Macro (S_L)",
                 "Shifts the non-blank block immediately left of the head one cell to the left, ending in L #.",
                 null, null, schema);
         }
 
-        // 13. shift right (S_R)
+        // 13. shift right (S_R) over custom or default Σ
         if (norm is "shift right" or "s_r" or "shift right (s_r)" || compact is "shiftright" or "s_r")
         {
-            var schema = BuildShiftRightSchema();
+            var schema = BuildShiftRightSchema(customAlpha);
             return BuildParametricResult(rawSpec, LanguageClass.Transducer,
                 "Shift Right Macro (S_R)",
                 "Shifts the non-blank block immediately left of the head one cell to the right.",
@@ -509,9 +548,19 @@ public static class LanguageSpecCompiler
 
     // --- Reusable Parametric TM Schema Builders ---
 
-    public static TmSchema BuildAnBnSchema() =>
-        new TmSchemaBuilder("Decider for a^n b^n")
-            .Alphabet('a', 'b', 'y', 'n')
+    private static char PickMarker(char preferred, params char[] used)
+    {
+        if (!used.Contains(preferred)) return preferred;
+        foreach (var cand in new[] { 'X', 'Q', 'Z', 'M', 'P', 'W', 'K', 'J' })
+        {
+            if (!used.Contains(cand)) return cand;
+        }
+        return '$';
+    }
+
+    public static TmSchema BuildAnBnSchema(char s1 = 'a', char s2 = 'b') =>
+        new TmSchemaBuilder($"Decider for {s1}^n {s2}^n")
+            .Alphabet(s1, s2, 'y', 'n')
             .StartNode("start", "L_# R")
             .Node("peel_a", "# R_# S_L")
             .Node("check_b", "L")
@@ -521,18 +570,18 @@ public static class LanguageSpecCompiler
             .Node("rej_end", "E N R")
             .Node("rej_zero", "R N R")
             .Edge("start", "acc_empty", "#")
-            .Edge("start", "peel_a", "a")
-            .Edge("start", "rej_mid", "b")
+            .Edge("start", "peel_a", s1.ToString())
+            .Edge("start", "rej_mid", s2.ToString())
             .Edge("peel_a", "check_b", "*")
-            .Edge("check_b", "erase_b", "b")
-            .Edge("check_b", "rej_end", "a")
+            .Edge("check_b", "erase_b", s2.ToString())
+            .Edge("check_b", "rej_end", s1.ToString())
             .Edge("check_b", "rej_zero", "#")
             .Edge("erase_b", "start", "*")
             .Build();
 
-    public static TmSchema BuildA2nBnSchema() =>
-        new TmSchemaBuilder("Decider for a^2n b^n")
-            .Alphabet('a', 'b', 'y', 'n')
+    public static TmSchema BuildA2nBnSchema(char s1 = 'a', char s2 = 'b') =>
+        new TmSchemaBuilder($"Decider for {s1}^2n {s2}^n")
+            .Alphabet(s1, s2, 'y', 'n')
             .StartNode("start", "L_# R")
             .Node("peel_a1", "# R_# S_L")
             .Node("find_a2", "L_# R")
@@ -545,54 +594,65 @@ public static class LanguageSpecCompiler
             .Node("rej_end", "E N R")
             .Node("rej_zero", "R N R")
             .Edge("start", "acc_empty", "#")
-            .Edge("start", "peel_a1", "a")
-            .Edge("start", "rej_mid", "b")
+            .Edge("start", "peel_a1", s1.ToString())
+            .Edge("start", "rej_mid", s2.ToString())
             .Edge("peel_a1", "find_a2", "*")
-            .Edge("find_a2", "peel_a2", "a")
-            .Edge("find_a2", "rej_mid", "b")
+            .Edge("find_a2", "peel_a2", s1.ToString())
+            .Edge("find_a2", "rej_mid", s2.ToString())
             .Edge("find_a2", "rej_empty", "#")
             .Edge("peel_a2", "check_b", "*")
-            .Edge("check_b", "erase_b", "b")
-            .Edge("check_b", "rej_end", "a")
+            .Edge("check_b", "erase_b", s2.ToString())
+            .Edge("check_b", "rej_end", s1.ToString())
             .Edge("check_b", "rej_zero", "#")
             .Edge("erase_b", "start", "*")
             .Build();
 
-    public static TmSchema BuildPalindromeSchema(bool evenOnly = false) =>
-        new TmSchemaBuilder(evenOnly ? "Even Palindrome Decider" : "Palindrome Decider")
-            .Alphabet('a', 'b', 'y', 'n')
+    public static TmSchema BuildPalindromeSchema(bool evenOnly = false, IEnumerable<char>? symbols = null)
+    {
+        var syms = symbols?.Where(c => c != AutomataSymbols.DefaultBlank).Distinct().OrderBy(c => c).ToList();
+        if (syms is null || syms.Count < 2) syms = new List<char> { 'a', 'b' };
+
+        var alpha = new SortedSet<char>(syms) { 'y', 'n' };
+        var b = new TmSchemaBuilder(evenOnly ? "Even Palindrome Decider" : "Palindrome Decider")
+            .Alphabet(alpha)
             .StartNode("start", "L_# R")
-            .Node("peel_a", "# R_# S_L")
-            .Node("match_a", "L")
-            .Node("peel_b", "# R_# S_L")
-            .Node("match_b", "L")
             .Node("erase_last", "#")
             .Node("acc_empty", "Y R")
             .Node("mid_single", evenOnly ? "R N R" : "R Y R")
             .Node("rej_end", "E N R")
             .Edge("start", "acc_empty", "#")
-            .Edge("start", "peel_a", "a")
-            .Edge("start", "peel_b", "b")
-            .Edge("peel_a", "match_a", "*")
-            .Edge("match_a", "erase_last", "a")
-            .Edge("match_a", "mid_single", "#")
-            .Edge("match_a", "rej_end", "b")
-            .Edge("peel_b", "match_b", "*")
-            .Edge("match_b", "erase_last", "b")
-            .Edge("match_b", "mid_single", "#")
-            .Edge("match_b", "rej_end", "a")
-            .Edge("erase_last", "start", "*")
-            .Build();
+            .Edge("erase_last", "start", "*");
 
-    public static TmSchema BuildAnBnCnSchema() =>
-        new TmSchemaBuilder("Decider for a^n b^n c^n")
-            .Alphabet('a', 'b', 'c', 'X', 'Q', 'Z', 'y', 'n')
+        foreach (var c in syms)
+        {
+            var peelId = $"peel_{c}";
+            var matchId = $"match_{c}";
+            var others = string.Join(", ", syms.Where(o => o != c));
+            b.Node(peelId, "# R_# S_L")
+             .Node(matchId, "L")
+             .Edge("start", peelId, c.ToString())
+             .Edge(peelId, matchId, "*")
+             .Edge(matchId, "erase_last", c.ToString())
+             .Edge(matchId, "mid_single", "#")
+             .Edge(matchId, "rej_end", others);
+        }
+
+        return b.Build();
+    }
+
+    public static TmSchema BuildAnBnCnSchema(char s1 = 'a', char s2 = 'b', char s3 = 'c')
+    {
+        var m1 = PickMarker('X', s1, s2, s3, 'y', 'n');
+        var m2 = PickMarker('Q', s1, s2, s3, 'y', 'n', m1);
+        var m3 = PickMarker('Z', s1, s2, s3, 'y', 'n', m1, m2);
+        return new TmSchemaBuilder($"Decider for {s1}^n {s2}^n {s3}^n")
+            .Alphabet(s1, s2, s3, m1, m2, m3, 'y', 'n')
             .StartNode("start", "L_# R")
-            .Node("mark_a", "X")
+            .Node("mark_a", m1.ToString())
             .Node("find_b", "R")
-            .Node("mark_b", "Q")
+            .Node("mark_b", m2.ToString())
             .Node("find_c", "R")
-            .Node("mark_c", "Z")
+            .Node("mark_c", m3.ToString())
             .Node("back", "L_# R")
             .Node("skip_x", "R")
             .Node("verify_q", "R")
@@ -602,38 +662,39 @@ public static class LanguageSpecCompiler
             .Node("rej_mid", "R_# E N R")
             .Node("rej_end", "E N R")
             .Edge("start", "acc_empty", "#")
-            .Edge("start", "mark_a", "a")
+            .Edge("start", "mark_a", s1.ToString())
             .Edge("start", "rej_mid", "other")
             .Edge("mark_a", "find_b", "*")
-            .Edge("find_b", "find_b", "a, Q")
-            .Edge("find_b", "mark_b", "b")
+            .Edge("find_b", "find_b", $"{s1}, {m2}")
+            .Edge("find_b", "mark_b", s2.ToString())
             .Edge("find_b", "rej_end", "#")
             .Edge("find_b", "rej_mid", "other")
             .Edge("mark_b", "find_c", "*")
-            .Edge("find_c", "find_c", "b, Z")
-            .Edge("find_c", "mark_c", "c")
+            .Edge("find_c", "find_c", $"{s2}, {m3}")
+            .Edge("find_c", "mark_c", s3.ToString())
             .Edge("find_c", "rej_end", "#")
             .Edge("find_c", "rej_mid", "other")
             .Edge("mark_c", "back", "*")
-            .Edge("back", "skip_x", "X")
+            .Edge("back", "skip_x", m1.ToString())
             .Edge("back", "rej_mid", "other")
-            .Edge("skip_x", "skip_x", "X")
-            .Edge("skip_x", "mark_a", "a")
-            .Edge("skip_x", "verify_q", "Q")
+            .Edge("skip_x", "skip_x", m1.ToString())
+            .Edge("skip_x", "mark_a", s1.ToString())
+            .Edge("skip_x", "verify_q", m2.ToString())
             .Edge("skip_x", "rej_end", "#")
             .Edge("skip_x", "rej_mid", "other")
-            .Edge("verify_q", "verify_q", "Q")
-            .Edge("verify_q", "verify_z", "Z")
+            .Edge("verify_q", "verify_q", m2.ToString())
+            .Edge("verify_q", "verify_z", m3.ToString())
             .Edge("verify_q", "rej_end", "#")
             .Edge("verify_q", "rej_mid", "other")
-            .Edge("verify_z", "verify_z", "Z")
+            .Edge("verify_z", "verify_z", m3.ToString())
             .Edge("verify_z", "acc_end", "#")
             .Edge("verify_z", "rej_mid", "other")
             .Build();
+    }
 
-    public static TmSchema BuildA2nBmCnSchema() =>
-        new TmSchemaBuilder("Decider for a^2n b^m c^n")
-            .Alphabet('a', 'b', 'c', 'y', 'n')
+    public static TmSchema BuildA2nBmCnSchema(char s1 = 'a', char s2 = 'b', char s3 = 'c') =>
+        new TmSchemaBuilder($"Decider for {s1}^2n {s2}^m {s3}^n")
+            .Alphabet(s1, s2, s3, 'y', 'n')
             .StartNode("start", "L_# R")
             .Node("peel_a1", "# R_# S_L")
             .Node("find_a2", "L_# R")
@@ -648,30 +709,33 @@ public static class LanguageSpecCompiler
             .Node("rej_end", "E N R")
             .Node("rej_zero", "R N R")
             .Edge("start", "acc_empty", "#")
-            .Edge("start", "peel_a1", "a")
-            .Edge("start", "scan_b", "b")
-            .Edge("start", "rej_mid", "c")
+            .Edge("start", "peel_a1", s1.ToString())
+            .Edge("start", "scan_b", s2.ToString())
+            .Edge("start", "rej_mid", s3.ToString())
             .Edge("peel_a1", "find_a2", "*")
-            .Edge("find_a2", "peel_a2", "a")
+            .Edge("find_a2", "peel_a2", s1.ToString())
             .Edge("find_a2", "rej_empty", "#")
-            .Edge("find_a2", "rej_mid", "b, c")
+            .Edge("find_a2", "rej_mid", $"{s2}, {s3}")
             .Edge("peel_a2", "check_c", "*")
-            .Edge("check_c", "erase_c", "c")
+            .Edge("check_c", "erase_c", s3.ToString())
             .Edge("check_c", "rej_zero", "#")
-            .Edge("check_c", "rej_end", "a, b")
+            .Edge("check_c", "rej_end", $"{s1}, {s2}")
             .Edge("erase_c", "start", "*")
-            .Edge("scan_b", "scan_b", "b")
+            .Edge("scan_b", "scan_b", s2.ToString())
             .Edge("scan_b", "acc_end", "#")
-            .Edge("scan_b", "rej_mid", "a, c")
+            .Edge("scan_b", "rej_mid", $"{s1}, {s3}")
             .Build();
 
-    public static TmSchema BuildAnBnCmSchema() =>
-        new TmSchemaBuilder("Decider for a^n b^n c^m")
-            .Alphabet('a', 'b', 'c', 'X', 'Q', 'y', 'n')
+    public static TmSchema BuildAnBnCmSchema(char s1 = 'a', char s2 = 'b', char s3 = 'c')
+    {
+        var m1 = PickMarker('X', s1, s2, s3, 'y', 'n');
+        var m2 = PickMarker('Q', s1, s2, s3, 'y', 'n', m1);
+        return new TmSchemaBuilder($"Decider for {s1}^n {s2}^n {s3}^m")
+            .Alphabet(s1, s2, s3, m1, m2, 'y', 'n')
             .StartNode("start", "L_# R")
-            .Node("mark_a", "X")
+            .Node("mark_a", m1.ToString())
             .Node("find_b", "R")
-            .Node("mark_b", "Q")
+            .Node("mark_b", m2.ToString())
             .Node("back", "L_# R")
             .Node("skip_x", "R")
             .Node("verify_q", "R")
@@ -681,30 +745,31 @@ public static class LanguageSpecCompiler
             .Node("rej_mid", "R_# E N R")
             .Node("rej_end", "E N R")
             .Edge("start", "acc_empty", "#")
-            .Edge("start", "mark_a", "a")
-            .Edge("start", "scan_c", "c")
+            .Edge("start", "mark_a", s1.ToString())
+            .Edge("start", "scan_c", s3.ToString())
             .Edge("start", "rej_mid", "other")
             .Edge("mark_a", "find_b", "*")
-            .Edge("find_b", "find_b", "a, Q")
-            .Edge("find_b", "mark_b", "b")
+            .Edge("find_b", "find_b", $"{s1}, {m2}")
+            .Edge("find_b", "mark_b", s2.ToString())
             .Edge("find_b", "rej_end", "#")
             .Edge("find_b", "rej_mid", "other")
             .Edge("mark_b", "back", "*")
-            .Edge("back", "skip_x", "X")
+            .Edge("back", "skip_x", m1.ToString())
             .Edge("back", "rej_mid", "other")
-            .Edge("skip_x", "skip_x", "X")
-            .Edge("skip_x", "mark_a", "a")
-            .Edge("skip_x", "verify_q", "Q")
+            .Edge("skip_x", "skip_x", m1.ToString())
+            .Edge("skip_x", "mark_a", s1.ToString())
+            .Edge("skip_x", "verify_q", m2.ToString())
             .Edge("skip_x", "rej_end", "#")
             .Edge("skip_x", "rej_mid", "other")
-            .Edge("verify_q", "verify_q", "Q")
-            .Edge("verify_q", "scan_c", "c")
+            .Edge("verify_q", "verify_q", m2.ToString())
+            .Edge("verify_q", "scan_c", s3.ToString())
             .Edge("verify_q", "acc_end", "#")
             .Edge("verify_q", "rej_mid", "other")
-            .Edge("scan_c", "scan_c", "c")
+            .Edge("scan_c", "scan_c", s3.ToString())
             .Edge("scan_c", "acc_end", "#")
             .Edge("scan_c", "rej_mid", "other")
             .Build();
+    }
 
     public static TmSchema BuildBalancedParensSchema() =>
         new TmSchemaBuilder("Balanced Parentheses Decider")
@@ -739,95 +804,109 @@ public static class LanguageSpecCompiler
             .Edge("verify_loop", "rej_mid", "(, )")
             .Build();
 
-    public static TmSchema BuildEqualABSchema() =>
-        new TmSchemaBuilder("Decider for #a = #b")
-            .Alphabet('a', 'b', 'X', 'y', 'n')
+    public static TmSchema BuildEqualABSchema(char s1 = 'a', char s2 = 'b')
+    {
+        var mk = PickMarker('X', s1, s2, 'y', 'n');
+        return new TmSchemaBuilder($"Decider for #{s1} = #{s2}")
+            .Alphabet(s1, s2, mk, 'y', 'n')
             .StartNode("start", "L_# R")
             .Node("skip_x", "R")
-            .Node("mark_a", "X")
+            .Node("mark_a", mk.ToString())
             .Node("find_b", "R")
-            .Node("mark_b", "X")
+            .Node("mark_b", mk.ToString())
             .Node("find_a", "R")
-            .Node("pair_done", "X")
+            .Node("pair_done", mk.ToString())
             .Node("acc_empty", "Y R")
             .Node("acc_end", "E Y R")
             .Node("rej_end", "E N R")
             .Edge("start", "acc_empty", "#")
-            .Edge("start", "skip_x", "X")
-            .Edge("start", "mark_a", "a")
-            .Edge("start", "mark_b", "b")
-            .Edge("skip_x", "skip_x", "X")
+            .Edge("start", "skip_x", mk.ToString())
+            .Edge("start", "mark_a", s1.ToString())
+            .Edge("start", "mark_b", s2.ToString())
+            .Edge("skip_x", "skip_x", mk.ToString())
             .Edge("skip_x", "acc_end", "#")
-            .Edge("skip_x", "mark_a", "a")
-            .Edge("skip_x", "mark_b", "b")
+            .Edge("skip_x", "mark_a", s1.ToString())
+            .Edge("skip_x", "mark_b", s2.ToString())
             .Edge("mark_a", "find_b", "*")
-            .Edge("find_b", "find_b", "a, X")
-            .Edge("find_b", "pair_done", "b")
+            .Edge("find_b", "find_b", $"{s1}, {mk}")
+            .Edge("find_b", "pair_done", s2.ToString())
             .Edge("find_b", "rej_end", "#")
             .Edge("mark_b", "find_a", "*")
-            .Edge("find_a", "find_a", "b, X")
-            .Edge("find_a", "pair_done", "a")
+            .Edge("find_a", "find_a", $"{s2}, {mk}")
+            .Edge("find_a", "pair_done", s1.ToString())
             .Edge("find_a", "rej_end", "#")
             .Edge("pair_done", "start", "*")
             .Build();
+    }
 
-    public static TmSchema BuildMoreAThanBSchema() =>
-        new TmSchemaBuilder("Decider for #a > #b")
-            .Alphabet('a', 'b', 'X', 'y', 'n')
+    public static TmSchema BuildMoreAThanBSchema(char s1 = 'a', char s2 = 'b')
+    {
+        var mk = PickMarker('X', s1, s2, 'y', 'n');
+        return new TmSchemaBuilder($"Decider for #{s1} > #{s2}")
+            .Alphabet(s1, s2, mk, 'y', 'n')
             .StartNode("start", "L_# R")
             .Node("skip_x", "R")
-            .Node("mark_a", "X")
+            .Node("mark_a", mk.ToString())
             .Node("find_b", "R")
-            .Node("mark_b", "X")
+            .Node("mark_b", mk.ToString())
             .Node("find_a", "R")
-            .Node("pair_done", "X")
+            .Node("pair_done", mk.ToString())
             .Node("acc_end", "E Y R")
             .Node("rej_empty", "N R")
             .Node("rej_end", "E N R")
             .Edge("start", "rej_empty", "#")
-            .Edge("start", "skip_x", "X")
-            .Edge("start", "mark_a", "a")
-            .Edge("start", "mark_b", "b")
-            .Edge("skip_x", "skip_x", "X")
+            .Edge("start", "skip_x", mk.ToString())
+            .Edge("start", "mark_a", s1.ToString())
+            .Edge("start", "mark_b", s2.ToString())
+            .Edge("skip_x", "skip_x", mk.ToString())
             .Edge("skip_x", "rej_end", "#")
-            .Edge("skip_x", "mark_a", "a")
-            .Edge("skip_x", "mark_b", "b")
+            .Edge("skip_x", "mark_a", s1.ToString())
+            .Edge("skip_x", "mark_b", s2.ToString())
             .Edge("mark_a", "find_b", "*")
-            .Edge("find_b", "find_b", "a, X")
-            .Edge("find_b", "pair_done", "b")
+            .Edge("find_b", "find_b", $"{s1}, {mk}")
+            .Edge("find_b", "pair_done", s2.ToString())
             .Edge("find_b", "acc_end", "#")
             .Edge("mark_b", "find_a", "*")
-            .Edge("find_a", "find_a", "b, X")
-            .Edge("find_a", "pair_done", "a")
+            .Edge("find_a", "find_a", $"{s2}, {mk}")
+            .Edge("find_a", "pair_done", s1.ToString())
             .Edge("find_a", "rej_end", "#")
             .Edge("pair_done", "start", "*")
             .Build();
+    }
 
-    public static TmSchema BuildInvertABSchema() =>
-        new TmSchemaBuilder("Invert a and b")
-            .Alphabet('a', 'b')
+    public static TmSchema BuildInvertABSchema(char s1 = 'a', char s2 = 'b') =>
+        new TmSchemaBuilder($"Invert {s1} and {s2}")
+            .Alphabet(s1, s2)
             .StartNode("rewind", "L_#")
             .Node("step", "R")
-            .Node("write_b", "b")
-            .Node("write_a", "a")
+            .Node("write_b", s2.ToString())
+            .Node("write_a", s1.ToString())
             .Edge("rewind", "step", "*")
-            .Edge("step", "write_b", "a")
-            .Edge("step", "write_a", "b")
+            .Edge("step", "write_b", s1.ToString())
+            .Edge("step", "write_a", s2.ToString())
             .Edge("write_b", "step", "*")
             .Edge("write_a", "step", "*")
             .Build();
 
-    public static TmSchema BuildShiftLeftSchema() =>
-        new TmSchemaBuilder("Shift Left (S_L)")
-            .Alphabet('a', 'b')
+    public static TmSchema BuildShiftLeftSchema(IEnumerable<char>? symbols = null)
+    {
+        var syms = symbols?.Where(c => c != AutomataSymbols.DefaultBlank).Distinct().ToList();
+        if (syms is null || syms.Count == 0) syms = new List<char> { 'a', 'b' };
+        return new TmSchemaBuilder("Shift Left (S_L)")
+            .Alphabet(syms)
             .StartNode("shift_l", "S_L")
             .Build();
+    }
 
-    public static TmSchema BuildShiftRightSchema() =>
-        new TmSchemaBuilder("Shift Right (S_R)")
-            .Alphabet('a', 'b')
+    public static TmSchema BuildShiftRightSchema(IEnumerable<char>? symbols = null)
+    {
+        var syms = symbols?.Where(c => c != AutomataSymbols.DefaultBlank).Distinct().ToList();
+        if (syms is null || syms.Count == 0) syms = new List<char> { 'a', 'b' };
+        return new TmSchemaBuilder("Shift Right (S_R)")
+            .Alphabet(syms)
             .StartNode("shift_r", "S_R")
             .Build();
+    }
 
     public static TmSchema BuildBinaryAndSchema() =>
         new TmSchemaBuilder("Binary AND Transducer")
@@ -1099,8 +1178,14 @@ public static class LanguageSpecCompiler
             return discovered;
         }
 
-        discovered.Add('a');
-        discovered.Add('b');
+        if (discovered.All(c => c is 'a' or 'b'))
+        {
+            discovered.Add('a');
+            discovered.Add('b');
+            return discovered;
+        }
+
+        // For custom symbols like {x, y, z}, keep exact discovered symbols without forcing a, b
         return discovered;
     }
 

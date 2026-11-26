@@ -83,9 +83,9 @@
                                @bind:event="oninput" />
 
                         <input type="text"
-                               class="bp-input !h-8 font-mono text-xs w-24"
-                               placeholder="Σ: a,b"
-                               title="Optional explicit alphabet (comma separated)"
+                               class="bp-input !h-8 font-mono text-xs w-36"
+                               placeholder="Σ auto (e.g. x,y,z)"
+                               title="Custom alphabet symbols (e.g. x,y,z or 0,1 — leave blank to auto-detect)"
                                @bind="_specAlphabetText" />
 
                         <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="CompileSpec">
@@ -287,9 +287,9 @@
                                placeholder="e.g. (a|b)*aba(a|b)*"
                                @bind="_faSpecText" />
                         <input type="text"
-                               class="bp-input !h-8 font-mono text-xs w-20"
-                               placeholder="a,b"
-                               title="Alphabet symbols"
+                               class="bp-input !h-8 font-mono text-xs w-32"
+                               placeholder="Σ auto (x,y,z)"
+                               title="Custom alphabet symbols (e.g. x,y,z or 0,1 — leave blank to auto-detect)"
                                @bind="_faAlphabetText" />
                         <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildFaFromSpec">Build</button>
                     </div>
@@ -1125,7 +1125,7 @@
     // --- Compiler Tab State ---
     private LanguageSpecMode _specMode = LanguageSpecMode.Auto;
     private string _specText = "starts with bb AND contains bab AND ends with aa";
-    private string _specAlphabetText = "a,b";
+    private string _specAlphabetText = string.Empty;
     private string _compilerPreviewKind = "dfa";
     private string _compilerTestInput = "bbabaa";
     private string? _compilerError;
@@ -1136,7 +1136,7 @@
     // --- DFA/NFA Tab State ---
     private string _faSourceKind = "regex";
     private string _faSpecText = "(a|b)*aba(a|b)*";
-    private string _faAlphabetText = "a,b";
+    private string _faAlphabetText = string.Empty;
     private string _faViewKind = "min";
     private string _faRightTab = "trace";
     private string _faInput = "bbabaa";
@@ -1259,7 +1259,7 @@
                     _faSourceKind = "regex";
                     _faSpecText = preset.RegexPattern;
                 }
-                _faAlphabetText = "a,b";
+                _faAlphabetText = string.Empty;
                 BuildFaFromSpec();
                 break;
 
@@ -1301,13 +1301,17 @@
     private static IEnumerable<char>? ParseAlphabetInput(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
-        var chars = raw
-            .Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => s.Trim())
-            .Where(s => s.Length == 1)
-            .Select(s => s[0])
-            .Distinct()
-            .ToList();
+        var chars = new List<char>();
+        foreach (var token in raw.Split(new[] { ',', ' ', ';', '\t', '{', '}' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            foreach (var ch in token.Trim())
+            {
+                if (!chars.Contains(ch))
+                {
+                    chars.Add(ch);
+                }
+            }
+        }
         return chars.Count > 0 ? chars : null;
     }
 
@@ -1318,7 +1322,7 @@
         try
         {
             _compilerError = null;
-            var alpha = _specMode == LanguageSpecMode.Parametric ? null : ParseAlphabetInput(_specAlphabetText);
+            var alpha = ParseAlphabetInput(_specAlphabetText);
             _compiledSpec = LanguageSpecCompiler.Compile(_specText, _specMode, alpha);
             _compilerPreviewKind = _compiledSpec.MinimalDfa is not null
                 ? "dfa"
@@ -1339,9 +1343,7 @@
     {
         _specMode = LanguageSpecMode.Auto;
         _specText = spec;
-        _specAlphabetText = spec.Contains("XOR", StringComparison.OrdinalIgnoreCase) || spec.Contains("snake", StringComparison.OrdinalIgnoreCase)
-            ? string.Empty
-            : "a,b";
+        _specAlphabetText = string.Empty;
         _compilerTestInput = sampleInput;
         CompileSpec();
     }
@@ -1384,6 +1386,7 @@
         _faRawDfa = _compiledSpec.MinimalDfa;
         _faNfa = _compiledSpec.Nfa ?? _compiledSpec.MinimalDfa.ToNfa();
         _faSpecText = _compiledSpec.Specification;
+        _faAlphabetText = _specAlphabetText;
         _faSourceKind = _compiledSpec.ResolvedMode == LanguageSpecMode.Constraint ? "constraint" : "regex";
         _faViewKind = "min";
         _faInput = _compilerTestInput;

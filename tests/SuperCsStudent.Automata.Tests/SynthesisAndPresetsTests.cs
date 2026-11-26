@@ -69,6 +69,54 @@ public class SynthesisAndPresetsTests
     }
 
     [Fact]
+    public void LanguageSpecCompiler_SupportsArbitraryCustomAlphabetsLikeXYZAnd01()
+    {
+        // Auto-inferred {x, y, z} with NO stray a, b
+        var xyzNoContain = LanguageSpecCompiler.Compile("does not contain xyz");
+        Assert.Equal(new[] { 'x', 'y', 'z' }, xyzNoContain.MinimalDfa!.OrderedAlphabet);
+        Assert.True(xyzNoContain.MinimalDfa.Accepts("xyxz"));
+        Assert.False(xyzNoContain.MinimalDfa.Accepts("zzxyzx"));
+        Assert.Equal(true, xyzNoContain.CompiledTm.Trace("xyxz").AcceptedDecision);
+        Assert.Equal(false, xyzNoContain.CompiledTm.Trace("zzxyzx").AcceptedDecision);
+
+        // Explicit {x, y, z} when only "xy" appears in the rule
+        var xyzNoEnd = LanguageSpecCompiler.Compile("does not end with xy", LanguageSpecMode.Auto, new[] { 'x', 'y', 'z' });
+        Assert.Equal(new[] { 'x', 'y', 'z' }, xyzNoEnd.MinimalDfa!.OrderedAlphabet);
+        Assert.True(xyzNoEnd.MinimalDfa.Accepts("xyz"));
+        Assert.False(xyzNoEnd.MinimalDfa.Accepts("zxy"));
+
+        // Custom-symbol regex
+        var xyzRegex = LanguageSpecCompiler.Compile("(x|y)*z+", LanguageSpecMode.Regex, new[] { 'x', 'y', 'z' });
+        Assert.Equal(new[] { 'x', 'y', 'z' }, xyzRegex.MinimalDfa!.OrderedAlphabet);
+        Assert.True(xyzRegex.MinimalDfa.Accepts("xyzz"));
+        Assert.False(xyzRegex.MinimalDfa.Accepts("xy"));
+
+        // Custom-symbol parametric CFL / CSL / TM: x^n y^n, x^n y^n z^n, palindromes over {x, y, z}, #x > #y, invert 0 and 1
+        var xnyn = LanguageSpecCompiler.Compile("x^n y^n");
+        Assert.Equal(true, xnyn.CompiledTm.Trace("xxyy").AcceptedDecision);
+        Assert.Equal(false, xnyn.CompiledTm.Trace("xyy").AcceptedDecision);
+        Assert.True(xnyn.Pda!.Accepts("xxyy"));
+
+        var xnynzn = LanguageSpecCompiler.Compile("x^n y^n z^n");
+        Assert.Equal(true, xnynzn.CompiledTm.Trace("xxyyzz").AcceptedDecision);
+        Assert.Equal(false, xnynzn.CompiledTm.Trace("xxyzz").AcceptedDecision);
+
+        var palXyz = LanguageSpecCompiler.Compile("palindromes", LanguageSpecMode.Auto, new[] { 'x', 'y', 'z' });
+        Assert.Equal(true, palXyz.CompiledTm.Trace("xyzzyx").AcceptedDecision);
+        Assert.Equal(true, palXyz.CompiledTm.Trace("xyzyx").AcceptedDecision);
+        Assert.Equal(false, palXyz.CompiledTm.Trace("xyzz").AcceptedDecision);
+        Assert.True(palXyz.Pda!.Accepts("xyzzyx"));
+        Assert.False(palXyz.Pda.Accepts("xyzz"));
+
+        var moreX = LanguageSpecCompiler.Compile("#x > #y");
+        Assert.Equal(true, moreX.CompiledTm.Trace("xyx").AcceptedDecision);
+        Assert.Equal(false, moreX.CompiledTm.Trace("xy").AcceptedDecision);
+
+        var inv01 = LanguageSpecCompiler.Compile("invert 0 and 1");
+        Assert.Equal("101", inv01.CompiledTm.Trace("010").OutputContent);
+    }
+
+    [Fact]
     public void LanguageSpecCompiler_ParametricNonRegularLanguagesAndTransducersWork()
     {
         // a^2n b^n
