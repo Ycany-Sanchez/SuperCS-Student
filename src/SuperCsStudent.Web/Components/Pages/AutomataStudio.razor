@@ -1,6 +1,1701 @@
 @page "/automata"
+@inject AppStateService AppState
+@inject IJSRuntime JS
 
-<div class="p-6">
-    <h1 class="text-xl font-semibold">Automata & Formal Languages Studio</h1>
-    <p class="text-sm mt-1" style="color: var(--muted);">Initializing engine integration...</p>
+@using SuperCsStudent.Automata
+@using SuperCsStudent.Automata.FiniteAutomata
+@using SuperCsStudent.Automata.Grammars
+@using SuperCsStudent.Automata.Pda
+@using SuperCsStudent.Automata.Presets
+@using SuperCsStudent.Automata.Synthesis
+@using SuperCsStudent.Automata.Turing
+
+<div class="flex flex-col h-full min-h-0">
+    @* Studio Header Bar *@
+    <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
+        <div class="flex items-center gap-2.5 flex-wrap">
+            <h1 class="text-base font-semibold tracking-tight whitespace-nowrap">Automata &amp; Formal Languages</h1>
+
+            <div class="flex items-center rounded-md p-0.5 flex-wrap" style="background: var(--raised); border: 1px solid var(--border);">
+                @foreach (var tab in StudioTabs)
+                {
+                    var active = _activeMode == tab.Mode;
+                    <button type="button"
+                            class="px-2.5 h-7 rounded text-xs font-medium cursor-pointer transition-colors"
+                            style="@(active ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                            @onclick="() => SwitchMode(tab.Mode)">
+                        @tab.Label
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <select class="bp-input !h-8 text-xs max-w-[260px]"
+                    value="@_selectedPresetKey"
+                    @onchange="OnPresetChanged">
+                @foreach (var grp in AutomataPresets.All.GroupBy(p => p.Kind))
+                {
+                    <optgroup label="@FormatPresetGroup(grp.Key)">
+                        @foreach (var p in grp)
+                        {
+                            <option value="@p.Key">@p.Title</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+    </div>
+
+    @* ===================================================================== *@
+    @* MODE 1: DETERMINISTIC FORMAL LANGUAGE SPECIFICATION COMPILER          *@
+    @* ===================================================================== *@
+    @if (_activeMode == StudioMode.Compiler)
+    {
+        <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+            @* Left: Spec Input + Compiled Diagram Preview *@
+            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+                <div class="bp-card p-3 space-y-2.5 shrink-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <select class="bp-input !h-8 text-xs"
+                                value="@_specMode"
+                                @onchange="e => _specMode = Enum.Parse<LanguageSpecMode>(e.Value!.ToString()!)">
+                            <option value="@LanguageSpecMode.Auto">Auto-Detect</option>
+                            <option value="@LanguageSpecMode.Regex">Regex</option>
+                            <option value="@LanguageSpecMode.Constraint">Boolean Constraint</option>
+                            <option value="@LanguageSpecMode.Parametric">Parametric CFL / TM</option>
+                        </select>
+
+                        <input type="text"
+                               class="bp-input !h-8 font-mono text-xs flex-1 min-w-[220px]"
+                               placeholder="e.g. starts with bb AND contains bab AND ends with aa | a^n b^n | palindromes | (a|b)*aba(a|b)*"
+                               @bind="_specText"
+                               @bind:event="oninput" />
+
+                        <input type="text"
+                               class="bp-input !h-8 font-mono text-xs w-24"
+                               placeholder="Σ: a,b"
+                               title="Optional explicit alphabet (comma separated)"
+                               @bind="_specAlphabetText" />
+
+                        <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="CompileSpec">
+                            Compile
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="text-[11px] font-medium" style="color: var(--faint);">Examples:</span>
+                        @foreach (var ex in CompilerExamples)
+                        {
+                            <button type="button"
+                                    class="px-2 h-6 rounded text-[11px] font-mono cursor-pointer transition-colors"
+                                    style="background: var(--raised); color: var(--muted); border: 1px solid var(--border);"
+                                    @onclick="() => RunCompilerExample(ex.Spec, ex.SampleInput)">
+                                @ex.Label
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                @if (_compiledSpec is not null)
+                {
+                    <div class="flex flex-wrap items-center justify-between gap-2 shrink-0 px-1">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="bp-pill bp-pill-accent text-[11px]">@_compiledSpec.LanguageClass</span>
+                            <span class="text-xs font-semibold">@_compiledSpec.Title</span>
+                            <span class="text-xs hidden xl:inline" style="color: var(--muted);">— @_compiledSpec.Description</span>
+                        </div>
+
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <div class="flex items-center rounded-md p-0.5" style="background: var(--raised); border: 1px solid var(--border);">
+                                @if (_compiledSpec.MinimalDfa is not null)
+                                {
+                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                            style="@(_compilerPreviewKind == "dfa" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                            @onclick='() => _compilerPreviewKind = "dfa"'>Min DFA (@_compiledSpec.MinimalDfa.States.Count)</button>
+                                }
+                                @if (_compiledSpec.Nfa is not null)
+                                {
+                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                            style="@(_compilerPreviewKind == "nfa" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                            @onclick='() => _compilerPreviewKind = "nfa"'>NFA (@_compiledSpec.Nfa.States.Count)</button>
+                                }
+                                @if (_compiledSpec.Pda is not null)
+                                {
+                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                            style="@(_compilerPreviewKind == "pda" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                            @onclick='() => _compilerPreviewKind = "pda"'>PDA</button>
+                                }
+                                <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                        style="@(_compilerPreviewKind == "tm" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                        @onclick='() => _compilerPreviewKind = "tm"'>TM Schema (@_compiledSpec.TmSchema.Nodes.Count)</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="flex-1 min-h-[280px]">
+                    <InteractiveSvgCanvas Scene="@GetCompilerPreviewScene()"
+                                          SnapMotion="@AppState.SnapMotion"
+                                          ErrorBanner="@_compilerError"
+                                          ExportFileName="compiled-automaton.svg" />
+                </div>
+            </div>
+
+            @* Right: Open-In-Studio Actions + Live Batch Tester + Generated Grammar/Schema Summary *@
+            <div class="w-full lg:w-[390px] xl:w-[420px] shrink-0 flex flex-col min-h-0 overflow-y-auto p-3 space-y-3"
+                 style="border-left: 1px solid var(--border);">
+                @if (_compiledSpec is not null)
+                {
+                    <div class="bp-card p-3 space-y-2">
+                        <div class="text-xs font-semibold">Open Generated Artifact in Workbench</div>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            @if (_compiledSpec.MinimalDfa is not null)
+                            {
+                                <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="OpenCompiledInDfa">
+                                    Open in DFA / NFA →
+                                </button>
+                            }
+                            @if (_compiledSpec.Grammar is not null)
+                            {
+                                <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="OpenCompiledInCfg">
+                                    Open in CFG Studio →
+                                </button>
+                            }
+                            @if (_compiledSpec.Pda is not null)
+                            {
+                                <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="OpenCompiledInPda">
+                                    Open in PDA Studio →
+                                </button>
+                            }
+                            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="OpenCompiledInTm">
+                                Open in TM Studio →
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bp-card p-3 space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold">Test Input Against Spec</span>
+                            <span class="text-[11px] font-mono" style="color: var(--faint);">Empty string = e</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <input type="text"
+                                   class="bp-input !h-8 font-mono text-xs flex-1"
+                                   placeholder="Enter string (e for empty)"
+                                   @bind="_compilerTestInput"
+                                   @bind:event="oninput" />
+                            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="RunCompilerTest">
+                                Test
+                            </button>
+                        </div>
+
+                        @if (_compilerTestRows.Count > 0)
+                        {
+                            <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
+                                <table class="w-full text-xs text-left">
+                                    <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
+                                        <tr>
+                                            <th class="px-2.5 py-1.5 font-medium">Input</th>
+                                            <th class="px-2.5 py-1.5 font-medium">Result</th>
+                                            <th class="px-2.5 py-1.5 font-medium">TM Tape / Detail</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in _compilerTestRows)
+                                        {
+                                            <tr style="border-bottom: 1px solid var(--rule);">
+                                                <td class="px-2.5 py-1.5 font-mono">@row.Input</td>
+                                                <td class="px-2.5 py-1.5">
+                                                    @if (row.Accepted is true)
+                                                    {
+                                                        <span class="bp-pill bp-pill-positive text-[11px]">Accept</span>
+                                                    }
+                                                    else if (row.Accepted is false)
+                                                    {
+                                                        <span class="bp-pill bp-pill-negative text-[11px]">Reject</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="bp-pill bp-pill-accent text-[11px]">Halted</span>
+                                                    }
+                                                </td>
+                                                <td class="px-2.5 py-1.5 font-mono text-[11px]" style="color: var(--muted);">@row.Detail</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+
+                    @if (_compiledSpec.Grammar is not null)
+                    {
+                        <div class="bp-card p-3 space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold">Synthesized Grammar</span>
+                                <span class="bp-pill bp-pill-neutral text-[10px]">
+                                    @(_compiledSpec.Grammar.IsRegularGrammar() ? "Right-Linear Regular" : "Context-Free")
+                                </span>
+                            </div>
+                            <pre class="text-xs font-mono p-2 rounded overflow-x-auto" style="background: var(--raised);">@_compiledSpec.Grammar.ToGrammarText()</pre>
+                        </div>
+                    }
+
+                    <div class="bp-card p-3 space-y-1.5">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold">Compiled Formal TM Stats</span>
+                            <span class="font-mono text-[11px] tnum" style="color: var(--muted);">
+                                @_compiledSpec.CompiledTm.Machine.States.Count states · @_compiledSpec.CompiledTm.Machine.Transitions.Count δ rules
+                            </span>
+                        </div>
+                        <pre class="text-[11px] font-mono p-2 rounded overflow-x-auto max-h-52" style="background: var(--raised);">@_compiledSpec.TmSchema.ToDslText()</pre>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* ===================================================================== *@
+    @* MODE 2: DFA / NFA STUDIO + CLOSURES + EQUIVALENCE & DECISIONS         *@
+    @* ===================================================================== *@
+    else if (_activeMode == StudioMode.DfaNfa)
+    {
+        <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+            @* Left: Source Bar + Interactive SVG + Playback *@
+            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+                <div class="flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-[260px]">
+                        <select class="bp-input !h-8 text-xs"
+                                value="@_faSourceKind"
+                                @onchange="e => _faSourceKind = e.Value!.ToString()!">
+                            <option value="regex">Regex</option>
+                            <option value="constraint">Constraint</option>
+                        </select>
+                        <input type="text"
+                               class="bp-input !h-8 font-mono text-xs flex-1 min-w-[160px]"
+                               placeholder="e.g. (a|b)*aba(a|b)*"
+                               @bind="_faSpecText" />
+                        <input type="text"
+                               class="bp-input !h-8 font-mono text-xs w-20"
+                               placeholder="a,b"
+                               title="Alphabet symbols"
+                               @bind="_faAlphabetText" />
+                        <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildFaFromSpec">Build</button>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <div class="flex items-center rounded-md p-0.5" style="background: var(--raised); border: 1px solid var(--border);">
+                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                    style="@(_faViewKind == "min" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                    @onclick='() => SwitchFaView("min")'>Min DFA</button>
+                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                    style="@(_faViewKind == "dfa" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                    @onclick='() => SwitchFaView("dfa")'>Subset DFA</button>
+                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                    style="@(_faViewKind == "nfa" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                    @onclick='() => SwitchFaView("nfa")'>NFA</button>
+                        </div>
+                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Complement current minimal DFA" @onclick="ApplyFaComplement">Complement</button>
+                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Kleene Star of current minimal DFA" @onclick="ApplyFaStar">Star (*)</button>
+                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Convert current DFA to Decidable Turing Machine" @onclick="SendDfaToTm">To TM →</button>
+                    </div>
+                </div>
+
+                @* Input Tape & Verdict Strip *@
+                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
+                        <input type="text"
+                               class="bp-input !h-7 font-mono text-xs w-36"
+                               @bind="_faInput"
+                               @bind:event="oninput" />
+                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="TraceFa">Trace</button>
+
+                        @foreach (var sample in _faSampleInputs)
+                        {
+                            <button type="button"
+                                    class="px-1.5 h-6 rounded text-[11px] font-mono cursor-pointer"
+                                    style="background: var(--raised); color: var(--muted); border: 1px solid var(--border);"
+                                    @onclick="() => { _faInput = sample; TraceFa(); }">
+                                @sample
+                            </button>
+                        }
+                    </div>
+
+                    @if (_faTimeline is not null)
+                    {
+                        var curStep = CurrentFaStep;
+                        <div class="flex items-center gap-2">
+                            @if (curStep is not null)
+                            {
+                                <span class="font-mono text-xs px-2 py-0.5 rounded" style="background: var(--raised); border: 1px solid var(--border);">
+                                    @curStep.State.Configuration
+                                </span>
+                            }
+                            <span class="bp-pill @(_faTimeline.IsSuccess ? "bp-pill-positive" : "bp-pill-negative")">
+                                @(_faTimeline.IsSuccess ? "Accepted" : "Rejected")
+                            </span>
+                        </div>
+                    }
+                </div>
+
+                <div class="flex-1 min-h-[260px]">
+                    <InteractiveSvgCanvas Scene="@CurrentFaScene"
+                                          SnapMotion="@AppState.SnapMotion"
+                                          ErrorBanner="@_faError"
+                                          ExportFileName="finite-automaton.svg" />
+                </div>
+
+                <PlaybackBar CurrentStep="@_faStepIndex"
+                             TotalSteps="@(_faTimeline?.Steps.Count ?? 0)"
+                             CurrentStepChanged="i => _faStepIndex = i"
+                             SnapMotion="@AppState.SnapMotion"
+                             SnapMotionChanged="v => { AppState.SnapMotion = v; AppState.Notify(); }" />
+            </div>
+
+            @* Right Inspector *@
+            <div class="w-full lg:w-[400px] xl:w-[430px] shrink-0 flex flex-col min-h-0" style="border-left: 1px solid var(--border);">
+                <div class="flex items-center px-3 shrink-0" style="border-bottom: 1px solid var(--border);">
+                    <button type="button" class="bp-tab" data-active="@(_faRightTab == "trace" ? "true" : "false")" @onclick='() => _faRightTab = "trace"'>Trace &amp; Table</button>
+                    <button type="button" class="bp-tab" data-active="@(_faRightTab == "rg" ? "true" : "false")" @onclick='() => _faRightTab = "rg"'>Regular Grammar</button>
+                    <button type="button" class="bp-tab" data-active="@(_faRightTab == "decide" ? "true" : "false")" @onclick='() => _faRightTab = "decide"'>Decisions &amp; Compare</button>
+                </div>
+
+                <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+                    @if (_faRightTab == "trace")
+                    {
+                        @if (CurrentFaStep is not null)
+                        {
+                            <div class="bp-card p-2.5 space-y-1">
+                                <div class="text-xs font-semibold">@CurrentFaStep.Title</div>
+                                <div class="text-xs" style="color: var(--muted);">@CurrentFaStep.Explanation</div>
+                            </div>
+                        }
+
+                        @if (_faTimeline is not null)
+                        {
+                            <div class="space-y-1">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Execution Steps</div>
+                                <div class="rounded-md overflow-hidden" style="border: 1px solid var(--border);">
+                                    @for (var i = 0; i < _faTimeline.Steps.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var st = _faTimeline.Steps[idx];
+                                        var isCur = idx == _faStepIndex;
+                                        <button type="button"
+                                                class="w-full text-left px-2.5 py-1.5 text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                                                style="@(isCur ? "background: var(--accent-soft); color: var(--text);" : "background: var(--surface); color: var(--muted);") border-bottom: 1px solid var(--rule);"
+                                                @onclick="() => _faStepIndex = idx">
+                                            <span class="font-mono tnum">@idx. @st.Title</span>
+                                            <span class="font-mono text-[11px]">@st.BadgeLabel</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        @if (_faViewKind != "nfa" && ActiveDfa is not null)
+                        {
+                            <div class="space-y-1.5">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Transition Matrix δ(q, σ)</div>
+                                <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
+                                    <table class="w-full text-xs text-left font-mono">
+                                        <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
+                                            <tr>
+                                                <th class="px-2.5 py-1.5">State</th>
+                                                @foreach (var sym in ActiveDfa.OrderedAlphabet)
+                                                {
+                                                    <th class="px-2.5 py-1.5">@sym</th>
+                                                }
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var q in ActiveDfa.OrderedStates)
+                                            {
+                                                var isCurState = CurrentFaStep?.State.CurrentState == q;
+                                                <tr style="@(isCurState ? "background: var(--accent-soft);" : "") border-bottom: 1px solid var(--rule);">
+                                                    <td class="px-2.5 py-1.5 font-semibold">
+                                                        @(q == ActiveDfa.StartState ? "→ " : "")@q@(ActiveDfa.AcceptStates.Contains(q) ? " *" : "")
+                                                    </td>
+                                                    @foreach (var sym in ActiveDfa.OrderedAlphabet)
+                                                    {
+                                                        <td class="px-2.5 py-1.5">@(ActiveDfa.Step(q, sym) ?? "—")</td>
+                                                    }
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="bp-card p-2.5 space-y-1">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Formal Quintuple</div>
+                                <pre class="text-[11px] font-mono whitespace-pre-wrap" style="color: var(--muted);">@ActiveDfa.ToFormalString()</pre>
+                            </div>
+                        }
+                        else if (_faNfa is not null)
+                        {
+                            <div class="bp-card p-2.5 space-y-1">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">NFA Formal Quintuple</div>
+                                <pre class="text-[11px] font-mono whitespace-pre-wrap max-h-64 overflow-y-auto" style="color: var(--muted);">@_faNfa.ToFormalString()</pre>
+                            </div>
+                        }
+                    }
+                    else if (_faRightTab == "rg" && _faMinDfa is not null)
+                    {
+                        var rg = RegularGrammarConverter.DfaToRegularGrammar(_faMinDfa);
+                        <div class="bp-card p-3 space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold">Right-Linear Regular Grammar</span>
+                                <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => SendGrammarToCfg(rg)">
+                                    Open in CFG Studio →
+                                </button>
+                            </div>
+                            <p class="text-xs" style="color: var(--muted);">
+                                Generated deterministically from minimal DFA: <code>δ(q, a) = p ⇒ q → a p</code> and <code>q ∈ F ⇒ q → e</code>.
+                            </p>
+                            <pre class="text-xs font-mono p-2.5 rounded overflow-x-auto" style="background: var(--raised);">@rg.ToGrammarText()</pre>
+                        </div>
+                    }
+                    else if (_faRightTab == "decide" && _faMinDfa is not null)
+                    {
+                        var emptyRes = FaOperations.IsEmpty(_faMinDfa);
+                        var univRes = FaOperations.IsUniversal(_faMinDfa);
+                        <div class="bp-card p-3 space-y-2">
+                            <div class="text-xs font-semibold">Single-Language Decisions</div>
+                            <div class="space-y-1.5 text-xs">
+                                <div class="flex items-start justify-between gap-2 p-2 rounded" style="background: var(--raised);">
+                                    <div>
+                                        <div class="font-medium">Emptiness: L(M₁) = ∅?</div>
+                                        <div class="text-[11px]" style="color: var(--muted);">@emptyRes.Explanation</div>
+                                    </div>
+                                    <span class="bp-pill @(emptyRes.Result ? "bp-pill-positive" : "bp-pill-neutral")">@(emptyRes.Result ? "Yes" : "No")</span>
+                                </div>
+                                <div class="flex items-start justify-between gap-2 p-2 rounded" style="background: var(--raised);">
+                                    <div>
+                                        <div class="font-medium">Universality: L(M₁) = Σ*?</div>
+                                        <div class="text-[11px]" style="color: var(--muted);">@univRes.Explanation</div>
+                                    </div>
+                                    <span class="bp-pill @(univRes.Result ? "bp-pill-positive" : "bp-pill-neutral")">@(univRes.Result ? "Yes" : "No")</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bp-card p-3 space-y-2.5">
+                            <div class="text-xs font-semibold">Compare &amp; Combine with Second Language M₂</div>
+                            <div class="flex items-center gap-1.5">
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs flex-1"
+                                       placeholder="Regex or constraint for M₂ (e.g. a*b*)"
+                                       @bind="_faCompareSpec" />
+                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="CompareWithSecondFa">Compare</button>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(_faCompareError))
+                            {
+                                <div class="text-xs p-2 rounded" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink);">@_faCompareError</div>
+                            }
+
+                            @if (_faCompareEquiv is not null && _faCompareSub12 is not null && _faCompareSub21 is not null)
+                            {
+                                <div class="space-y-1.5 text-xs">
+                                    <div class="flex items-start justify-between gap-2 p-2 rounded" style="background: var(--raised);">
+                                        <div>
+                                            <div class="font-medium">Equivalence: L(M₁) = L(M₂)?</div>
+                                            <div class="text-[11px]" style="color: var(--muted);">@_faCompareEquiv.Explanation</div>
+                                        </div>
+                                        <span class="bp-pill @(_faCompareEquiv.Result ? "bp-pill-positive" : "bp-pill-negative")">@(_faCompareEquiv.Result ? "Equal" : "Different")</span>
+                                    </div>
+                                    <div class="flex items-start justify-between gap-2 p-2 rounded" style="background: var(--raised);">
+                                        <div>
+                                            <div class="font-medium">Subset: L(M₁) ⊆ L(M₂)?</div>
+                                            <div class="text-[11px]" style="color: var(--muted);">@_faCompareSub12.Explanation</div>
+                                        </div>
+                                        <span class="bp-pill @(_faCompareSub12.Result ? "bp-pill-positive" : "bp-pill-neutral")">@(_faCompareSub12.Result ? "Yes" : "No")</span>
+                                    </div>
+                                    <div class="flex items-start justify-between gap-2 p-2 rounded" style="background: var(--raised);">
+                                        <div>
+                                            <div class="font-medium">Superset: L(M₂) ⊆ L(M₁)?</div>
+                                            <div class="text-[11px]" style="color: var(--muted);">@_faCompareSub21.Explanation</div>
+                                        </div>
+                                        <span class="bp-pill @(_faCompareSub21.Result ? "bp-pill-positive" : "bp-pill-neutral")">@(_faCompareSub21.Result ? "Yes" : "No")</span>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-1.5 pt-1">
+                                    <button type="button" class="bp-btn-secondary !h-7 text-xs" @onclick='() => CombineFa("union")'>Load M₁ ∪ M₂</button>
+                                    <button type="button" class="bp-btn-secondary !h-7 text-xs" @onclick='() => CombineFa("intersect")'>Load M₁ ∩ M₂</button>
+                                    <button type="button" class="bp-btn-secondary !h-7 text-xs" @onclick='() => CombineFa("diff")'>Load M₁ \ M₂</button>
+                                    <button type="button" class="bp-btn-secondary !h-7 text-xs" @onclick='() => CombineFa("concat")'>Load M₁ · M₂</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===================================================================== *@
+    @* MODE 3: CONTEXT-FREE GRAMMAR + EARLEY PARSER + PARSE TREE             *@
+    @* ===================================================================== *@
+    else if (_activeMode == StudioMode.Cfg)
+    {
+        <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+            @* Left: Input Tester + Parse Tree Canvas *@
+            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-medium" style="color: var(--muted);">String w:</span>
+                        <input type="text"
+                               class="bp-input !h-7 font-mono text-xs w-44"
+                               @bind="_cfgInput"
+                               @bind:event="oninput" />
+                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ParseCfgAndInput">Parse Tree</button>
+
+                        @foreach (var sample in _cfgSampleInputs)
+                        {
+                            <button type="button"
+                                    class="px-1.5 h-6 rounded text-[11px] font-mono cursor-pointer"
+                                    style="background: var(--raised); color: var(--muted); border: 1px solid var(--border);"
+                                    @onclick="() => { _cfgInput = sample; ParseCfgAndInput(); }">
+                                @sample
+                            </button>
+                        }
+                    </div>
+
+                    @if (_cfgParseResult is not null)
+                    {
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs" style="color: var(--muted);">@_cfgParseResult.Summary</span>
+                            <span class="bp-pill @(_cfgParseResult.Accepted ? "bp-pill-positive" : "bp-pill-negative")">
+                                @(_cfgParseResult.Accepted ? "Accepted" : "Rejected")
+                            </span>
+                        </div>
+                    }
+                </div>
+
+                <div class="flex-1 min-h-[280px]">
+                    <InteractiveSvgCanvas Scene="@_lastValidCfgScene"
+                                          SnapMotion="@AppState.SnapMotion"
+                                          ErrorBanner="@_cfgError"
+                                          ExportFileName="parse-tree.svg" />
+                </div>
+            </div>
+
+            @* Right: Grammar Editor + Conversions + Leftmost Derivation *@
+            <div class="w-full lg:w-[400px] xl:w-[430px] shrink-0 flex flex-col min-h-0 overflow-y-auto p-3 space-y-3"
+                 style="border-left: 1px solid var(--border);">
+                <div class="bp-card p-3 space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-xs font-semibold">Production Rules (G = (V, Σ, R, S))</span>
+                        @if (_currentCfg is not null)
+                        {
+                            <span class="bp-pill @(_currentCfg.IsRegularGrammar() ? "bp-pill-accent" : "bp-pill-neutral") text-[10px]">
+                                @(_currentCfg.IsRegularGrammar() ? "Right-Linear Regular" : "Context-Free")
+                            </span>
+                        }
+                    </div>
+
+                    <textarea class="bp-textarea w-full text-xs" rows="6" @bind="_cfgText"></textarea>
+
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ParseCfgAndInput">Apply Grammar</button>
+                        @if (_currentCfg is not null)
+                        {
+                            <button type="button" class="bp-btn-secondary !h-7 text-xs" @onclick="ConvertCurrentCfgToPda">
+                                Convert to PDA →
+                            </button>
+                            @if (_currentCfg.IsRegularGrammar())
+                            {
+                                <button type="button" class="bp-btn-secondary !h-7 text-xs" @onclick="ConvertCurrentCfgToNfa">
+                                    Convert to NFA/DFA →
+                                </button>
+                            }
+                        }
+                    </div>
+                </div>
+
+                @if (_cfgParseResult is { Accepted: true } && _cfgParseResult.DerivationSteps.Count > 0)
+                {
+                    <div class="bp-card p-3 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold">Leftmost Derivation</span>
+                            <span class="font-mono text-[11px] tnum" style="color: var(--muted);">@(_cfgParseResult.DerivationSteps.Count - 1) steps</span>
+                        </div>
+                        <div class="rounded-md overflow-hidden" style="border: 1px solid var(--border);">
+                            @for (var i = 0; i < _cfgParseResult.DerivationSteps.Count; i++)
+                            {
+                                var idx = i;
+                                var stepText = _cfgParseResult.DerivationSteps[idx];
+                                <div class="px-2.5 py-1.5 text-xs font-mono flex items-center gap-2"
+                                     style="border-bottom: 1px solid var(--rule); @(idx == _cfgParseResult.DerivationSteps.Count - 1 ? "background: var(--pill-positive-bg); color: var(--pill-positive-ink);" : "")">
+                                    <span class="tnum text-[11px] w-6 shrink-0" style="color: var(--faint);">@idx</span>
+                                    <span style="color: var(--faint);">@(idx == 0 ? " " : "⇒")</span>
+                                    <span class="break-all">@stepText</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_currentCfg is not null)
+                {
+                    <div class="bp-card p-3 space-y-1.5 text-xs">
+                        <div class="font-semibold">Formal Quadruple</div>
+                        <div class="font-mono text-[11px] space-y-1" style="color: var(--muted);">
+                            <div><strong>Start S:</strong> @_currentCfg.StartSymbol</div>
+                            <div><strong>Non-Terminals (V - Σ):</strong> { @string.Join(", ", _currentCfg.NonTerminals.OrderBy(x => x)) }</div>
+                            <div><strong>Terminals Σ:</strong> { @string.Join(", ", _currentCfg.Terminals.OrderBy(x => x)) }</div>
+                            <div><strong>Rules |R|:</strong> @_currentCfg.Rules.Count</div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* ===================================================================== *@
+    @* MODE 4: GENERALIZED 6-TUPLE PUSHDOWN AUTOMATON (EMPTY-STACK + FINAL)  *@
+    @* ===================================================================== *@
+    else if (_activeMode == StudioMode.Pda)
+    {
+        <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+            @* Left: Input Strip + Canvas + Live LIFO Stack + Playback *@
+            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
+                        <input type="text"
+                               class="bp-input !h-7 font-mono text-xs w-36"
+                               @bind="_pdaInput"
+                               @bind:event="oninput" />
+                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="TracePda">Trace</button>
+
+                        @foreach (var sample in _pdaSampleInputs)
+                        {
+                            <button type="button"
+                                    class="px-1.5 h-6 rounded text-[11px] font-mono cursor-pointer"
+                                    style="background: var(--raised); color: var(--muted); border: 1px solid var(--border);"
+                                    @onclick="() => { _pdaInput = sample; TracePda(); }">
+                                @sample
+                            </button>
+                        }
+                    </div>
+
+                    @if (_pdaResult is not null)
+                    {
+                        <div class="flex items-center gap-2">
+                            <span class="text-[11px] font-mono tnum" style="color: var(--muted);">@_pdaResult.ExploredConfigurations configs</span>
+                            <span class="bp-pill @(_pdaResult.Accepted ? "bp-pill-positive" : "bp-pill-negative")">
+                                @(_pdaResult.Accepted ? "Accepted (q ∈ F, e, e)" : "Rejected")
+                            </span>
+                        </div>
+                    }
+                </div>
+
+                @* Center: State Diagram + Live LIFO Stack Tower *@
+                <div class="flex-1 min-h-[260px] flex gap-2.5 overflow-hidden">
+                    <div class="flex-1 min-w-0">
+                        <InteractiveSvgCanvas Scene="@CurrentPdaScene"
+                                              SnapMotion="@AppState.SnapMotion"
+                                              ErrorBanner="@_pdaError"
+                                              ExportFileName="pda-diagram.svg" />
+                    </div>
+
+                    <div class="w-28 shrink-0 bp-card p-2 flex flex-col">
+                        <div class="text-[11px] font-semibold text-center pb-1.5 mb-1.5" style="border-bottom: 1px solid var(--border);">
+                            LIFO Stack
+                        </div>
+                        <div class="flex-1 flex flex-col justify-end gap-1 overflow-y-auto">
+                            @if (CurrentPdaStep is not null && CurrentPdaStep.State.StackFrames.Count > 0)
+                            {
+                                @for (var f = 0; f < CurrentPdaStep.State.StackFrames.Count; f++)
+                                {
+                                    var isTop = f == 0;
+                                    <div class="px-2 py-1 rounded text-center font-mono text-xs font-semibold relative"
+                                         style="@(isTop ? "background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent);" : "background: var(--raised); color: var(--text); border: 1px solid var(--border);")">
+                                        @CurrentPdaStep.State.StackFrames[f]
+                                        @if (isTop)
+                                        {
+                                            <span class="block text-[9px] font-sans uppercase tracking-wider opacity-80">TOP</span>
+                                        }
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="text-center py-4 font-mono text-xs rounded" style="background: var(--raised); color: var(--faint); border: 1px dashed var(--control);">
+                                    e (empty)
+                                </div>
+                            }
+                        </div>
+                        @if (CurrentPdaStep is not null)
+                        {
+                            <div class="pt-1.5 mt-1.5 text-center font-mono text-[10px]" style="border-top: 1px solid var(--border); color: var(--muted);">
+                                Rem: @CurrentPdaStep.State.RemainingInput
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <PlaybackBar CurrentStep="@_pdaStepIndex"
+                             TotalSteps="@(_pdaResult?.Timeline.Steps.Count ?? 0)"
+                             CurrentStepChanged="i => _pdaStepIndex = i"
+                             SnapMotion="@AppState.SnapMotion"
+                             SnapMotionChanged="v => { AppState.SnapMotion = v; AppState.Notify(); }" />
+            </div>
+
+            @* Right Inspector: 5-Column Trace Table + Transitions Editor *@
+            <div class="w-full lg:w-[440px] xl:w-[480px] shrink-0 flex flex-col min-h-0" style="border-left: 1px solid var(--border);">
+                <div class="flex items-center px-3 shrink-0" style="border-bottom: 1px solid var(--border);">
+                    <button type="button" class="bp-tab" data-active="@(_pdaRightTab == "table" ? "true" : "false")" @onclick='() => _pdaRightTab = "table"'>5-Column Trace</button>
+                    <button type="button" class="bp-tab" data-active="@(_pdaRightTab == "editor" ? "true" : "false")" @onclick='() => _pdaRightTab = "editor"'>Transitions Editor</button>
+                </div>
+
+                <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+                    @if (_pdaRightTab == "table" && _pdaResult is not null)
+                    {
+                        <div class="text-[11px]" style="color: var(--muted);">
+                            Acceptance requires final state <code>p ∈ F</code>, empty input <code>e</code>, and empty stack <code>e</code>. Click any row to jump.
+                        </div>
+                        <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
+                            <table class="w-full text-[11px] text-left">
+                                <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
+                                    <tr>
+                                        <th class="px-2 py-1.5 font-semibold">State</th>
+                                        <th class="px-2 py-1.5 font-semibold">Input</th>
+                                        <th class="px-2 py-1.5 font-semibold">Stack</th>
+                                        <th class="px-2 py-1.5 font-semibold">Transition Used</th>
+                                        <th class="px-2 py-1.5 font-semibold">Remarks</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var i = 0; i < _pdaResult.Rows.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var row = _pdaResult.Rows[idx];
+                                        var isCur = idx == _pdaStepIndex;
+                                        <tr class="cursor-pointer transition-colors"
+                                            style="@(isCur ? "background: var(--accent-soft); color: var(--text);" : "") border-bottom: 1px solid var(--rule);"
+                                            @onclick="() => _pdaStepIndex = System.Math.Min(idx, _pdaResult.Timeline.Steps.Count - 1)">
+                                            <td class="px-2 py-1.5 font-mono font-semibold">@row.State</td>
+                                            <td class="px-2 py-1.5 font-mono">@row.RemainingInput</td>
+                                            <td class="px-2 py-1.5 font-mono">@row.Stack</td>
+                                            <td class="px-2 py-1.5 font-mono whitespace-nowrap">@row.TransitionUsed</td>
+                                            <td class="px-2 py-1.5" style="color: var(--muted);">@row.Remarks</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="bp-card p-3 space-y-2">
+                            <div class="text-xs font-semibold">PDA Transitions ((from, read, pop), (to, push))</div>
+                            <textarea class="bp-textarea w-full text-xs" rows="10" @bind="_pdaTransitionsText"></textarea>
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-[11px]" style="color: var(--faint);">Use <code>e</code> for empty string; optional <code>start:</code> and <code>accept:</code> headers.</span>
+                                <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ParseAndTracePda">Apply &amp; Trace</button>
+                            </div>
+                        </div>
+
+                        @if (_currentPda is not null)
+                        {
+                            <div class="bp-card p-3 text-xs font-mono space-y-1" style="color: var(--muted);">
+                                <div><strong>K:</strong> { @string.Join(", ", _currentPda.OrderedStates) }</div>
+                                <div><strong>Σ:</strong> { @string.Join(", ", _currentPda.InputAlphabet.OrderBy(c => c)) }</div>
+                                <div><strong>Γ:</strong> { @string.Join(", ", _currentPda.StackAlphabet.OrderBy(s => s)) }</div>
+                                <div><strong>s:</strong> @_currentPda.StartState · <strong>F:</strong> { @string.Join(", ", _currentPda.AcceptStates) }</div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===================================================================== *@
+    @* MODE 5: TURING MACHINE SCHEMA COMPILER + MACRO/MICRO TAPE TRACER      *@
+    @* ===================================================================== *@
+    else if (_activeMode == StudioMode.TuringMachine)
+    {
+        <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+            @* Left: Input/Head/Granularity Bar + Horizontal Tape Strip + Schema Canvas + Playback *@
+            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
+                        <input type="text"
+                               class="bp-input !h-7 font-mono text-xs w-32"
+                               @bind="_tmInput"
+                               @bind:event="oninput" />
+                        <select class="bp-input !h-7 text-xs"
+                                title="Initial tape head position on #w#"
+                                value="@_tmHeadStart"
+                                @onchange="OnTmHeadStartChanged">
+                            <option value="@HeadStartMode.RightBlank">Head: Right # (#w[#])</option>
+                            <option value="@HeadStartMode.FirstSymbol">Head: First Cell (#[w]#)</option>
+                            <option value="@HeadStartMode.LeftBlank">Head: Left # ([ # ]w#)</option>
+                        </select>
+                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="RunTmTrace">Run</button>
+
+                        @foreach (var sample in _tmSampleInputs)
+                        {
+                            <button type="button"
+                                    class="px-1.5 h-6 rounded text-[11px] font-mono cursor-pointer"
+                                    style="background: var(--raised); color: var(--muted); border: 1px solid var(--border);"
+                                    @onclick="() => { _tmInput = sample; RunTmTrace(); }">
+                                @sample
+                            </button>
+                        }
+                    </div>
+
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <div class="flex items-center rounded-md p-0.5" style="background: var(--raised); border: 1px solid var(--border);">
+                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                    style="@(!_tmMicroMode ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                    @onclick="() => SwitchTmGranularity(false)">Macro (@(_tmTrace?.MacroTimeline.Steps.Count ?? 0))</button>
+                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                    style="@(_tmMicroMode ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                    @onclick="() => SwitchTmGranularity(true)">Micro (@(_tmTrace?.MicroTrace.Count ?? 0))</button>
+                        </div>
+
+                        @if (_tmTrace is not null)
+                        {
+                            @if (_tmTrace.AcceptedDecision is true)
+                            {
+                                <span class="bp-pill bp-pill-positive">Accepted (#y#)</span>
+                            }
+                            else if (_tmTrace.AcceptedDecision is false)
+                            {
+                                <span class="bp-pill bp-pill-negative">Rejected (#n#)</span>
+                            }
+                            else if (_tmTrace.HaltedNormally)
+                            {
+                                <span class="bp-pill bp-pill-accent font-mono">Output: @_tmTrace.TrimmedTape</span>
+                            }
+                            else
+                            {
+                                <span class="bp-pill bp-pill-warning">@_tmTrace.HaltReason</span>
+                            }
+                        }
+                    </div>
+                </div>
+
+                @* Interactive Horizontal Semi-Infinite Tape Strip *@
+                @{
+                    var tapeInfo = CurrentTmTapeSnapshot;
+                }
+                <div class="bp-card px-3 py-2.5 shrink-0 space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="bp-pill bp-pill-accent font-mono">@tapeInfo.StateLabel</span>
+                            <span class="font-medium">@tapeInfo.Summary</span>
+                        </div>
+                        <span class="font-mono text-[11px] tnum" style="color: var(--muted);">Head cell: @tapeInfo.HeadIndex</span>
+                    </div>
+
+                    <div class="flex items-end gap-1 overflow-x-auto pb-1">
+                        @for (var c = 0; c < tapeInfo.Tape.Length; c++)
+                        {
+                            var isHead = c == tapeInfo.HeadIndex;
+                            var ch = tapeInfo.Tape[c];
+                            <div class="flex flex-col items-center shrink-0">
+                                <span class="text-[9px] font-mono tnum mb-0.5"
+                                      style="@(isHead ? "color: var(--accent); font-weight: 700;" : "color: var(--faint);")">
+                                    @(isHead ? "▼" : c.ToString())
+                                </span>
+                                <div class="w-8 h-8 rounded flex items-center justify-center font-mono text-sm font-semibold transition-colors"
+                                     style="@(isHead
+                                         ? "background: var(--accent-soft); color: var(--accent); border: 2px solid var(--accent);"
+                                         : ch == '#'
+                                             ? "background: var(--raised); color: var(--faint); border: 1px solid var(--border);"
+                                             : "background: var(--surface); color: var(--text); border: 1px solid var(--control);")">
+                                    @ch
+                                </div>
+                                <span class="text-[9px] font-mono tnum mt-0.5" style="color: var(--faint);">@c</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* Schema Diagram Canvas *@
+                <div class="flex-1 min-h-[220px]">
+                    <InteractiveSvgCanvas Scene="@CurrentTmScene"
+                                          SnapMotion="@AppState.SnapMotion"
+                                          ErrorBanner="@_tmError"
+                                          ExportFileName="tm-schema.svg" />
+                </div>
+
+                <PlaybackBar CurrentStep="@_tmStepIndex"
+                             TotalSteps="@CurrentTmTotalSteps"
+                             CurrentStepChanged="i => _tmStepIndex = i"
+                             SnapMotion="@AppState.SnapMotion"
+                             SnapMotionChanged="v => { AppState.SnapMotion = v; AppState.Notify(); }" />
+            </div>
+
+            @* Right Inspector: Trace Table | Schema DSL Editor | Formal δ Quadruple Table *@
+            <div class="w-full lg:w-[430px] xl:w-[470px] shrink-0 flex flex-col min-h-0" style="border-left: 1px solid var(--border);">
+                <div class="flex items-center px-3 shrink-0" style="border-bottom: 1px solid var(--border);">
+                    <button type="button" class="bp-tab" data-active="@(_tmRightTab == "trace" ? "true" : "false")" @onclick='() => _tmRightTab = "trace"'>@(_tmMicroMode ? "Micro Trace" : "Macro Trace")</button>
+                    <button type="button" class="bp-tab" data-active="@(_tmRightTab == "dsl" ? "true" : "false")" @onclick='() => _tmRightTab = "dsl"'>Schema DSL</button>
+                    <button type="button" class="bp-tab" data-active="@(_tmRightTab == "table" ? "true" : "false")" @onclick='() => _tmRightTab = "table"'>Formal δ Table</button>
+                </div>
+
+                <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+                    @if (_tmRightTab == "trace" && _tmTrace is not null)
+                    {
+                        @if (!_tmMicroMode)
+                        {
+                            <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
+                                <table class="w-full text-[11px] text-left">
+                                    <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
+                                        <tr>
+                                            <th class="px-2 py-1.5 font-semibold">#</th>
+                                            <th class="px-2 py-1.5 font-semibold">Node</th>
+                                            <th class="px-2 py-1.5 font-semibold">Tape</th>
+                                            <th class="px-2 py-1.5 font-semibold">Head</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @for (var i = 0; i < _tmTrace.MacroTimeline.Steps.Count; i++)
+                                        {
+                                            var idx = i;
+                                            var st = _tmTrace.MacroTimeline.Steps[idx];
+                                            var isCur = idx == _tmStepIndex;
+                                            <tr class="cursor-pointer transition-colors"
+                                                style="@(isCur ? "background: var(--accent-soft); color: var(--text);" : "") border-bottom: 1px solid var(--rule);"
+                                                @onclick="() => _tmStepIndex = idx">
+                                                <td class="px-2 py-1.5 font-mono tnum">@idx</td>
+                                                <td class="px-2 py-1.5 font-mono font-semibold">@st.State.CurrentNodeLabel</td>
+                                                <td class="px-2 py-1.5 font-mono">@st.State.Tape</td>
+                                                <td class="px-2 py-1.5 font-mono tnum">@st.State.HeadIndex</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
+                                <table class="w-full text-[11px] text-left">
+                                    <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
+                                        <tr>
+                                            <th class="px-2 py-1.5 font-semibold">#</th>
+                                            <th class="px-2 py-1.5 font-semibold">Config (q, tape)</th>
+                                            <th class="px-2 py-1.5 font-semibold">Transition</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @for (var i = 0; i < _tmTrace.MicroTrace.Count; i++)
+                                        {
+                                            var idx = i;
+                                            var ms = _tmTrace.MicroTrace[idx];
+                                            var isCur = idx == _tmStepIndex;
+                                            <tr class="cursor-pointer transition-colors"
+                                                style="@(isCur ? "background: var(--accent-soft); color: var(--text);" : "") border-bottom: 1px solid var(--rule);"
+                                                @onclick="() => _tmStepIndex = idx">
+                                                <td class="px-2 py-1.5 font-mono tnum">@ms.Step</td>
+                                                <td class="px-2 py-1.5 font-mono whitespace-nowrap">@ms.ConfigString</td>
+                                                <td class="px-2 py-1.5 font-mono whitespace-nowrap" style="color: var(--muted);">@ms.TransitionText</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
+                    else if (_tmRightTab == "dsl")
+                    {
+                        <div class="bp-card p-3 space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold">Composable Machine-Schema DSL</span>
+                                <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="CompileAndRunTmDsl">Compile &amp; Run</button>
+                            </div>
+                            <textarea class="bp-textarea w-full text-xs" rows="13" @bind="_tmDslText"></textarea>
+                            <div class="text-[11px] space-y-1 pt-1" style="color: var(--muted);">
+                                <div><strong>Primitives &amp; Macros:</strong> <code>L</code>, <code>R</code>, <code>L_#</code>, <code>R_#</code>, <code>S_L</code> (Shift Left), <code>S_R</code> (Shift Right), <code>E</code> (Erase left), <code>C</code> (Copy), <code>Y</code> (write y), <code>N</code> (write n), or any bare symbol like <code>#</code>, <code>a</code>, <code>X</code>.</div>
+                                <div><strong>Routing Edges:</strong> <code>from -&gt; to : a, b</code>, <code>~#</code>, <code>other</code>, or unlabeled wildcard <code>from -&gt; to</code>.</div>
+                            </div>
+                        </div>
+                    }
+                    else if (_tmRightTab == "table" && _tmCompiled is not null)
+                    {
+                        var m = _tmCompiled.Machine;
+                        <div class="bp-card p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <div class="font-mono text-[11px]" style="color: var(--muted);">
+                                <strong>|K|</strong>=@m.States.Count · <strong>Σ</strong>={@string.Join(",", m.OrderedTapeAlphabet)} · <strong>s</strong>=@m.StartState · <strong>h</strong>=@m.HaltState
+                            </div>
+                            <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="ExportTmTable">Export TXT</button>
+                        </div>
+
+                        <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
+                            <table class="w-full text-[11px] text-left font-mono">
+                                <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
+                                    <tr>
+                                        <th class="px-2 py-1.5">q</th>
+                                        @foreach (var sym in m.OrderedTapeAlphabet)
+                                        {
+                                            <th class="px-2 py-1.5">@sym</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var q in m.OrderedStates)
+                                    {
+                                        if (q == m.HaltState) continue;
+                                        var activeMicroState = _tmMicroMode && _tmTrace is not null && _tmStepIndex < _tmTrace.MicroTrace.Count
+                                            ? _tmTrace.MicroTrace[_tmStepIndex].State
+                                            : null;
+                                        <tr style="@(activeMicroState == q ? "background: var(--accent-soft);" : "") border-bottom: 1px solid var(--rule);">
+                                            <td class="px-2 py-1 font-semibold">@q</td>
+                                            @foreach (var sym in m.OrderedTapeAlphabet)
+                                            {
+                                                var cell = m.Transitions.TryGetValue((q, sym), out var tr)
+                                                    ? $"({tr.NextState}, {tr.Action})"
+                                                    : "—";
+                                                <td class="px-2 py-1 whitespace-nowrap">@cell</td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
 </div>
+
+@code {
+    private enum StudioMode
+    {
+        Compiler,
+        DfaNfa,
+        Cfg,
+        Pda,
+        TuringMachine
+    }
+
+    private sealed record TabItem(StudioMode Mode, string Label);
+    private sealed record CompilerExample(string Label, string Spec, string SampleInput);
+    private sealed record CompilerTestRow(string Input, bool? Accepted, string Detail);
+    private sealed record TapeSnapshot(string StateLabel, string Summary, string Tape, int HeadIndex);
+
+    private static readonly TabItem[] StudioTabs =
+    [
+        new(StudioMode.Compiler, "Language Compiler"),
+        new(StudioMode.DfaNfa, "DFA / NFA"),
+        new(StudioMode.Cfg, "CFG & Parse Tree"),
+        new(StudioMode.Pda, "PDA"),
+        new(StudioMode.TuringMachine, "Turing Machine")
+    ];
+
+    private static readonly CompilerExample[] CompilerExamples =
+    [
+        new("starts bb ∧ contains bab ∧ ends aa", "starts with bb AND contains bab AND ends with aa", "bbabaa"),
+        new("contains aba", "contains aba", "bbabaa"),
+        new("even b ∧ ¬aba", "even b AND does not contain aba", "bbaa"),
+        new("a*b*a*", "a*b*a*", "abba"),
+        new("palindromes", "palindromes", "abba"),
+        new("a^n b^n", "a^n b^n", "aabb"),
+        new("a^2n b^n", "a^2n b^n", "aaaabb"),
+        new("a^n b^n c^n", "a^n b^n c^n", "aabbcc"),
+        new("#a > #b", "#a > #b", "aab"),
+        new("invert a and b", "invert a and b", "aab"),
+        new("snake_case to camelCase", "snake_case to camelCase", "my_var_name"),
+        new("XOR", "XOR", "1011")
+    ];
+
+    private StudioMode _activeMode = StudioMode.TuringMachine;
+    private string _selectedPresetKey = "tm-palindrome";
+
+    // --- Compiler Tab State ---
+    private LanguageSpecMode _specMode = LanguageSpecMode.Auto;
+    private string _specText = "starts with bb AND contains bab AND ends with aa";
+    private string _specAlphabetText = "a,b";
+    private string _compilerPreviewKind = "dfa";
+    private string _compilerTestInput = "bbabaa";
+    private string? _compilerError;
+    private LanguageSpecCompilationResult? _compiledSpec;
+    private DiagramScene? _lastValidCompilerScene;
+    private readonly List<CompilerTestRow> _compilerTestRows = new();
+
+    // --- DFA/NFA Tab State ---
+    private string _faSourceKind = "regex";
+    private string _faSpecText = "(a|b)*aba(a|b)*";
+    private string _faAlphabetText = "a,b";
+    private string _faViewKind = "min";
+    private string _faRightTab = "trace";
+    private string _faInput = "bbabaa";
+    private IReadOnlyList<string> _faSampleInputs = ["aba", "bbabaa", "aabb", "bbb", "e"];
+    private string? _faError;
+    private Dfa? _faMinDfa;
+    private Dfa? _faRawDfa;
+    private Nfa? _faNfa;
+    private TraceTimeline<FaStepState>? _faTimeline;
+    private DiagramScene? _lastValidFaScene;
+    private int _faStepIndex;
+    private string _faCompareSpec = "contains aba";
+    private string? _faCompareError;
+    private Dfa? _faCompareDfa;
+    private FaDecisionResult? _faCompareEquiv;
+    private FaDecisionResult? _faCompareSub12;
+    private FaDecisionResult? _faCompareSub21;
+
+    // --- CFG Tab State ---
+    private string _cfgText = "E -> E+T | T\nT -> T*F | F\nF -> (E) | x | y";
+    private string _cfgInput = "(x+y)+x";
+    private IReadOnlyList<string> _cfgSampleInputs = ["(x+y)+x", "x+y*x", "(x*y)+(y*x)", "x+"];
+    private string? _cfgError;
+    private Cfg? _currentCfg;
+    private CfgParseResult? _cfgParseResult;
+    private DiagramScene? _lastValidCfgScene;
+
+    // --- PDA Tab State ---
+    private string _pdaTransitionsText = "start: s\naccept: f\n((s, a, e), (s, a))\n((s, e, e), (f, e))\n((f, b, a), (f, e))";
+    private string _pdaInput = "aabb";
+    private IReadOnlyList<string> _pdaSampleInputs = ["aabb", "e", "ab", "abb", "aab"];
+    private string _pdaRightTab = "table";
+    private string? _pdaError;
+    private PushdownAutomaton? _currentPda;
+    private PdaTraceResult? _pdaResult;
+    private DiagramScene? _lastValidPdaScene;
+    private int _pdaStepIndex;
+
+    // --- TM Tab State ---
+    private string _tmDslText = string.Empty;
+    private string _tmInput = "abba";
+    private IReadOnlyList<string> _tmSampleInputs = ["e", "a", "aba", "abba", "abaa", "ab"];
+    private HeadStartMode _tmHeadStart = HeadStartMode.RightBlank;
+    private bool _tmMicroMode;
+    private string _tmRightTab = "trace";
+    private string? _tmError;
+    private TmCompiledSchema? _tmCompiled;
+    private TmSchemaTraceResult? _tmTrace;
+    private DiagramScene? _lastValidTmScene;
+    private int _tmStepIndex;
+
+    protected override void OnInitialized()
+    {
+        // Pre-initialize all 5 workbenches so tab switching is instant
+        CompileSpec();
+        BuildFaFromSpec();
+        ParseCfgAndInput();
+        ParseAndTracePda();
+
+        var initialKey = !string.IsNullOrWhiteSpace(AppState.PendingPresetKey) && AutomataPresets.ByKey.ContainsKey(AppState.PendingPresetKey)
+            ? AppState.PendingPresetKey
+            : "tm-palindrome";
+        AppState.PendingPresetKey = null;
+        LoadPreset(initialKey);
+    }
+
+    private void SwitchMode(StudioMode mode) => _activeMode = mode;
+
+    private static string FormatPresetGroup(AutomataPresetKind kind) => kind switch
+    {
+        AutomataPresetKind.FiniteAutomaton => "Finite Automata (DFA / NFA)",
+        AutomataPresetKind.ContextFreeGrammar => "Context-Free Grammars",
+        AutomataPresetKind.PushdownAutomaton => "Pushdown Automata (PDA)",
+        AutomataPresetKind.TuringMachine => "Turing Machines",
+        _ => kind.ToString()
+    };
+
+    private void OnPresetChanged(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(key))
+        {
+            LoadPreset(key);
+        }
+    }
+
+    private void LoadPreset(string key)
+    {
+        if (!AutomataPresets.ByKey.TryGetValue(key, out var preset)) return;
+        _selectedPresetKey = key;
+
+        switch (preset.Kind)
+        {
+            case AutomataPresetKind.FiniteAutomaton:
+                _activeMode = StudioMode.DfaNfa;
+                _faInput = preset.DefaultInput;
+                _faSampleInputs = preset.SampleInputs;
+                if (!string.IsNullOrWhiteSpace(preset.ConstraintSpec))
+                {
+                    _faSourceKind = "constraint";
+                    _faSpecText = preset.ConstraintSpec;
+                }
+                else if (!string.IsNullOrWhiteSpace(preset.RegexPattern))
+                {
+                    _faSourceKind = "regex";
+                    _faSpecText = preset.RegexPattern;
+                }
+                _faAlphabetText = "a,b";
+                BuildFaFromSpec();
+                break;
+
+            case AutomataPresetKind.ContextFreeGrammar:
+                _activeMode = StudioMode.Cfg;
+                _cfgText = preset.GrammarText ?? _cfgText;
+                _cfgInput = preset.DefaultInput;
+                _cfgSampleInputs = preset.SampleInputs;
+                ParseCfgAndInput();
+                break;
+
+            case AutomataPresetKind.PushdownAutomaton:
+                _activeMode = StudioMode.Pda;
+                _pdaTransitionsText = preset.PdaTransitionsText ?? _pdaTransitionsText;
+                _pdaInput = preset.DefaultInput;
+                _pdaSampleInputs = preset.SampleInputs;
+                ParseAndTracePda();
+                break;
+
+            case AutomataPresetKind.TuringMachine:
+                _activeMode = StudioMode.TuringMachine;
+                _tmDslText = preset.TmSchemaText ?? _tmDslText;
+                _tmInput = preset.DefaultInput;
+                _tmSampleInputs = preset.SampleInputs;
+                _tmHeadStart = HeadStartMode.RightBlank;
+                CompileAndRunTmDsl();
+                break;
+        }
+    }
+
+    private static IEnumerable<char>? ParseAlphabetInput(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var chars = raw
+            .Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => s.Length == 1)
+            .Select(s => s[0])
+            .Distinct()
+            .ToList();
+        return chars.Count > 0 ? chars : null;
+    }
+
+    // ==================== COMPILER MODE ====================
+
+    private void CompileSpec()
+    {
+        try
+        {
+            _compilerError = null;
+            var alpha = _specMode == LanguageSpecMode.Parametric ? null : ParseAlphabetInput(_specAlphabetText);
+            _compiledSpec = LanguageSpecCompiler.Compile(_specText, _specMode, alpha);
+            _compilerPreviewKind = _compiledSpec.MinimalDfa is not null
+                ? "dfa"
+                : _compiledSpec.Pda is not null
+                    ? "pda"
+                    : "tm";
+            _lastValidCompilerScene = GetCompilerPreviewScene();
+            _compilerTestRows.Clear();
+            RunCompilerTest();
+        }
+        catch (Exception ex)
+        {
+            _compilerError = ex.Message;
+        }
+    }
+
+    private void RunCompilerExample(string spec, string sampleInput)
+    {
+        _specMode = LanguageSpecMode.Auto;
+        _specText = spec;
+        _specAlphabetText = spec.Contains("XOR", StringComparison.OrdinalIgnoreCase) || spec.Contains("snake", StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : "a,b";
+        _compilerTestInput = sampleInput;
+        CompileSpec();
+    }
+
+    private DiagramScene? GetCompilerPreviewScene()
+    {
+        if (_compiledSpec is null) return _lastValidCompilerScene;
+        var scene = _compilerPreviewKind switch
+        {
+            "dfa" when _compiledSpec.MinimalDfa is not null => _compiledSpec.MinimalDfa.ToDiagramScene(caption: _compiledSpec.Title),
+            "nfa" when _compiledSpec.Nfa is not null => _compiledSpec.Nfa.ToDiagramScene(caption: _compiledSpec.Title),
+            "pda" when _compiledSpec.Pda is not null => _compiledSpec.Pda.ToDiagramScene(caption: _compiledSpec.Title),
+            _ => _compiledSpec.CompiledTm.SchemaScene
+        };
+        _lastValidCompilerScene = scene;
+        return scene;
+    }
+
+    private void RunCompilerTest()
+    {
+        if (_compiledSpec is null) return;
+        var input = string.IsNullOrEmpty(_compilerTestInput) ? "e" : _compilerTestInput;
+        var tmRes = _compiledSpec.CompiledTm.Trace(input);
+        bool? accepted = _compiledSpec.MinimalDfa is not null
+            ? _compiledSpec.MinimalDfa.Accepts(input)
+            : tmRes.AcceptedDecision;
+
+        var detail = _compiledSpec.LanguageClass == LanguageClass.Transducer
+            ? $"Tape: {tmRes.TrimmedTape} ({tmRes.MicroTrace.Count - 1} steps)"
+            : $"TM: {tmRes.TrimmedTape} ({tmRes.MacroTrace.Count - 1} macro / {tmRes.MicroTrace.Count - 1} micro)";
+
+        _compilerTestRows.Insert(0, new CompilerTestRow(input, accepted, detail));
+        if (_compilerTestRows.Count > 8) _compilerTestRows.RemoveAt(_compilerTestRows.Count - 1);
+    }
+
+    private void OpenCompiledInDfa()
+    {
+        if (_compiledSpec?.MinimalDfa is null) return;
+        _faMinDfa = _compiledSpec.MinimalDfa;
+        _faRawDfa = _compiledSpec.MinimalDfa;
+        _faNfa = _compiledSpec.Nfa ?? _compiledSpec.MinimalDfa.ToNfa();
+        _faSpecText = _compiledSpec.Specification;
+        _faSourceKind = _compiledSpec.ResolvedMode == LanguageSpecMode.Constraint ? "constraint" : "regex";
+        _faViewKind = "min";
+        _faInput = _compilerTestInput;
+        _faError = null;
+        TraceFa();
+        _activeMode = StudioMode.DfaNfa;
+    }
+
+    private void OpenCompiledInCfg()
+    {
+        if (_compiledSpec?.Grammar is null) return;
+        _cfgText = _compiledSpec.Grammar.ToGrammarText();
+        _cfgInput = _compilerTestInput;
+        ParseCfgAndInput();
+        _activeMode = StudioMode.Cfg;
+    }
+
+    private void OpenCompiledInPda()
+    {
+        if (_compiledSpec?.Pda is null) return;
+        _pdaTransitionsText = _compiledSpec.Pda.ToTransitionsText();
+        _pdaInput = _compilerTestInput;
+        ParseAndTracePda();
+        _activeMode = StudioMode.Pda;
+    }
+
+    private void OpenCompiledInTm()
+    {
+        if (_compiledSpec is null) return;
+        _tmDslText = _compiledSpec.TmSchema.ToDslText();
+        _tmInput = _compilerTestInput;
+        _tmHeadStart = _compiledSpec.TmSchema.HeadStart;
+        CompileAndRunTmDsl();
+        _activeMode = StudioMode.TuringMachine;
+    }
+
+    // ==================== DFA / NFA MODE ====================
+
+    private Dfa? ActiveDfa => _faViewKind == "dfa" ? _faRawDfa : _faMinDfa;
+
+    private TraceStep<FaStepState>? CurrentFaStep =>
+        _faTimeline is { Steps.Count: > 0 }
+            ? _faTimeline.Steps[System.Math.Clamp(_faStepIndex, 0, _faTimeline.Steps.Count - 1)]
+            : null;
+
+    private DiagramScene? CurrentFaScene => CurrentFaStep?.State.Scene ?? _lastValidFaScene;
+
+    private void BuildFaFromSpec()
+    {
+        try
+        {
+            _faError = null;
+            var alpha = ParseAlphabetInput(_faAlphabetText);
+            if (_faSourceKind == "constraint")
+            {
+                var dfa = LanguageSpecCompiler.CompileConstraintToDfa(_faSpecText, alpha);
+                _faMinDfa = dfa;
+                _faRawDfa = dfa;
+                _faNfa = dfa.ToNfa();
+            }
+            else
+            {
+                var compiled = RegexCompiler.Compile(_faSpecText, alpha);
+                _faMinDfa = compiled.MinimalDfa;
+                _faRawDfa = compiled.Dfa;
+                _faNfa = compiled.Nfa;
+            }
+            TraceFa();
+        }
+        catch (Exception ex)
+        {
+            _faError = ex.Message;
+        }
+    }
+
+    private void SwitchFaView(string view)
+    {
+        _faViewKind = view;
+        TraceFa();
+    }
+
+    private void TraceFa()
+    {
+        if (_faViewKind == "nfa" && _faNfa is not null)
+        {
+            _faTimeline = FaTracer.Trace(_faNfa, _faInput);
+        }
+        else if (ActiveDfa is not null)
+        {
+            _faTimeline = FaTracer.Trace(ActiveDfa, _faInput);
+        }
+        _faStepIndex = 0;
+        if (CurrentFaStep is not null)
+        {
+            _lastValidFaScene = CurrentFaStep.State.Scene;
+        }
+    }
+
+    private void ApplyFaComplement()
+    {
+        if (_faMinDfa is null) return;
+        _faMinDfa = FaOperations.Complement(_faMinDfa);
+        _faRawDfa = _faMinDfa;
+        _faNfa = _faMinDfa.ToNfa();
+        _faViewKind = "min";
+        TraceFa();
+    }
+
+    private void ApplyFaStar()
+    {
+        if (_faMinDfa is null) return;
+        _faMinDfa = FaOperations.KleeneStar(_faMinDfa);
+        _faRawDfa = _faMinDfa;
+        _faNfa = _faMinDfa.ToNfa();
+        _faViewKind = "min";
+        TraceFa();
+    }
+
+    private void SendDfaToTm()
+    {
+        if (_faMinDfa is null) return;
+        var schema = LanguageSpecCompiler.DfaToDecidableTmSchema(_faMinDfa, $"Decider ({_faSpecText})");
+        _tmDslText = schema.ToDslText();
+        _tmInput = _faInput;
+        _tmHeadStart = HeadStartMode.RightBlank;
+        CompileAndRunTmDsl();
+        _activeMode = StudioMode.TuringMachine;
+    }
+
+    private void SendGrammarToCfg(Cfg grammar)
+    {
+        _cfgText = grammar.ToGrammarText();
+        _cfgInput = _faInput;
+        ParseCfgAndInput();
+        _activeMode = StudioMode.Cfg;
+    }
+
+    private void CompareWithSecondFa()
+    {
+        if (_faMinDfa is null) return;
+        try
+        {
+            _faCompareError = null;
+            var compiled = LanguageSpecCompiler.Compile(_faCompareSpec, LanguageSpecMode.Auto, _faMinDfa.OrderedAlphabet);
+            if (compiled.MinimalDfa is null)
+            {
+                _faCompareError = "Second specification must be a regular expression or Boolean regular constraint.";
+                return;
+            }
+            _faCompareDfa = compiled.MinimalDfa;
+            _faCompareEquiv = FaOperations.AreEquivalent(_faMinDfa, _faCompareDfa);
+            _faCompareSub12 = FaOperations.IsSubsetOf(_faMinDfa, _faCompareDfa);
+            _faCompareSub21 = FaOperations.IsSubsetOf(_faCompareDfa, _faMinDfa);
+        }
+        catch (Exception ex)
+        {
+            _faCompareError = ex.Message;
+        }
+    }
+
+    private void CombineFa(string op)
+    {
+        if (_faMinDfa is null || _faCompareDfa is null) return;
+        _faMinDfa = op switch
+        {
+            "union" => FaOperations.Union(_faMinDfa, _faCompareDfa),
+            "intersect" => FaOperations.Intersection(_faMinDfa, _faCompareDfa),
+            "diff" => FaOperations.Difference(_faMinDfa, _faCompareDfa),
+            "concat" => FaOperations.Concatenation(_faMinDfa, _faCompareDfa),
+            _ => _faMinDfa
+        };
+        _faRawDfa = _faMinDfa;
+        _faNfa = _faMinDfa.ToNfa();
+        _faViewKind = "min";
+        TraceFa();
+    }
+
+    // ==================== CFG MODE ====================
+
+    private void ParseCfgAndInput()
+    {
+        try
+        {
+            _cfgError = null;
+            _currentCfg = Cfg.ParseFromText(_cfgText);
+            _cfgParseResult = CfgParser.Parse(_currentCfg, _cfgInput);
+            _lastValidCfgScene = _cfgParseResult.ParseTreeScene;
+        }
+        catch (Exception ex)
+        {
+            _cfgError = ex.Message;
+        }
+    }
+
+    private void ConvertCurrentCfgToPda()
+    {
+        if (_currentCfg is null) return;
+        var pda = CfgToPdaConverter.Convert(_currentCfg);
+        _pdaTransitionsText = pda.ToTransitionsText();
+        _pdaInput = _cfgInput;
+        ParseAndTracePda();
+        _activeMode = StudioMode.Pda;
+    }
+
+    private void ConvertCurrentCfgToNfa()
+    {
+        if (_currentCfg is null || !_currentCfg.IsRegularGrammar()) return;
+        var nfa = RegularGrammarConverter.RegularGrammarToNfa(_currentCfg);
+        _faNfa = nfa;
+        _faRawDfa = nfa.ToDfa();
+        _faMinDfa = _faRawDfa.Minimize();
+        _faViewKind = "nfa";
+        _faInput = _cfgInput;
+        _faError = null;
+        TraceFa();
+        _activeMode = StudioMode.DfaNfa;
+    }
+
+    // ==================== PDA MODE ====================
+
+    private TraceStep<PdaStepState>? CurrentPdaStep =>
+        _pdaResult is { Timeline.Steps.Count: > 0 }
+            ? _pdaResult.Timeline.Steps[System.Math.Clamp(_pdaStepIndex, 0, _pdaResult.Timeline.Steps.Count - 1)]
+            : null;
+
+    private DiagramScene? CurrentPdaScene => CurrentPdaStep?.State.Scene ?? _lastValidPdaScene;
+
+    private void ParseAndTracePda()
+    {
+        try
+        {
+            _pdaError = null;
+            _currentPda = PushdownAutomaton.ParseTransitions(_pdaTransitionsText);
+            TracePda();
+        }
+        catch (Exception ex)
+        {
+            _pdaError = ex.Message;
+        }
+    }
+
+    private void TracePda()
+    {
+        if (_currentPda is null) return;
+        _pdaResult = PdaTracer.Trace(_currentPda, _pdaInput);
+        _pdaStepIndex = 0;
+        if (CurrentPdaStep is not null)
+        {
+            _lastValidPdaScene = CurrentPdaStep.State.Scene;
+        }
+    }
+
+    // ==================== TURING MACHINE MODE ====================
+
+    private int CurrentTmTotalSteps => _tmTrace is null
+        ? 0
+        : _tmMicroMode ? _tmTrace.MicroTrace.Count : _tmTrace.MacroTimeline.Steps.Count;
+
+    private TapeSnapshot CurrentTmTapeSnapshot
+    {
+        get
+        {
+            if (_tmTrace is null)
+            {
+                return new("—", "No trace available", "##", 1);
+            }
+
+            if (_tmMicroMode && _tmTrace.MicroTrace.Count > 0)
+            {
+                var idx = System.Math.Clamp(_tmStepIndex, 0, _tmTrace.MicroTrace.Count - 1);
+                var ms = _tmTrace.MicroTrace[idx];
+                return new(ms.State, ms.TransitionText, ms.Tape, ms.HeadIndex);
+            }
+
+            if (_tmTrace.MacroTimeline.Steps.Count > 0)
+            {
+                var idx = System.Math.Clamp(_tmStepIndex, 0, _tmTrace.MacroTimeline.Steps.Count - 1);
+                var st = _tmTrace.MacroTimeline.Steps[idx];
+                return new(st.State.CurrentNodeLabel, st.State.ActionSummary, st.State.Tape, st.State.HeadIndex);
+            }
+
+            return new(_tmTrace.FinalState, _tmTrace.HaltReason.ToString(), _tmTrace.FinalTape, _tmTrace.FinalHeadIndex);
+        }
+    }
+
+    private DiagramScene? CurrentTmScene
+    {
+        get
+        {
+            if (_tmTrace is null) return _lastValidTmScene;
+            if (!_tmMicroMode && _tmTrace.MacroTimeline.Steps.Count > 0)
+            {
+                var idx = System.Math.Clamp(_tmStepIndex, 0, _tmTrace.MacroTimeline.Steps.Count - 1);
+                var scene = _tmTrace.MacroTimeline.Steps[idx].State.SchemaScene;
+                _lastValidTmScene = scene;
+                return scene;
+            }
+            return _tmTrace.SchemaDiagram;
+        }
+    }
+
+    private void CompileAndRunTmDsl()
+    {
+        try
+        {
+            _tmError = null;
+            var schema = TmSchemaParser.Parse(_tmDslText, "Turing Machine Schema");
+            _tmCompiled = TmSchemaCompiler.Compile(schema);
+            RunTmTrace();
+        }
+        catch (Exception ex)
+        {
+            _tmError = ex.Message;
+        }
+    }
+
+    private void RunTmTrace()
+    {
+        if (_tmCompiled is null) return;
+        _tmTrace = _tmCompiled.Trace(_tmInput, headStartOverride: _tmHeadStart);
+        _tmStepIndex = 0;
+        _lastValidTmScene = CurrentTmScene;
+    }
+
+    private void OnTmHeadStartChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<HeadStartMode>(e.Value?.ToString(), out var mode))
+        {
+            _tmHeadStart = mode;
+            RunTmTrace();
+        }
+    }
+
+    private void SwitchTmGranularity(bool micro)
+    {
+        _tmMicroMode = micro;
+        _tmStepIndex = 0;
+    }
+
+    private async Task ExportTmTable()
+    {
+        if (_tmCompiled is null) return;
+        await JS.InvokeVoidAsync("SuperCs.storage.downloadTextFile", "turing-machine-table.txt", _tmCompiled.Machine.ToTransitionTableText(), "text/plain;charset=utf-8");
+    }
+}

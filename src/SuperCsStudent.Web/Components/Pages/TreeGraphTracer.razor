@@ -1,6 +1,832 @@
 @page "/structures"
+@inject AppStateService AppState
 
-<div class="p-6">
-    <h1 class="text-xl font-semibold">Tree & Graph Tracer</h1>
-    <p class="text-sm mt-1" style="color: var(--muted);">Initializing engine integration...</p>
+@using System.Text.Json
+@using SuperCsStudent.Structures.Config
+@using SuperCsStudent.Structures.Graphs
+@using SuperCsStudent.Structures.Presets
+@using SuperCsStudent.Structures.Trees
+
+<div class="flex flex-col h-full min-h-0">
+    @* Studio Header Bar *@
+    <div class="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
+        <div class="flex items-center gap-2.5 flex-wrap">
+            <h1 class="text-base font-semibold tracking-tight whitespace-nowrap">Tree & Graph Tracer</h1>
+
+            <div class="flex items-center rounded-md p-0.5 flex-wrap" style="background: var(--raised); border: 1px solid var(--border);">
+                @foreach (var cat in Categories)
+                {
+                    var active = _category == cat.Kind;
+                    <button type="button"
+                            class="px-2.5 h-7 rounded text-xs font-medium cursor-pointer transition-colors"
+                            style="@(active ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                            @onclick="() => SwitchCategory(cat.Kind)">
+                        @cat.Label
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <select class="bp-input !h-8 text-xs max-w-[240px]"
+                    value="@_selectedPresetKey"
+                    @onchange="OnPresetChanged">
+                @foreach (var p in StructurePresets.All)
+                {
+                    <option value="@p.Key">@p.Title</option>
+                }
+            </select>
+
+            <button type="button"
+                    class="bp-btn-secondary !h-8 text-xs"
+                    style="@(_rulesOpen ? "border-color: var(--accent); background: var(--accent-soft); color: var(--accent);" : "")"
+                    @onclick="() => _rulesOpen = !_rulesOpen">
+                Ruleset: @(_category == StructureCategory.Graph ? _graphRuleset.Name : _treeRuleset.Name)
+            </button>
+        </div>
+    </div>
+
+    @* Collapsible Ruleset Config Strip *@
+    @if (_rulesOpen)
+    {
+        <div class="px-4 py-3 shrink-0 space-y-2.5" style="background: var(--raised); border-bottom: 1px solid var(--border);">
+            @if (_category == StructureCategory.Graph)
+            {
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-semibold">Graph Algorithm Ruleset</span>
+                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyGraphRuleset(GraphRuleset.CourseStandard)">Course Standard</button>
+                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyGraphRuleset(GraphRuleset.ClassicTextbook)">Level-By-Level + Full</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                    <label class="bp-card p-2 flex items-center justify-between gap-2">
+                        <span>Neighbor order</span>
+                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_graphRuleset.NeighborOrder"
+                                @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, NeighborOrder = Enum.Parse<NeighborOrder>(e.Value!.ToString()!) })">
+                            <option value="@NeighborOrder.AlphabeticalAsc">A → Z</option>
+                            <option value="@NeighborOrder.AlphabeticalDesc">Z → A</option>
+                            <option value="@NeighborOrder.InsertionOrder">Insertion</option>
+                        </select>
+                    </label>
+                    <label class="bp-card p-2 flex items-center justify-between gap-2">
+                        <span>DFS mode</span>
+                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_graphRuleset.DfsMode"
+                                @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, DfsMode = Enum.Parse<DfsMode>(e.Value!.ToString()!) })">
+                            <option value="@DfsMode.Recursive">Recursive</option>
+                            <option value="@DfsMode.IterativeStack">Iterative Stack</option>
+                        </select>
+                    </label>
+                    <label class="bp-card p-2 flex items-center justify-between gap-2">
+                        <span>BFS mode</span>
+                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_graphRuleset.BfsMode"
+                                @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, BfsMode = Enum.Parse<BfsMode>(e.Value!.ToString()!) })">
+                            <option value="@BfsMode.QueueBased">Queue</option>
+                            <option value="@BfsMode.LevelByLevel">Level-by-Level</option>
+                        </select>
+                    </label>
+                    <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
+                        <span>Disconnected</span>
+                        <input type="checkbox" class="accent-[var(--accent)]" checked="@_graphRuleset.TraverseDisconnected"
+                               @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, TraverseDisconnected = (bool)e.Value! })" />
+                    </label>
+                    <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
+                        <span>Edge labels</span>
+                        <input type="checkbox" class="accent-[var(--accent)]" checked="@_graphRuleset.ShowEdgeClassification"
+                               @onchange="e => ApplyGraphRuleset(_graphRuleset with { Name = CustomLabel, ShowEdgeClassification = (bool)e.Value! })" />
+                    </label>
+                </div>
+            }
+            else
+            {
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-semibold">Tree Algorithm Ruleset</span>
+                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyTreeRuleset(TreeRuleset.CourseStandard)">Course Standard</button>
+                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyTreeRuleset(TreeRuleset.ClassicTextbook)">Classic Textbook</button>
+                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => ApplyTreeRuleset(TreeRuleset.StandardRotations)">Standard Rotations</button>
+                    </div>
+                    <span class="text-xs" style="color: var(--muted);">Switching rules replays the active script automatically.</span>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <label class="bp-card p-2 flex items-center justify-between gap-2">
+                        <span>2-Child delete</span>
+                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.DeletionReplacement"
+                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, DeletionReplacement = Enum.Parse<DeletionReplacement>(e.Value!.ToString()!) })">
+                            <option value="@DeletionReplacement.InOrderSuccessor">In-Order Successor</option>
+                            <option value="@DeletionReplacement.InOrderPredecessor">In-Order Predecessor</option>
+                        </select>
+                    </label>
+
+                    <label class="bp-card p-2 flex items-center justify-between gap-2">
+                        <span>Splay delete</span>
+                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.SplayDeleteStrategy"
+                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, SplayDeleteStrategy = Enum.Parse<SplayDeleteStrategy>(e.Value!.ToString()!) })">
+                            <option value="@SplayDeleteStrategy.BstDeleteThenSplayParent">BST Delete → Splay Parent</option>
+                            <option value="@SplayDeleteStrategy.SplayTargetRemoveThenSplayMaxLeft">Splay Target → Max(Left)</option>
+                            <option value="@SplayDeleteStrategy.SplayTargetRemoveThenSplayMinRight">Splay Target → Min(Right)</option>
+                        </select>
+                    </label>
+
+                    <label class="bp-card p-2 flex items-center justify-between gap-2">
+                        <span>(2,4) split key</span>
+                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.TwoFourSplitPromotion"
+                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourSplitPromotion = Enum.Parse<TwoFourSplitPromotion>(e.Value!.ToString()!) })">
+                            <option value="@TwoFourSplitPromotion.ThirdKeyRightMiddle">3rd key (k3, right-mid)</option>
+                            <option value="@TwoFourSplitPromotion.SecondKeyLeftMiddle">2nd key (k2, left-mid)</option>
+                        </select>
+                    </label>
+
+                    <label class="bp-card p-2 flex items-center justify-between gap-2">
+                        <span>(2,4) underflow</span>
+                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.TwoFourUnderflowSibling"
+                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, TwoFourUnderflowSibling = Enum.Parse<TwoFourUnderflowSibling>(e.Value!.ToString()!) })">
+                            <option value="@TwoFourUnderflowSibling.RightSiblingFirst">Right sibling first</option>
+                            <option value="@TwoFourUnderflowSibling.LeftSiblingFirst">Left sibling first</option>
+                        </select>
+                    </label>
+
+                    <label class="bp-card p-2 flex items-center justify-between gap-2">
+                        <span>AVL equal-height</span>
+                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.AvlEqualHeightTieBreaker"
+                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, AvlEqualHeightTieBreaker = Enum.Parse<AvlEqualHeightTieBreaker>(e.Value!.ToString()!) })">
+                            <option value="@AvlEqualHeightTieBreaker.SameSideSingleRotation">Same-side (single)</option>
+                            <option value="@AvlEqualHeightTieBreaker.OppositeSideDoubleRotation">Opposite-side (double)</option>
+                        </select>
+                    </label>
+
+                    <label class="bp-card p-2 flex items-center justify-between gap-2">
+                        <span>Height base</span>
+                        <select class="bp-input !h-6 !px-1.5 text-[11px]" value="@_treeRuleset.HeightConvention"
+                                @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, HeightConvention = Enum.Parse<HeightConvention>(e.Value!.ToString()!) })">
+                            <option value="@HeightConvention.LeafIsOne">Leaf = 1 (null = 0)</option>
+                            <option value="@HeightConvention.LeafIsZero">Edge-based (leaf = 0)</option>
+                        </select>
+                    </label>
+
+                    <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
+                        <span>Sentinel □ leaves</span>
+                        <input type="checkbox" class="accent-[var(--accent)]" checked="@_treeRuleset.ShowExternalSentinels"
+                               @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowExternalSentinels = (bool)e.Value! })" />
+                    </label>
+
+                    <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
+                        <span>RB ↔ (2,4) mirror</span>
+                        <input type="checkbox" class="accent-[var(--accent)]" checked="@_treeRuleset.ShowTwoFourIsomorphism"
+                               @onchange="e => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowTwoFourIsomorphism = (bool)e.Value! })" />
+                    </label>
+                </div>
+            }
+        </div>
+    }
+
+    @* Quick Action Bar *@
+    <div class="px-4 py-2 flex flex-wrap items-center gap-2 shrink-0" style="border-bottom: 1px solid var(--border); background: var(--surface);">
+        @if (_category == StructureCategory.BinaryTree)
+        {
+            <input type="text" class="bp-input !h-8 w-24 font-mono text-xs" placeholder="Parent" @bind="_btParent" />
+            <input type="text" class="bp-input !h-8 w-24 font-mono text-xs" placeholder="Label" @bind="_btLabel" />
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="BtAddRoot">Add Root</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="BtAddLeft">Add Left</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="BtAddRight">Add Right</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="BtRemove">Remove</button>
+            <span class="w-px h-5" style="background: var(--border);"></span>
+            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick='() => RunBinaryTraversal("pre")'>Preorder</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick='() => RunBinaryTraversal("in")'>Inorder</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick='() => RunBinaryTraversal("post")'>Postorder</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick='() => RunBinaryTraversal("bfs")'>BFS</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick='() => RunBinaryTraversal("euler")'>Euler Tour</button>
+        }
+        else if (_category == StructureCategory.Graph)
+        {
+            <select class="bp-input !h-8 text-xs" @bind="_graphAlgorithm">
+                <option value="BFS">BFS Traversal</option>
+                <option value="DFS">DFS Traversal</option>
+                <option value="Dijkstra">Dijkstra Shortest Path</option>
+                <option value="Prim">Prim-Jarník MST</option>
+                <option value="Kruskal">Kruskal MST</option>
+            </select>
+            <input type="text" class="bp-input !h-8 w-24 font-mono text-xs" placeholder="Start (e.g. BWI)" @bind="_graphStartVertex" />
+            <label class="flex items-center gap-1.5 text-xs cursor-pointer" style="color: var(--muted);">
+                <input type="checkbox" class="accent-[var(--accent)]" @bind="_graphDirected" @bind:after="RebuildGraphFromEditor" />
+                <span>Directed</span>
+            </label>
+            <label class="flex items-center gap-1.5 text-xs cursor-pointer" style="color: var(--muted);">
+                <input type="checkbox" class="accent-[var(--accent)]" @bind="_graphWeighted" @bind:after="RebuildGraphFromEditor" />
+                <span>Weighted</span>
+            </label>
+            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="RunGraphAlgorithm">Run @_graphAlgorithm</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="() => _graphEditorOpen = !_graphEditorOpen">
+                @(_graphEditorOpen ? "Hide Edge Editor" : "Edit Edges")
+            </button>
+        }
+        else
+        {
+            <input type="number" class="bp-input !h-8 w-24 font-mono text-xs" placeholder="Key" @bind="_singleKey" />
+            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="RunSingleInsert">Insert</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="RunSingleDelete">Delete</button>
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="RunSingleSearch">Search</button>
+            <span class="w-px h-5" style="background: var(--border);"></span>
+            <input type="text" class="bp-input !h-8 flex-1 min-w-[200px] font-mono text-xs"
+                   placeholder="Batch script: insert 52, 27, 35; delete 35; search 27"
+                   @bind="_batchScript" />
+            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="RunTreeBatchScript">Run Script</button>
+            <button type="button" class="bp-btn-ghost !h-8 text-xs" @onclick="ClearTree">Clear</button>
+        }
+    </div>
+
+    @* Main Canvas + Right Inspector *@
+    <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
+        @* Left/Center Canvas Stage *@
+        <div class="lg:col-span-8 flex flex-col min-h-[340px] lg:min-h-0 p-3 gap-2.5 overflow-hidden">
+            @if (_category == StructureCategory.Graph && _graphEditorOpen)
+            {
+                <div class="bp-card p-3 flex flex-col gap-2 shrink-0">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="font-medium">Edge List Input (one edge per line: <code>U V weight</code> or <code>U -&gt; V</code>)</span>
+                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ApplyGraphEdgesAndRun">Apply & Run</button>
+                    </div>
+                    <textarea rows="4" class="bp-textarea w-full text-xs" @bind="_graphEdgeText"></textarea>
+                </div>
+            }
+
+            <div class="flex-1 min-h-0 grid @(_showIsomorphicMirror ? "grid-cols-1 xl:grid-cols-2 gap-2.5" : "grid-cols-1")">
+                <InteractiveSvgCanvas Scene="@ActiveScene"
+                                      SnapMotion="@AppState.SnapMotion"
+                                      ExportFileName="@($"{_category.ToString().ToLowerInvariant()}-trace.svg")" />
+
+                @if (_showIsomorphicMirror && ActiveTreeStep?.State.IsomorphicScene is not null)
+                {
+                    <div class="relative min-h-[220px]">
+                        <InteractiveSvgCanvas Scene="@ActiveTreeStep.State.IsomorphicScene"
+                                              SnapMotion="@AppState.SnapMotion"
+                                              ExportFileName="rb-24-isomorphism.svg" />
+                    </div>
+                }
+            </div>
+
+            @* Docked Unified Playback Bar *@
+            <PlaybackBar CurrentStep="@_stepIndex"
+                         TotalSteps="@TotalSteps"
+                         CurrentStepChanged="OnStepChanged"
+                         SnapMotion="@AppState.SnapMotion"
+                         SnapMotionChanged="OnSnapChanged" />
+        </div>
+
+        @* Right Inspector: Step Caption, Pseudocode, Operation Log, Traversals / 4-Representations *@
+        <div class="lg:col-span-4 flex flex-col min-h-0 overflow-hidden" style="border-left: 1px solid var(--border);">
+            <div class="px-3 flex items-center gap-1 shrink-0" style="border-bottom: 1px solid var(--border);">
+                <button type="button" class="bp-tab" data-active="@(_inspectorTab == "trace" ? "true" : "false")" @onclick='() => _inspectorTab = "trace"'>Trace</button>
+                <button type="button" class="bp-tab" data-active="@(_inspectorTab == "log" ? "true" : "false")" @onclick='() => _inspectorTab = "log"'>Operation Log</button>
+                @if (_category == StructureCategory.Graph)
+                {
+                    <button type="button" class="bp-tab" data-active="@(_inspectorTab == "reps" ? "true" : "false")" @onclick='() => _inspectorTab = "reps"'>4 Representations</button>
+                }
+                else
+                {
+                    <button type="button" class="bp-tab" data-active="@(_inspectorTab == "traversals" ? "true" : "false")" @onclick='() => _inspectorTab = "traversals"'>Traversals</button>
+                }
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-3.5 space-y-3.5 text-xs">
+                @if (_inspectorTab == "trace")
+                {
+                    @* Active Step Narration *@
+                    <div class="bp-card p-3 space-y-1.5">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="font-semibold text-sm">@(ActiveStepTitle ?? "Ready")</span>
+                            @if (!string.IsNullOrEmpty(ActiveOperationCode))
+                            {
+                                <span class="bp-pill bp-pill-warning font-mono text-[11px]">@ActiveOperationCode</span>
+                            }
+                        </div>
+                        <p class="leading-relaxed" style="color: var(--muted);">@(ActiveStepExplanation ?? "Run an operation or select a preset to step through the structure.")</p>
+                    </div>
+
+                    @* Auxiliary Graph Views (Queue/Stack/Levels/Distance Table) *@
+                    @if (_category == StructureCategory.Graph && ActiveGraphStep is not null)
+                    {
+                        var gs = ActiveGraphStep.State;
+                        <div class="bp-card p-3 space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span class="font-semibold">@gs.AuxStructureTitle</span>
+                                @if (gs.TotalWeight.HasValue)
+                                {
+                                    <span class="bp-pill bp-pill-positive font-mono tnum">Total weight: @GraphModel.FormatWeight(gs.TotalWeight.Value)</span>
+                                }
+                            </div>
+                            @if (gs.AuxItems.Count == 0)
+                            {
+                                <div class="font-mono" style="color: var(--muted);">Empty</div>
+                            }
+                            else
+                            {
+                                <div class="flex flex-wrap gap-1.5 font-mono">
+                                    @foreach (var item in gs.AuxItems)
+                                    {
+                                        <span class="px-2 py-0.5 rounded" style="background: var(--raised); border: 1px solid var(--border);">@item</span>
+                                    }
+                                </div>
+                            }
+
+                            @if (gs.VisitOrder.Count > 0)
+                            {
+                                <div class="pt-1.5 font-mono" style="border-top: 1px solid var(--border); color: var(--muted);">
+                                    Order: <strong style="color: var(--text);">@string.Join(" → ", gs.VisitOrder)</strong>
+                                </div>
+                            }
+                        </div>
+
+                        @if (gs.DistanceTable is not null && gs.DistanceTable.Count > 0)
+                        {
+                            <div class="bp-card overflow-hidden">
+                                <table class="w-full text-xs font-mono">
+                                    <thead>
+                                        <tr style="border-bottom: 1px solid var(--border); color: var(--muted);">
+                                            <th class="text-left px-2.5 py-1.5 font-normal">Vertex</th>
+                                            <th class="text-right px-2.5 py-1.5 font-normal">D[v]</th>
+                                            <th class="text-left px-2.5 py-1.5 font-normal">Parent</th>
+                                            <th class="text-right px-2.5 py-1.5 font-normal">Cloud</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in gs.DistanceTable)
+                                        {
+                                            <tr style="border-bottom: 1px solid var(--rule);">
+                                                <td class="px-2.5 py-1.5 font-semibold">@row.Vertex</td>
+                                                <td class="px-2.5 py-1.5 text-right tnum">@row.DistanceDisplay</td>
+                                                <td class="px-2.5 py-1.5" style="color: var(--muted);">@(row.Parent ?? "—")</td>
+                                                <td class="px-2.5 py-1.5 text-right">
+                                                    <span class="bp-pill @(row.InCloud ? "bp-pill-positive" : "bp-pill-neutral") !h-5 text-[10px]">
+                                                        @(row.InCloud ? "In C" : "Open")
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
+
+                    @* Synchronized Pseudocode *@
+                    @if (ActivePseudocode.Count > 0)
+                    {
+                        <div class="bp-card p-2.5 space-y-0.5 font-mono text-[11.5px]">
+                            <div class="px-1.5 pb-1 text-[11px] font-sans font-semibold" style="color: var(--muted);">Pseudocode</div>
+                            @for (var i = 0; i < ActivePseudocode.Count; i++)
+                            {
+                                var activeLine = ActivePseudocodeLine == i;
+                                <div class="px-2 py-1 rounded whitespace-pre-wrap"
+                                     style="@(activeLine ? "background: var(--accent-soft); color: var(--text); font-weight: 600;" : "color: var(--muted);")">
+                                    <span class="inline-block w-4 tnum mr-1.5 opacity-60">@(i + 1)</span>@ActivePseudocode[i]
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                else if (_inspectorTab == "log")
+                {
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between">
+                            <span class="font-semibold">Step-Linked Operation Log</span>
+                            <span class="font-mono tnum" style="color: var(--muted);">@TotalSteps steps</span>
+                        </div>
+                        <p style="color: var(--muted);">Click any entry to jump directly to that frame on the canvas.</p>
+
+                        <div class="bp-card divide-y font-mono" style="border-color: var(--border);">
+                            @for (var i = 0; i < TotalSteps; i++)
+                            {
+                                var idx = i;
+                                var stepTitle = _category == StructureCategory.Graph
+                                    ? _graphTimeline!.Steps[idx].Title
+                                    : _treeTimeline!.Steps[idx].Title;
+                                var opCode = _category == StructureCategory.Graph
+                                    ? _graphTimeline!.Steps[idx].OperationCode
+                                    : _treeTimeline!.Steps[idx].OperationCode;
+                                var selected = idx == _stepIndex;
+
+                                <button type="button"
+                                        class="w-full px-3 py-1.5 flex items-center justify-between gap-2 text-left cursor-pointer transition-colors"
+                                        style="@(selected ? "background: var(--active); color: var(--text);" : "color: var(--muted);")"
+                                        @onclick="() => _stepIndex = idx">
+                                    <span class="truncate"><span class="tnum opacity-60 mr-2">@(idx + 1).</span>@stepTitle</span>
+                                    @if (!string.IsNullOrEmpty(opCode))
+                                    {
+                                        <span class="bp-pill bp-pill-neutral !h-5 text-[10px]">@opCode</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+
+                        @if (ActiveOperationLog.Count > 0)
+                        {
+                            <div class="bp-well p-3 font-mono text-[11.5px] space-y-0.5">
+                                <div class="font-sans font-semibold mb-1" style="color: var(--muted);">Console Trace Output</div>
+                                @foreach (var line in ActiveOperationLog)
+                                {
+                                    <div>@line</div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                else if (_inspectorTab == "traversals" && ActiveTreeStep is not null)
+                {
+                    var ts = ActiveTreeStep.State;
+                    <div class="space-y-2.5 font-mono">
+                        <div class="bp-card p-3 space-y-1">
+                            <div class="font-sans text-xs font-semibold" style="color: var(--muted);">PRE-ORDER</div>
+                            <div class="break-words">@(ts.PreOrder.Count == 0 ? "EMPTY" : string.Join(" ", ts.PreOrder))</div>
+                        </div>
+                        <div class="bp-card p-3 space-y-1">
+                            <div class="font-sans text-xs font-semibold" style="color: var(--muted);">IN-ORDER</div>
+                            <div class="break-words">@(ts.InOrder.Count == 0 ? "EMPTY" : string.Join(" ", ts.InOrder))</div>
+                        </div>
+                        <div class="bp-card p-3 space-y-1">
+                            <div class="font-sans text-xs font-semibold" style="color: var(--muted);">POST-ORDER</div>
+                            <div class="break-words">@(ts.PostOrder.Count == 0 ? "EMPTY" : string.Join(" ", ts.PostOrder))</div>
+                        </div>
+                        <div class="bp-card p-3 space-y-1">
+                            <div class="font-sans text-xs font-semibold" style="color: var(--muted);">LEVEL-ORDER (BFS)</div>
+                            <div class="break-words">@(ts.LevelOrder.Count == 0 ? "EMPTY" : string.Join(" ", ts.LevelOrder))</div>
+                        </div>
+                        <div class="bp-well px-3 py-2 flex items-center justify-between font-sans">
+                            <span>Parent pointer integrity</span>
+                            <span class="bp-pill @(ts.ParentLinksHealthy ? "bp-pill-positive" : "bp-pill-negative")">
+                                @(ts.ParentLinksHealthy ? "STATUS: 1 (Healthy)" : "STATUS: 0 (Broken)")
+                            </span>
+                        </div>
+                    </div>
+                }
+                else if (_inspectorTab == "reps" && ActiveGraphStep is not null)
+                {
+                    var reps = ActiveGraphStep.State.Representations;
+                    <div class="space-y-3">
+                        <div class="bp-card p-3 space-y-1.5">
+                            <div class="font-semibold">1. Edge List (@reps.EdgeList.Count)</div>
+                            <div class="flex flex-wrap gap-1.5 font-mono">
+                                @foreach (var e in reps.EdgeList)
+                                {
+                                    <span class="px-2 py-0.5 rounded" style="background: var(--raised); border: 1px solid var(--border);">
+                                        (@e.From @(e.IsDirected ? "→" : "—") @e.To@(_graphWeighted ? $": {e.Label}" : ""))
+                                    </span>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="bp-card p-3 space-y-1.5">
+                            <div class="font-semibold">2. Adjacency List</div>
+                            <div class="space-y-1 font-mono text-[11.5px]">
+                                @foreach (var row in reps.AdjacencyList)
+                                {
+                                    <div>
+                                        <strong>@row.Vertex</strong>
+                                        <span style="color: var(--muted);"> | Out: </span>[@string.Join(", ", row.Outgoing)]
+                                        @if (_graphDirected)
+                                        {
+                                            <span style="color: var(--muted);"> | In: </span><span>[@string.Join(", ", row.Incoming)]</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="bp-card p-3 space-y-1.5">
+                            <div class="font-semibold">3. Adjacency Map</div>
+                            <div class="space-y-1 font-mono text-[11.5px]">
+                                @foreach (var row in reps.AdjacencyMap)
+                                {
+                                    <div>
+                                        <strong>@row.Vertex</strong> → { @string.Join(", ", row.Entries.Select(kv => $"{kv.Key}: {kv.Value}")) }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="bp-card p-3 space-y-1.5 overflow-x-auto">
+                            <div class="font-semibold">4. Adjacency Matrix</div>
+                            <table class="w-full font-mono text-[11px] tnum">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--border); color: var(--muted);">
+                                        <th class="p-1 text-left"></th>
+                                        @foreach (var h in reps.AdjacencyMatrix.Headers)
+                                        {
+                                            <th class="p-1 text-right">@h</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var r = 0; r < reps.AdjacencyMatrix.Headers.Count; r++)
+                                    {
+                                        <tr style="border-bottom: 1px solid var(--rule);">
+                                            <td class="p-1 font-semibold">@reps.AdjacencyMatrix.Headers[r]</td>
+                                            @for (var c = 0; c < reps.AdjacencyMatrix.Cells[r].Count; c++)
+                                            {
+                                                var val = reps.AdjacencyMatrix.Cells[r][c];
+                                                var empty = val is "0" or "∞";
+                                                <td class="p-1 text-right" style="@(empty ? "color: var(--faint);" : "color: var(--text); font-weight: 600;")">@val</td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
 </div>
+
+@code {
+    private const string CustomLabel = "Custom";
+    private static readonly (StructureCategory Kind, string Label)[] Categories =
+    [
+        (StructureCategory.BinaryTree, "Binary"),
+        (StructureCategory.Bst, "BST"),
+        (StructureCategory.Avl, "AVL"),
+        (StructureCategory.Splay, "Splay"),
+        (StructureCategory.TwoFour, "(2,4)"),
+        (StructureCategory.RedBlack, "Red-Black"),
+        (StructureCategory.Graph, "Graphs")
+    ];
+
+    private StructureCategory _category = StructureCategory.Splay;
+    private string _selectedPresetKey = "splay-delete";
+    private TreeRuleset _treeRuleset = TreeRuleset.CourseStandard;
+    private GraphRuleset _graphRuleset = GraphRuleset.CourseStandard;
+
+    private bool _rulesOpen;
+    private bool _graphEditorOpen;
+    private string _inspectorTab = "trace";
+    private int _stepIndex;
+
+    private int _singleKey = 25;
+    private string _batchScript = "insert 12, 10, 4, 7, 6, 8; delete 8";
+
+    private string _btParent = "G";
+    private string _btLabel = "X";
+
+    private string _graphAlgorithm = "Dijkstra";
+    private string _graphStartVertex = "BWI";
+    private bool _graphDirected;
+    private bool _graphWeighted = true;
+    private string _graphEdgeText = string.Empty;
+
+    private BinaryTreeTracer _binaryTree = new();
+    private BstTracer _bst = new();
+    private AvlTracer _avl = new();
+    private SplayTracer _splay = new();
+    private TwoFourTreeTracer _twoFour = new();
+    private RedBlackTreeTracer _rb = new();
+    private GraphModel _graph = new();
+
+    private TraceTimeline<TreeStepState>? _treeTimeline;
+    private TraceTimeline<GraphStepState>? _graphTimeline;
+
+    private int TotalSteps => _category == StructureCategory.Graph
+        ? (_graphTimeline?.Count ?? 0)
+        : (_treeTimeline?.Count ?? 0);
+
+    private TraceStep<TreeStepState>? ActiveTreeStep => _category != StructureCategory.Graph ? _treeTimeline?.StepAt(_stepIndex) : null;
+    private TraceStep<GraphStepState>? ActiveGraphStep => _category == StructureCategory.Graph ? _graphTimeline?.StepAt(_stepIndex) : null;
+
+    private DiagramScene? ActiveScene => _category == StructureCategory.Graph
+        ? ActiveGraphStep?.State.Scene
+        : ActiveTreeStep?.State.Scene;
+
+    private bool _showIsomorphicMirror =>
+        _category == StructureCategory.RedBlack &&
+        _treeRuleset.ShowTwoFourIsomorphism &&
+        ActiveTreeStep?.State.IsomorphicScene is not null;
+
+    private string? ActiveStepTitle => _category == StructureCategory.Graph ? ActiveGraphStep?.Title : ActiveTreeStep?.Title;
+    private string? ActiveStepExplanation => _category == StructureCategory.Graph ? ActiveGraphStep?.Explanation : ActiveTreeStep?.Explanation;
+    private string? ActiveOperationCode => _category == StructureCategory.Graph ? ActiveGraphStep?.OperationCode : ActiveTreeStep?.OperationCode;
+    private int? ActivePseudocodeLine => _category == StructureCategory.Graph ? ActiveGraphStep?.ActivePseudocodeLine : ActiveTreeStep?.ActivePseudocodeLine;
+    private IReadOnlyList<string> ActivePseudocode => _category == StructureCategory.Graph
+        ? (_graphTimeline?.PseudocodeLines ?? Array.Empty<string>())
+        : (_treeTimeline?.PseudocodeLines ?? Array.Empty<string>());
+    private IReadOnlyList<string> ActiveOperationLog => _category == StructureCategory.Graph
+        ? (_graphTimeline?.OperationLog ?? Array.Empty<string>())
+        : (_treeTimeline?.OperationLog ?? Array.Empty<string>());
+
+    protected override void OnInitialized()
+    {
+        var key = !string.IsNullOrEmpty(AppState.PendingPresetKey) && StructurePresets.GetByKey(AppState.PendingPresetKey) is not null
+            ? AppState.PendingPresetKey!
+            : "splay-delete";
+        AppState.PendingPresetKey = null;
+        LoadPreset(key);
+    }
+
+    private void LoadPreset(string key)
+    {
+        var preset = StructurePresets.GetByKey(key);
+        if (preset is null) return;
+
+        _selectedPresetKey = preset.Key;
+        _category = preset.Category;
+        _inspectorTab = "trace";
+
+        if (preset.RecommendedTreeRuleset is not null)
+            _treeRuleset = preset.RecommendedTreeRuleset;
+        if (preset.RecommendedGraphRuleset is not null)
+            _graphRuleset = preset.RecommendedGraphRuleset;
+
+        if (preset.Category == StructureCategory.BinaryTree)
+        {
+            _binaryTree = StructurePresets.BuildBinaryTreeFromPreset(preset, _treeRuleset);
+            _treeTimeline = _binaryTree.TraceInOrder();
+            _stepIndex = 0;
+        }
+        else if (preset.Category == StructureCategory.Graph)
+        {
+            _graphEdgeText = preset.GraphEdgeList ?? "";
+            _graphDirected = preset.GraphIsDirected;
+            _graphWeighted = preset.GraphIsWeighted;
+            _graphStartVertex = preset.DefaultStartVertex ?? "";
+            _graphAlgorithm = preset.DefaultGraphAlgorithm ?? "BFS";
+            _graph = StructurePresets.BuildGraphFromPreset(preset);
+            RunGraphAlgorithm();
+        }
+        else
+        {
+            _batchScript = preset.TreeScript ?? "";
+            RunTreeBatchScript();
+        }
+
+        AppState.RecordRecent(new WorkspaceDocument(
+            $"struct-{preset.Key}",
+            preset.Title,
+            StudioKind.Structures,
+            preset.Subtitle,
+            DateTimeOffset.UtcNow,
+            JsonSerializer.SerializeToElement(new { preset = preset.Key })));
+    }
+
+    private void OnPresetChanged(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(key)) LoadPreset(key);
+    }
+
+    private void SwitchCategory(StructureCategory cat)
+    {
+        _category = cat;
+        var defaultPreset = StructurePresets.GetByCategory(cat).FirstOrDefault();
+        if (defaultPreset is not null)
+        {
+            LoadPreset(defaultPreset.Key);
+        }
+    }
+
+    private void ApplyTreeRuleset(TreeRuleset next)
+    {
+        _treeRuleset = next;
+        _binaryTree.Ruleset = next;
+        _bst.Ruleset = next;
+        _avl.Ruleset = next;
+        _splay.Ruleset = next;
+        _twoFour.Ruleset = next;
+        _rb.Ruleset = next;
+
+        if (_category == StructureCategory.BinaryTree)
+        {
+            _treeTimeline = _binaryTree.TraceInOrder();
+            _stepIndex = 0;
+        }
+        else if (_category != StructureCategory.Graph && !string.IsNullOrWhiteSpace(_batchScript))
+        {
+            RunTreeBatchScript();
+        }
+    }
+
+    private void ApplyGraphRuleset(GraphRuleset next)
+    {
+        _graphRuleset = next;
+        RunGraphAlgorithm();
+    }
+
+    private void RunTreeBatchScript()
+    {
+        _treeTimeline = _category switch
+        {
+            StructureCategory.Bst => (_bst = new BstTracer(_treeRuleset)).RunScript(_batchScript),
+            StructureCategory.Avl => (_avl = new AvlTracer(_treeRuleset)).RunScript(_batchScript),
+            StructureCategory.Splay => (_splay = new SplayTracer(_treeRuleset)).RunScript(_batchScript),
+            StructureCategory.TwoFour => (_twoFour = new TwoFourTreeTracer(_treeRuleset)).RunScript(_batchScript),
+            StructureCategory.RedBlack => (_rb = new RedBlackTreeTracer(_treeRuleset)).RunScript(_batchScript),
+            _ => _treeTimeline
+        };
+        _stepIndex = System.Math.Max(0, TotalSteps - 1);
+    }
+
+    private void RunSingleInsert()
+    {
+        _treeTimeline = _category switch
+        {
+            StructureCategory.Bst => _bst.Insert(_singleKey),
+            StructureCategory.Avl => _avl.Insert(_singleKey),
+            StructureCategory.Splay => _splay.Insert(_singleKey),
+            StructureCategory.TwoFour => _twoFour.Insert(_singleKey),
+            StructureCategory.RedBlack => _rb.Insert(_singleKey),
+            _ => _treeTimeline
+        };
+        _stepIndex = 0;
+    }
+
+    private void RunSingleDelete()
+    {
+        _treeTimeline = _category switch
+        {
+            StructureCategory.Bst => _bst.Delete(_singleKey),
+            StructureCategory.Avl => _avl.Delete(_singleKey),
+            StructureCategory.Splay => _splay.Delete(_singleKey),
+            StructureCategory.TwoFour => _twoFour.Delete(_singleKey),
+            StructureCategory.RedBlack => _rb.Delete(_singleKey),
+            _ => _treeTimeline
+        };
+        _stepIndex = 0;
+    }
+
+    private void RunSingleSearch()
+    {
+        _treeTimeline = _category switch
+        {
+            StructureCategory.Bst => _bst.Search(_singleKey),
+            StructureCategory.Avl => _avl.Search(_singleKey),
+            StructureCategory.Splay => _splay.Search(_singleKey),
+            StructureCategory.TwoFour => _twoFour.Search(_singleKey),
+            StructureCategory.RedBlack => _rb.Search(_singleKey),
+            _ => _treeTimeline
+        };
+        _stepIndex = 0;
+    }
+
+    private void ClearTree()
+    {
+        _bst.Clear(); _avl.Clear(); _splay.Clear(); _twoFour.Clear(); _rb.Clear(); _binaryTree.Clear();
+        _batchScript = string.Empty;
+        _treeTimeline = new TraceTimeline<TreeStepState>(
+            [new TraceStep<TreeStepState>(0, "Cleared", "Tree is empty.", null, _bst.BuildSnapshot("Empty"), Array.Empty<string>(), Array.Empty<string>())]);
+        _stepIndex = 0;
+    }
+
+    private void BtAddRoot() { _treeTimeline = _binaryTree.AddRoot(_btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
+    private void BtAddLeft() { _treeTimeline = _binaryTree.AddLeft(_btParent, _btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
+    private void BtAddRight() { _treeTimeline = _binaryTree.AddRight(_btParent, _btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
+    private void BtRemove() { _treeTimeline = _binaryTree.Remove(_btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
+
+    private void RunBinaryTraversal(string mode)
+    {
+        _treeTimeline = mode switch
+        {
+            "pre" => _binaryTree.TracePreOrder(),
+            "in" => _binaryTree.TraceInOrder(),
+            "post" => _binaryTree.TracePostOrder(),
+            "bfs" => _binaryTree.TraceBreadthFirst(),
+            _ => _binaryTree.TraceEulerTour()
+        };
+        _stepIndex = 0;
+    }
+
+    private void RebuildGraphFromEditor()
+    {
+        _graph = GraphModel.ParseEdgeList(_graphEdgeText, _graphDirected, _graphWeighted);
+        if (string.IsNullOrWhiteSpace(_graphStartVertex) || !_graph.ContainsVertex(_graphStartVertex))
+        {
+            _graphStartVertex = _graph.Vertices.FirstOrDefault()?.Id ?? "";
+        }
+    }
+
+    private void ApplyGraphEdgesAndRun()
+    {
+        RebuildGraphFromEditor();
+        RunGraphAlgorithm();
+    }
+
+    private void RunGraphAlgorithm()
+    {
+        var tracer = new GraphTracer(_graphRuleset);
+        var start = string.IsNullOrWhiteSpace(_graphStartVertex)
+            ? (_graph.Vertices.FirstOrDefault()?.Id ?? "")
+            : _graphStartVertex.Trim();
+
+        _graphTimeline = _graphAlgorithm switch
+        {
+            "DFS" => tracer.TraceDfs(_graph, start),
+            "Dijkstra" => tracer.TraceDijkstra(_graph, start),
+            "Prim" => tracer.TracePrimJarnik(_graph, start),
+            "Kruskal" => tracer.TraceKruskal(_graph),
+            _ => tracer.TraceBfs(_graph, start)
+        };
+        _stepIndex = 0;
+    }
+
+    private void OnStepChanged(int next) => _stepIndex = next;
+    private void OnSnapChanged(bool snap) { AppState.SnapMotion = snap; AppState.Notify(); }
+}
