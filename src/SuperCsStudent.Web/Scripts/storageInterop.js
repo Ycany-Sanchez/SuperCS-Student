@@ -64,3 +64,32 @@ export function registerGlobalShortcuts(dotNetRef) {
     dispose: () => window.removeEventListener("keydown", handler)
   };
 }
+
+export function registerPlaybackShortcuts(dotNetRef) {
+  const isEditableTarget = (target) => {
+    if (!target) return false;
+    const tag = (target.tagName || "").toUpperCase();
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) {
+      return true;
+    }
+    return Boolean(target.closest?.(".blocklyWidgetDiv, .blocklyHtmlInput"));
+  };
+
+  const handler = (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || isEditableTarget(e.target)) return;
+    if (e.code === "Space" || e.key === " ") {
+      e.preventDefault();
+      dotNetRef.invokeMethodAsync("OnPlayToggleShortcut");
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      dotNetRef.invokeMethodAsync("OnStepPrevShortcut");
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      dotNetRef.invokeMethodAsync("OnStepNextShortcut");
+    }
+  };
+  window.addEventListener("keydown", handler);
+  return {
+    dispose: () => window.removeEventListener("keydown", handler)
+  };
+}

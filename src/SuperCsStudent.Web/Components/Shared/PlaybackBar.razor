@@ -1,4 +1,5 @@
-@implements IDisposable
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 
 <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-xl bp-floating">
     <div class="flex items-center gap-1.5">
@@ -7,7 +8,7 @@
             <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 3.5v9M12.5 3.5L6.5 8l6 4.5z" /></svg>
         </button>
         <button type="button" class="bp-btn-secondary !h-8 !px-2.5" disabled="@(TotalSteps <= 1 || CurrentStep <= 0)"
-                title="Step backward" @onclick="StepPrev">
+                title="Step backward (←)" @onclick="StepPrev">
             <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10.5 3.5L5.5 8l5 4.5" /></svg>
         </button>
 
@@ -27,7 +28,7 @@
         </button>
 
         <button type="button" class="bp-btn-secondary !h-8 !px-2.5" disabled="@(TotalSteps <= 1 || CurrentStep >= TotalSteps - 1)"
-                title="Step forward" @onclick="StepNext">
+                title="Step forward (→)" @onclick="StepNext">
             <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5.5 3.5L10.5 8l-5 4.5" /></svg>
         </button>
         <button type="button" class="bp-btn-secondary !h-8 !px-2" disabled="@(TotalSteps <= 1 || CurrentStep >= TotalSteps - 1)"
@@ -76,10 +77,12 @@
 </div>
 
 @code {
-    private static readonly double[] Speeds = [0.5, 1.0, 2.0];
+    private static readonly double[] Speeds = [0.25, 0.5, 1.0, 2.0, 4.0];
     private double _speed = 1.0;
     private bool _isPlaying;
     private CancellationTokenSource? _playCts;
+    private DotNetObjectReference<PlaybackBar>? _selfRef;
+    private IJSObjectReference? _shortcutHandle;
 
     [Parameter] public int CurrentStep { get; set; }
     [Parameter] public int TotalSteps { get; set; }
@@ -87,6 +90,24 @@
     [Parameter] public bool SnapMotion { get; set; }
     [Parameter] public EventCallback<bool> SnapMotionChanged { get; set; }
     [Parameter] public RenderFragment? ExtraControls { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            _shortcutHandle = await JS.InvokeAsync<IJSObjectReference>("SuperCs.storage.registerPlaybackShortcuts", _selfRef);
+        }
+    }
+
+    [JSInvokable]
+    public Task OnPlayToggleShortcut() => TogglePlay();
+
+    [JSInvokable]
+    public Task OnStepPrevShortcut() => CurrentStep > 0 ? StepPrev() : Task.CompletedTask;
+
+    [JSInvokable]
+    public Task OnStepNextShortcut() => CurrentStep < TotalSteps - 1 ? StepNext() : Task.CompletedTask;
 
     private async Task JumpTo(int step)
     {
@@ -167,5 +188,18 @@
         _playCts = null;
     }
 
-    public void Dispose() => StopPlayback();
+    public async ValueTask DisposeAsync()
+    {
+        StopPlayback();
+        if (_shortcutHandle is not null)
+        {
+            try
+            {
+                await _shortcutHandle.InvokeVoidAsync("dispose");
+                await _shortcutHandle.DisposeAsync();
+            }
+            catch { }
+        }
+        _selfRef?.Dispose();
+    }
 }

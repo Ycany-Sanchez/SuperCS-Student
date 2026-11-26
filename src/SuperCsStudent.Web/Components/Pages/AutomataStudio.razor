@@ -2,6 +2,7 @@
 @inject AppStateService AppState
 @inject IJSRuntime JS
 
+@using System.Text.Json
 @using SuperCsStudent.Automata
 @using SuperCsStudent.Automata.FiniteAutomata
 @using SuperCsStudent.Automata.Grammars
@@ -1266,6 +1267,14 @@
                 CompileAndRunTmDsl();
                 break;
         }
+
+        AppState.RecordRecent(new WorkspaceDocument(
+            $"auto-{preset.Key}",
+            preset.Title,
+            StudioKind.Automata,
+            preset.Description,
+            DateTimeOffset.UtcNow,
+            JsonSerializer.SerializeToElement(new { preset = preset.Key })));
     }
 
     private static IEnumerable<char>? ParseAlphabetInput(string? raw)

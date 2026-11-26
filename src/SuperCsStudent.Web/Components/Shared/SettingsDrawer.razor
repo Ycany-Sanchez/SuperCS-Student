@@ -81,6 +81,33 @@
                                @bind:after="AppState.Notify" />
                     </div>
                 </section>
+                <hr style="border-color: var(--border);" />
+
+                <section class="space-y-2.5">
+                    <div class="text-sm font-medium">Local workspace backup</div>
+                    <p class="text-xs" style="color: var(--muted);">
+                        Export or restore your local preferences and recent session history as JSON.
+                    </p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button type="button" class="bp-btn-secondary !h-8 text-xs whitespace-nowrap" @onclick="ExportWorkspaceJson">
+                            Export JSON
+                        </button>
+                        <label class="bp-btn-secondary !h-8 text-xs whitespace-nowrap cursor-pointer">
+                            <span>Import JSON</span>
+                            <InputFile OnChange="ImportWorkspaceJson" accept=".json,application/json" class="hidden" />
+                        </label>
+                    </div>
+                    <button type="button" class="bp-btn-ghost w-full !h-8 text-xs" style="border: 1px dashed var(--control);" @onclick="ResetWorkspace">
+                        Reset Workspace Defaults
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(_workspaceStatus))
+                    {
+                        <div class="text-xs px-2.5 py-1.5 rounded-md"
+                             style="@(_workspaceError ? "background: var(--pill-negative-bg); color: var(--pill-negative-ink);" : "background: var(--pill-positive-bg); color: var(--pill-positive-ink);")">
+                            @_workspaceStatus
+                        </div>
+                    }
+                </section>
             </div>
 
             <div class="px-5 py-3 text-xs" style="border-top: 1px solid var(--border); color: var(--muted);">
@@ -91,6 +118,9 @@
 }
 
 @code {
+    private string? _workspaceStatus;
+    private bool _workspaceError;
+
     protected override void OnInitialized()
     {
         AppState.OnChange += OnAppStateChanged;
@@ -107,6 +137,49 @@
     {
         AppState.SetTheme(theme);
         await JS.InvokeVoidAsync("SuperCs.storage.applyTheme", theme);
+    }
+
+    private async Task ExportWorkspaceJson()
+    {
+        _workspaceError = false;
+        var json = AppState.ExportSnapshotJson();
+        await JS.InvokeVoidAsync("SuperCs.storage.downloadTextFile", "super-cs-workspace.json", json, "application/json;charset=utf-8");
+        _workspaceStatus = $"Exported {AppState.RecentWorkspaces.Count} recent session(s).";
+    }
+
+    private async Task ImportWorkspaceJson(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            using var reader = new StreamReader(file.OpenReadStream(maxAllowedSize: 1024 * 1024));
+            var json = await reader.ReadToEndAsync();
+            if (AppState.TryImportSnapshotJson(json, out var count, out var error))
+            {
+                await JS.InvokeVoidAsync("SuperCs.storage.applyTheme", AppState.Theme);
+                _workspaceError = false;
+                _workspaceStatus = $"Restored workspace ({count} session(s)).";
+            }
+            else
+            {
+                _workspaceError = true;
+                _workspaceStatus = error ?? "Invalid JSON file.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _workspaceError = true;
+            _workspaceStatus = $"Import failed: {ex.Message}";
+        }
+    }
+
+    private async Task ResetWorkspace()
+    {
+        AppState.ResetWorkspace();
+        await JS.InvokeVoidAsync("SuperCs.storage.removeItem", AppStateService.StorageKey);
+        await JS.InvokeVoidAsync("SuperCs.storage.applyTheme", "light");
+        _workspaceError = false;
+        _workspaceStatus = "Workspace reset to defaults.";
     }
 
     private void Close() => AppState.SetSettingsOpen(false);

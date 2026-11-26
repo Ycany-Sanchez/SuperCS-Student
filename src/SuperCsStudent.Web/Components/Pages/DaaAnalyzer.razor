@@ -134,6 +134,51 @@
                         <option value="@LogLoopConvention.FloorLogPlusOne">log_b n + 1</option>
                     </select>
                 </label>
+
+                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
+                    <span>Stride (i+=s)</span>
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-[11px]" value="@_profile.StepLoopConvention"
+                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, StepLoopConvention = Enum.Parse<StepLoopConvention>(e.Value!.ToString()!) })">
+                        <option value="@StepLoopConvention.AlgebraicRatio">n / s</option>
+                        <option value="@StepLoopConvention.CeilingOffset">ceil offset</option>
+                    </select>
+                </label>
+
+                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
+                    <span>Var declare</span>
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.DeclarationCost"
+                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, DeclarationCost = int.Parse(e.Value!.ToString()!) })">
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                    </select>
+                </label>
+
+                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
+                    <span>Logical &amp;&amp;/||</span>
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.LogicalOperatorCost"
+                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogicalOperatorCost = int.Parse(e.Value!.ToString()!) })">
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                    </select>
+                </label>
+
+                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
+                    <span>Function call</span>
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.FunctionCallCost"
+                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, FunctionCallCost = int.Parse(e.Value!.ToString()!) })">
+                        <option value="1">1</option>
+                        <option value="0">0</option>
+                    </select>
+                </label>
+
+                <label class="bp-card p-2 flex items-center justify-between gap-2 cursor-pointer">
+                    <span>Switch case</span>
+                    <select class="bp-input !h-7 !px-1.5 font-mono text-xs" value="@_profile.SwitchCaseComparisonCost"
+                            @onchange="e => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, SwitchCaseComparisonCost = int.Parse(e.Value!.ToString()!) })">
+                        <option value="1">1</option>
+                        <option value="0">0</option>
+                    </select>
+                </label>
             </div>
         </div>
     }

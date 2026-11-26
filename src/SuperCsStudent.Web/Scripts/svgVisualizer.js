@@ -100,6 +100,9 @@ export function mountSvgCanvas(container, dotNetRef) {
     scale: 1,
     dragging: false,
     dragStart: { x: 0, y: 0 },
+    pointerDownPos: { x: 0, y: 0 },
+    pointerMoved: false,
+    downNodeId: null,
     lastScene: null,
     lastOverlayTag: null,
     lastViewBox: null,
@@ -130,13 +133,17 @@ export function mountSvgCanvas(container, dotNetRef) {
   }, { passive: false });
 
   svg.addEventListener("pointerdown", (e) => {
+    state.pointerDownPos = { x: e.clientX, y: e.clientY };
+    state.pointerMoved = false;
     const nodeGroup = e.target.closest?.("[data-node-id]");
     if (nodeGroup) {
-      state.draggingNodeId = nodeGroup.getAttribute("data-node-id");
+      state.downNodeId = nodeGroup.getAttribute("data-node-id");
+      state.draggingNodeId = state.downNodeId;
       state.dragStart = { x: e.clientX, y: e.clientY };
       svg.setPointerCapture(e.pointerId);
       return;
     }
+    state.downNodeId = null;
     state.dragging = true;
     state.userInteracted = true;
     state.dragStart = { x: e.clientX - state.panX, y: e.clientY - state.panY };
@@ -144,6 +151,9 @@ export function mountSvgCanvas(container, dotNetRef) {
   });
 
   svg.addEventListener("pointermove", (e) => {
+    if (Math.hypot(e.clientX - state.pointerDownPos.x, e.clientY - state.pointerDownPos.y) > 4) {
+      state.pointerMoved = true;
+    }
     if (state.draggingNodeId && state.lastScene) {
       const dx = (e.clientX - state.dragStart.x) / state.scale;
       const dy = (e.clientY - state.dragStart.y) / state.scale;
@@ -159,9 +169,23 @@ export function mountSvgCanvas(container, dotNetRef) {
     applyTransform();
   });
 
-  const endDrag = () => {
+  const endDrag = (e) => {
+    const wasClick = !state.pointerMoved;
+    const clickedNode = state.downNodeId;
     state.dragging = false;
     state.draggingNodeId = null;
+    state.downNodeId = null;
+
+    if (wasClick && state.dotNetRef && e && e.type === "pointerup") {
+      if (clickedNode) {
+        state.dotNetRef.invokeMethodAsync("HandleNodeClick", clickedNode).catch(() => {});
+      } else {
+        const rect = svg.getBoundingClientRect();
+        const wx = (e.clientX - rect.left - state.panX) / state.scale;
+        const wy = (e.clientY - rect.top - state.panY) / state.scale;
+        state.dotNetRef.invokeMethodAsync("HandleCanvasClick", wx, wy).catch(() => {});
+      }
+    }
   };
   svg.addEventListener("pointerup", endDrag);
   svg.addEventListener("pointercancel", endDrag);
@@ -605,10 +629,93 @@ export function resetNodeOffsets(container) {
   }
 }
 
+function buildResolvedSvgClone(st) {
+  const rect = st.svg.getBoundingClientRect();
+  const width = Math.max(320, Math.round(rect.width || 800));
+  const height = Math.max(240, Math.round(rect.height || 500));
+  const computed = getComputedStyle(document.documentElement);
+
+  const resolveVars = (val) =>
+    val.replace(/var\((--[a-zA-Z0-9-]+)\)/g, (_, name) => {
+      const resolved = computed.getPropertyValue(name).trim();
+      return resolved || "#131416";
+    });
+
+  const clone = st.svg.cloneNode(true);
+  clone.setAttribute("xmlns", NS);
+  clone.setAttribute("width", String(width));
+  clone.setAttribute("height", String(height));
+  clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+  const bg = createEl("rect", {
+    x: "0",
+    y: "0",
+    width: String(width),
+    height: String(height),
+    fill: resolveVars("var(--canvas-well)")
+  });
+  clone.insertBefore(bg, clone.firstChild);
+
+  const allEls = [clone, ...clone.querySelectorAll("*")];
+  for (const el of allEls) {
+    for (const attr of Array.from(el.attributes || [])) {
+      if (attr.value && attr.value.includes("var(")) {
+        el.setAttribute(attr.name, resolveVars(attr.value));
+      }
+    }
+  }
+
+  return { markup: new XMLSerializer().serializeToString(clone), width, height };
+}
+
 export function exportSvgMarkup(container) {
   const st = instances.get(container);
   if (!st) return "";
-  const clone = st.svg.cloneNode(true);
-  clone.setAttribute("xmlns", NS);
-  return new XMLSerializer().serializeToString(clone);
+  return buildResolvedSvgClone(st).markup;
+}
+
+export function exportPngFile(container, filename = "diagram.png", scale = 2) {
+  const st = instances.get(container);
+  if (!st) return false;
+  const { markup, width, height } = buildResolvedSvgClone(st);
+  const svgBlob = new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(svgBlob);
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            resolve(false);
+            return;
+          }
+          const dlUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = dlUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(dlUrl), 1000);
+          resolve(true);
+        }, "image/png");
+      } catch {
+        URL.revokeObjectURL(url);
+        resolve(false);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(false);
+    };
+    img.src = url;
+  });
 }

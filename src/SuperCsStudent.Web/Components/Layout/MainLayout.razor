@@ -145,8 +145,20 @@
     {
         if (firstRender)
         {
-            var initial = await JS.InvokeAsync<string>("SuperCs.storage.getInitialTheme");
-            AppState.SetTheme(initial);
+            var savedJson = await JS.InvokeAsync<string?>("SuperCs.storage.getItem", AppStateService.StorageKey);
+            if (!string.IsNullOrWhiteSpace(savedJson) && AppState.TryImportSnapshotJson(savedJson, out _, out _, mergeExistingRecents: true))
+            {
+                await JS.InvokeVoidAsync("SuperCs.storage.applyTheme", AppState.Theme);
+                await JS.InvokeVoidAsync("SuperCs.storage.setItem", AppStateService.StorageKey, AppState.ExportSnapshotJson());
+            }
+            else
+            {
+                var initial = await JS.InvokeAsync<string>("SuperCs.storage.getInitialTheme");
+                AppState.SetTheme(initial);
+                AppState.MarkHydrated();
+                await JS.InvokeVoidAsync("SuperCs.storage.setItem", AppStateService.StorageKey, AppState.ExportSnapshotJson());
+            }
+
             _selfRef = DotNetObjectReference.Create(this);
             _shortcutHandle = await JS.InvokeAsync<IJSObjectReference>("SuperCs.storage.registerGlobalShortcuts", _selfRef);
         }
@@ -195,7 +207,21 @@
         builder.CloseElement();
     };
 
-    private void OnAppStateChanged() => InvokeAsync(StateHasChanged);
+    private void OnAppStateChanged() => _ = PersistAndRefreshAsync();
+
+    private async Task PersistAndRefreshAsync()
+    {
+        if (AppState.HasHydratedStorage)
+        {
+            try
+            {
+                var json = AppState.ExportSnapshotJson();
+                await JS.InvokeVoidAsync("SuperCs.storage.setItem", AppStateService.StorageKey, json);
+            }
+            catch { }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
 
     public async ValueTask DisposeAsync()

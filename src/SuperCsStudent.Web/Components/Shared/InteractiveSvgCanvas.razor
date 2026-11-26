@@ -26,11 +26,13 @@
         <span class="w-px h-4 mx-0.5" style="background: var(--border);"></span>
         <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Reset node positions" @onclick="ResetLayout">Reset</button>
         <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Export SVG" @onclick="ExportSvg">SVG</button>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Export PNG" @onclick="ExportPng">PNG</button>
     </div>
 </div>
 
 @code {
     private ElementReference _host;
+    private DotNetObjectReference<InteractiveSvgCanvas>? _selfRef;
     private bool _mounted;
     private DiagramScene? _lastScene;
 
@@ -39,12 +41,15 @@
     [Parameter] public string? ErrorBanner { get; set; }
     [Parameter] public string ExportFileName { get; set; } = "diagram.svg";
     [Parameter] public string? Class { get; set; }
+    [Parameter] public EventCallback<string> OnNodeClicked { get; set; }
+    [Parameter] public EventCallback<(double X, double Y)> OnCanvasClicked { get; set; }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            await JS.InvokeVoidAsync("SuperCs.svg.mountSvgCanvas", _host, null);
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("SuperCs.svg.mountSvgCanvas", _host, _selfRef);
             _mounted = true;
         }
 
@@ -54,6 +59,14 @@
             await JS.InvokeVoidAsync("SuperCs.svg.renderScene", _host, Scene, SnapMotion);
         }
     }
+
+    [JSInvokable]
+    public Task HandleNodeClick(string nodeId) =>
+        OnNodeClicked.HasDelegate ? OnNodeClicked.InvokeAsync(nodeId) : Task.CompletedTask;
+
+    [JSInvokable]
+    public Task HandleCanvasClick(double x, double y) =>
+        OnCanvasClicked.HasDelegate ? OnCanvasClicked.InvokeAsync((x, y)) : Task.CompletedTask;
 
     public async Task Zoom(double factor)
     {
@@ -80,5 +93,18 @@
         }
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    private async Task ExportPng()
+    {
+        if (!_mounted) return;
+        var pngName = ExportFileName.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+            ? ExportFileName[..^4] + ".png"
+            : ExportFileName + ".png";
+        await JS.InvokeAsync<bool>("SuperCs.svg.exportPngFile", _host, pngName, 2);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _selfRef?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

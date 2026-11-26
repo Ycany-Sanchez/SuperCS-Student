@@ -218,6 +218,12 @@
                 <span>Weighted</span>
             </label>
             <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="RunGraphAlgorithm">Run @_graphAlgorithm</button>
+            <button type="button"
+                    class="bp-btn-secondary !h-8 text-xs"
+                    style="@(_graphBuildMode ? "border-color: var(--accent); background: var(--accent-soft); color: var(--accent);" : "")"
+                    @onclick="ToggleGraphBuildMode">
+                @(_graphBuildMode ? "Build Mode: ON" : "Click-to-Build")
+            </button>
             <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="() => _graphEditorOpen = !_graphEditorOpen">
                 @(_graphEditorOpen ? "Hide Edge Editor" : "Edit Edges")
             </button>
@@ -241,6 +247,35 @@
     <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
         @* Left/Center Canvas Stage *@
         <div class="lg:col-span-8 flex flex-col min-h-[340px] lg:min-h-0 p-3 gap-2.5 overflow-hidden">
+            @if (_category == StructureCategory.Graph && _graphBuildMode)
+            {
+                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs"
+                     style="border-color: var(--accent); background: var(--accent-soft);">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-semibold" style="color: var(--accent);">Interactive Graph Builder</span>
+                        <span style="color: var(--text);">Click empty canvas to add a vertex, or click two vertices to connect an edge.</span>
+                        @if (!string.IsNullOrEmpty(_graphSelectedSource))
+                        {
+                            <span class="bp-pill bp-pill-warning font-mono">From: @_graphSelectedSource → click target</span>
+                        }
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        @if (_graphWeighted)
+                        {
+                            <label class="flex items-center gap-1">
+                                <span style="color: var(--muted);">Weight</span>
+                                <input type="number" class="bp-input !h-7 w-16 font-mono text-xs" @bind="_graphNewEdgeWeight" />
+                            </label>
+                        }
+                        @if (!string.IsNullOrEmpty(_graphSelectedSource))
+                        {
+                            <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => _graphSelectedSource = null">Cancel Edge</button>
+                        }
+                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="ClearGraph">Clear Graph</button>
+                    </div>
+                </div>
+            }
+
             @if (_category == StructureCategory.Graph && _graphEditorOpen)
             {
                 <div class="bp-card p-3 flex flex-col gap-2 shrink-0">
@@ -256,6 +291,8 @@
                 <div class="relative min-h-[200px] min-w-0 overflow-hidden">
                     <InteractiveSvgCanvas Scene="@ActiveScene"
                                           SnapMotion="@AppState.SnapMotion"
+                                          OnNodeClicked="HandleGraphNodeClick"
+                                          OnCanvasClicked="HandleGraphCanvasClick"
                                           ExportFileName="@($"{_category.ToString().ToLowerInvariant()}-trace.svg")" />
                 </div>
 
@@ -563,6 +600,9 @@
 
     private bool _rulesOpen;
     private bool _graphEditorOpen;
+    private bool _graphBuildMode;
+    private string? _graphSelectedSource;
+    private double _graphNewEdgeWeight = 10;
     private string _inspectorTab = "trace";
     private int _stepIndex;
 
@@ -809,6 +849,95 @@
     {
         RebuildGraphFromEditor();
         RunGraphAlgorithm();
+    }
+
+    private void ToggleGraphBuildMode()
+    {
+        _graphBuildMode = !_graphBuildMode;
+        if (!_graphBuildMode)
+        {
+            _graphSelectedSource = null;
+        }
+    }
+
+    private void ClearGraph()
+    {
+        _graph = new GraphModel(_graphDirected, _graphWeighted);
+        _graphEdgeText = string.Empty;
+        _graphSelectedSource = null;
+        _graphStartVertex = string.Empty;
+        RunGraphAlgorithm();
+    }
+
+    private void HandleGraphNodeClick(string nodeId)
+    {
+        if (_category != StructureCategory.Graph || !_graphBuildMode) return;
+        if (!_graph.ContainsVertex(nodeId)) return;
+
+        if (string.IsNullOrEmpty(_graphSelectedSource))
+        {
+            _graphSelectedSource = nodeId;
+            return;
+        }
+
+        if (string.Equals(_graphSelectedSource, nodeId, StringComparison.Ordinal))
+        {
+            _graphSelectedSource = null;
+            return;
+        }
+
+        _graph.AddEdge(_graphSelectedSource, nodeId, _graphWeighted ? _graphNewEdgeWeight : 1.0);
+        _graphSelectedSource = null;
+        SyncEdgeTextFromGraph();
+        RunGraphAlgorithm();
+    }
+
+    private void HandleGraphCanvasClick((double X, double Y) coords)
+    {
+        if (_category != StructureCategory.Graph || !_graphBuildMode) return;
+        var nextLabel = GenerateNextVertexId();
+        _graph.AddVertex(nextLabel);
+        if (string.IsNullOrWhiteSpace(_graphStartVertex))
+        {
+            _graphStartVertex = nextLabel;
+        }
+        SyncEdgeTextFromGraph();
+        RunGraphAlgorithm();
+    }
+
+    private string GenerateNextVertexId()
+    {
+        for (var ch = 'A'; ch <= 'Z'; ch++)
+        {
+            var id = ch.ToString();
+            if (!_graph.ContainsVertex(id)) return id;
+        }
+        var n = 1;
+        while (_graph.ContainsVertex($"V{n}")) n++;
+        return $"V{n}";
+    }
+
+    private void SyncEdgeTextFromGraph()
+    {
+        var lines = new List<string>();
+        var covered = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var e in _graph.Edges)
+        {
+            covered.Add(e.From);
+            covered.Add(e.To);
+            var arrow = _graph.IsDirected ? " -> " : " ";
+            lines.Add(_graph.IsWeighted
+                ? $"{e.From}{arrow}{e.To} {GraphModel.FormatWeight(e.Weight)}"
+                : $"{e.From}{arrow}{e.To}");
+        }
+        foreach (var v in _graph.Vertices)
+        {
+            if (!covered.Contains(v.Id))
+            {
+                lines.Add(v.Id);
+            }
+        }
+        _graphEdgeText = string.Join('\n', lines);
     }
 
     private void RunGraphAlgorithm()

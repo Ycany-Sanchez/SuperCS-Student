@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SuperCsStudent.Core.Workspace;
 
 namespace SuperCsStudent.Web.Services;
@@ -10,8 +11,17 @@ public sealed record QuickCommandItem(
     string Route,
     string? PresetKey = null);
 
+public sealed record WorkspaceSnapshot(
+    string Theme,
+    string EmptyStringSymbol,
+    string BlankTapeSymbol,
+    bool SnapMotion,
+    List<WorkspaceDocument> RecentWorkspaces);
+
 public sealed class AppStateService
 {
+    public const string StorageKey = "scs_workspace_v1";
+
     public string Theme { get; private set; } = "light";
     public bool IsDark => Theme == "dark";
     public string EmptyStringSymbol { get; set; } = "e";
@@ -21,6 +31,7 @@ public sealed class AppStateService
     public bool CommandPaletteOpen { get; set; } = false;
     public bool SettingsOpen { get; set; } = false;
     public string? PendingPresetKey { get; set; }
+    public bool HasHydratedStorage { get; private set; }
 
     public List<WorkspaceDocument> RecentWorkspaces { get; } = new();
 
@@ -54,8 +65,91 @@ public sealed class AppStateService
     {
         RecentWorkspaces.RemoveAll(w => w.Id == doc.Id);
         RecentWorkspaces.Insert(0, doc);
-        if (RecentWorkspaces.Count > 8)
+        if (RecentWorkspaces.Count > 10)
             RecentWorkspaces.RemoveAt(RecentWorkspaces.Count - 1);
+        Notify();
+    }
+
+    public string ExportSnapshotJson()
+    {
+        var snap = new WorkspaceSnapshot(
+            Theme,
+            EmptyStringSymbol,
+            BlankTapeSymbol,
+            SnapMotion,
+            RecentWorkspaces.ToList());
+        return JsonSerializer.Serialize(snap, WorkspaceJson.Options);
+    }
+
+    public bool TryImportSnapshotJson(string? json, out int importedCount, out string? error, bool mergeExistingRecents = false)
+    {
+        importedCount = 0;
+        error = null;
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            error = "Workspace JSON file is empty.";
+            return false;
+        }
+
+        try
+        {
+            var snap = JsonSerializer.Deserialize<WorkspaceSnapshot>(json, WorkspaceJson.Options);
+            if (snap is null)
+            {
+                error = "Invalid workspace snapshot format.";
+                return false;
+            }
+
+            Theme = snap.Theme == "dark" ? "dark" : "light";
+            EmptyStringSymbol = snap.EmptyStringSymbol is "e" or "ε" or "λ" ? snap.EmptyStringSymbol : "e";
+            BlankTapeSymbol = snap.BlankTapeSymbol is "#" or "␣" or "_" ? snap.BlankTapeSymbol : "#";
+            SnapMotion = snap.SnapMotion;
+
+            var existing = mergeExistingRecents ? RecentWorkspaces.ToList() : new List<WorkspaceDocument>();
+            RecentWorkspaces.Clear();
+            foreach (var doc in existing)
+            {
+                RecentWorkspaces.Add(doc);
+            }
+            if (snap.RecentWorkspaces is not null)
+            {
+                foreach (var doc in snap.RecentWorkspaces)
+                {
+                    if (!RecentWorkspaces.Any(w => w.Id == doc.Id))
+                    {
+                        RecentWorkspaces.Add(doc);
+                    }
+                }
+            }
+            if (RecentWorkspaces.Count > 10)
+            {
+                RecentWorkspaces.RemoveRange(10, RecentWorkspaces.Count - 10);
+            }
+
+            importedCount = RecentWorkspaces.Count;
+            HasHydratedStorage = true;
+            Notify();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not parse workspace JSON: {ex.Message}";
+            return false;
+        }
+    }
+
+    public void MarkHydrated()
+    {
+        HasHydratedStorage = true;
+    }
+
+    public void ResetWorkspace()
+    {
+        Theme = "light";
+        EmptyStringSymbol = "e";
+        BlankTapeSymbol = "#";
+        SnapMotion = false;
+        RecentWorkspaces.Clear();
         Notify();
     }
 

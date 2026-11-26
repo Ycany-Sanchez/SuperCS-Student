@@ -1,6 +1,9 @@
 ﻿@page "/"
+@implements IDisposable
 @inject AppStateService AppState
 @inject NavigationManager Nav
+
+@using System.Text.Json
 
 <div class="flex-1 overflow-y-auto px-6 py-6">
     <div class="max-w-6xl mx-auto space-y-6">
@@ -165,9 +168,14 @@
 
         @* Recent Workspaces Section *@
         <section class="space-y-2.5">
-            <div class="flex items-center justify-between">
-                <h2 class="text-sm font-semibold">Recent session activity</h2>
-                <span class="text-xs tnum" style="color: var(--muted);">@AppState.RecentWorkspaces.Count saved</span>
+            <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <h2 class="text-sm font-semibold">Recent session activity</h2>
+                    <span class="text-xs tnum" style="color: var(--muted);">@AppState.RecentWorkspaces.Count saved</span>
+                </div>
+                <button type="button" class="bp-btn-ghost !h-7 text-xs" @onclick="() => AppState.SetSettingsOpen(true)">
+                    Backup / Import JSON
+                </button>
             </div>
 
             @if (AppState.RecentWorkspaces.Count == 0)
@@ -181,19 +189,15 @@
                 <div class="bp-card divide-y" style="border-color: var(--border);">
                     @foreach (var doc in AppState.RecentWorkspaces)
                     {
-                        var target = doc.Studio switch
-                        {
-                            StudioKind.Automata => "/automata",
-                            StudioKind.Algorithms => "/daa",
-                            _ => "/structures"
-                        };
-                        <a href="@target" class="flex items-center justify-between gap-4 px-4 py-2.5 hover:bg-[var(--raised)] transition-colors">
+                        <button type="button"
+                                class="w-full text-left flex items-center justify-between gap-4 px-4 py-2.5 hover:bg-[var(--raised)] transition-colors cursor-pointer"
+                                @onclick="() => OpenRecent(doc)">
                             <div class="min-w-0">
                                 <div class="text-sm font-medium truncate">@doc.Title</div>
                                 <div class="text-xs truncate" style="color: var(--muted);">@doc.Subtitle</div>
                             </div>
                             <span class="text-xs font-mono tnum shrink-0" style="color: var(--muted);">@doc.UpdatedAt.ToLocalTime().ToString("HH:mm")</span>
-                        </a>
+                        </button>
                     }
                 </div>
             }
@@ -202,9 +206,39 @@
 </div>
 
 @code {
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += OnAppStateChanged;
+    }
+
+    private void OnAppStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        AppState.OnChange -= OnAppStateChanged;
+    }
+
     private void OpenPreset(string route, string presetKey)
     {
         AppState.PendingPresetKey = presetKey;
         Nav.NavigateTo(route);
+    }
+
+    private void OpenRecent(WorkspaceDocument doc)
+    {
+        if (doc.Payload.ValueKind == JsonValueKind.Object &&
+            doc.Payload.TryGetProperty("preset", out var presetProp) &&
+            presetProp.ValueKind == JsonValueKind.String)
+        {
+            AppState.PendingPresetKey = presetProp.GetString();
+        }
+
+        var target = doc.Studio switch
+        {
+            StudioKind.Automata => "/automata",
+            StudioKind.Algorithms => "/daa",
+            _ => "/structures"
+        };
+        Nav.NavigateTo(target);
     }
 }
