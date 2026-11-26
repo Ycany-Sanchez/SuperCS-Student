@@ -1,0 +1,5 @@
+# Exclude compiled/bundled frontend build artifacts and lockfiles from the knowledge graph
+src/SuperCsStudent.Web/wwwroot/js/
+src/SuperCsStudent.Web/wwwroot/css/
+src/SuperCsStudent.Web/wwwroot/fonts/
+**/package-lock.json
