@@ -56,7 +56,7 @@ public sealed record LanguageSpecCompilationResult(
 public static class LanguageSpecCompiler
 {
     private static readonly Regex ConstraintSignalRegex = new(
-        @"\b(starts?\s+with|begins?\s+with|ends?\s+with|contains?|has\s+substring|does\s+not|doesn't|even|odd|length|divisible|multiple|mod|at\s+least|at\s+most|exactly|more\s+than|fewer\s+than|less\s+than|no\s+consecutive|no\s+adjacent|consecutive|adjacent|every\s+\S+\s+(?:is\s+)?followed\s+by|starts?\s+and\s+ends?|from\s+(?:right|end|last)|to\s+last|equals?|exact|non-?empty|is\s+empty|empty|count\s+of|no\s+\S)\b|\b\d+(?:st|nd|rd|th)?\s+(?:symbol|char|character|letter|from)\b|\b(AND|OR|NOT)\b",
+        @"\b(starts?\s+with|begins?\s+with|ends?\s+with|contains?|has\s+substring|does\s+not|doesn't|even|odd|length|divisible|multiple|mod|at\s+least|at\s+most|exactly|more\s+than|fewer\s+than|less\s+than|no\s+consecutive|no\s+adjacent|consecutive|adjacent|every\s+\S+\s+(?:is\s+)?followed\s+by|starts?\s+and\s+ends?|from\s+(?:right|end|last)|to\s+last|equals?|exact|non-?empty|is\s+empty|empty|count\s+of|no\s+\S|(?:kleene\s+)?star\s*\()\b|\b\d+(?:st|nd|rd|th)?\s+(?:symbol|char|character|letter|from)\b|\b(AND|OR|NOT)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static LanguageSpecCompilationResult Compile(
@@ -1141,7 +1141,7 @@ public static class LanguageSpecCompiler
 
     // --- Constraint Expression Parser & Atomic DFA Builders ---
 
-    private enum ConstraintTokenKind { Atom, And, Or, Not, LParen, RParen }
+    private enum ConstraintTokenKind { Atom, And, Or, Not, PrefixStar, Star, Plus, LParen, RParen }
     private sealed record ConstraintToken(ConstraintTokenKind Kind, string Text);
 
     private static List<ConstraintToken> TokenizeConstraint(string input)
@@ -1191,6 +1191,16 @@ public static class LanguageSpecCompiler
                 i++;
                 continue;
             }
+            if ((c == '*' || c == '+') &&
+                atomChars.All(char.IsWhiteSpace) &&
+                tokens.Count > 0 &&
+                tokens[^1].Kind is ConstraintTokenKind.RParen or ConstraintTokenKind.Star or ConstraintTokenKind.Plus)
+            {
+                atomChars.Clear();
+                tokens.Add(new ConstraintToken(c == '*' ? ConstraintTokenKind.Star : ConstraintTokenKind.Plus, c.ToString()));
+                i++;
+                continue;
+            }
             if (c == '&' && i + 1 < input.Length && input[i + 1] == '&')
             {
                 FlushAtom();
@@ -1211,6 +1221,27 @@ public static class LanguageSpecCompiler
                 tokens.Add(new ConstraintToken(ConstraintTokenKind.Not, "NOT"));
                 i++;
                 continue;
+            }
+            if (MatchesWord("KLEENE"))
+            {
+                var rest = input[(i + 6)..].TrimStart();
+                if (rest.StartsWith("star", StringComparison.OrdinalIgnoreCase))
+                {
+                    FlushAtom();
+                    i += 6;
+                    continue;
+                }
+            }
+            if (MatchesWord("STAR"))
+            {
+                var rest = input[(i + 4)..].TrimStart();
+                if (rest.StartsWith('('))
+                {
+                    FlushAtom();
+                    tokens.Add(new ConstraintToken(ConstraintTokenKind.PrefixStar, "star"));
+                    i += 4;
+                    continue;
+                }
             }
             if (MatchesWord("AND"))
             {
@@ -1480,7 +1511,27 @@ public static class LanguageSpecCompiler
                 var inner = ParseNot();
                 return FaOperations.Complement(inner, _alpha);
             }
-            return ParsePrimary();
+            if (!IsAtEnd && Current.Kind == ConstraintTokenKind.PrefixStar)
+            {
+                _pos++;
+                var inner = ParseNot();
+                return FaOperations.KleeneStar(inner);
+            }
+            return ParsePostfix();
+        }
+
+        private Dfa ParsePostfix()
+        {
+            var inner = ParsePrimary();
+            while (!IsAtEnd && Current.Kind is ConstraintTokenKind.Star or ConstraintTokenKind.Plus)
+            {
+                var kind = Current.Kind;
+                _pos++;
+                inner = kind == ConstraintTokenKind.Star
+                    ? FaOperations.KleeneStar(inner)
+                    : FaOperations.Concatenation(inner, FaOperations.KleeneStar(inner));
+            }
+            return inner;
         }
 
         private Dfa ParsePrimary()
@@ -1841,7 +1892,7 @@ public static class LanguageSpecCompiler
     // --- Compact NFA Constraint Synthesizer (True String-Edge NFAs + Negation-to-DFA Rule) ---
 
     private const string NegationDetReason =
-        "Negation (does not start/contain/end with or NOT) cannot flip accept states on a nondeterministic NFA — determinized to a complete DFA before complementing accept states (F' = Q \\ F).";
+        "Negation requires a complete DFA before complementing accept states (F' = Q \\ F).";
 
     private sealed class ConstraintNfaParser
     {
@@ -1895,7 +1946,28 @@ public static class LanguageSpecCompiler
                 var compDfa = FaOperations.Complement(inner.Nfa.ToDfa().Complete(), _alpha).Minimize();
                 return new ConstraintNfaResult(compDfa.ToNfa(), RequiredDeterminization: true, DeterminizationReason: NegationDetReason);
             }
-            return ParsePrimary();
+            if (!IsAtEnd && Current.Kind == ConstraintTokenKind.PrefixStar)
+            {
+                _pos++;
+                var inner = ParseNot();
+                return new ConstraintNfaResult(StarNfa(inner.Nfa, _alpha), inner.RequiredDeterminization, inner.DeterminizationReason);
+            }
+            return ParsePostfix();
+        }
+
+        private ConstraintNfaResult ParsePostfix()
+        {
+            var inner = ParsePrimary();
+            while (!IsAtEnd && Current.Kind is ConstraintTokenKind.Star or ConstraintTokenKind.Plus)
+            {
+                var kind = Current.Kind;
+                _pos++;
+                var next = kind == ConstraintTokenKind.Star
+                    ? StarNfa(inner.Nfa, _alpha)
+                    : PlusNfa(inner.Nfa, _alpha);
+                inner = new ConstraintNfaResult(next, inner.RequiredDeterminization, inner.DeterminizationReason);
+            }
+            return inner;
         }
 
         private ConstraintNfaResult ParsePrimary()
@@ -2168,6 +2240,47 @@ public static class LanguageSpecCompiler
         }
         transitions.Add(new NfaTransition("q0", w, "q1"));
         return new Nfa(new[] { "q0", "q1" }, alpha, transitions, "q0", new[] { "q1" });
+    }
+
+    private static Nfa StarNfa(Nfa inner, SortedSet<char> alpha)
+    {
+        var states = new List<string> { "q0" };
+        var transitions = new List<NfaTransition>();
+        var accept = new HashSet<string>(StringComparer.Ordinal) { "q0" };
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var nextId = 1;
+
+        foreach (var s in inner.OrderedStates)
+        {
+            var renamed = $"q{nextId++}";
+            map[s] = renamed;
+            states.Add(renamed);
+            if (inner.AcceptStates.Contains(s)) accept.Add(renamed);
+        }
+
+        foreach (var t in inner.Transitions)
+        {
+            transitions.Add(new NfaTransition(map[t.FromState], t.Symbol, map[t.ToState]));
+        }
+
+        var innerStart = map[inner.StartState];
+        transitions.Add(new NfaTransition("q0", AutomataSymbols.Empty, innerStart));
+        foreach (var acc in inner.AcceptStates)
+        {
+            transitions.Add(new NfaTransition(map[acc], AutomataSymbols.Empty, innerStart));
+        }
+
+        return new Nfa(states, alpha, transitions, "q0", accept);
+    }
+
+    private static Nfa PlusNfa(Nfa inner, SortedSet<char> alpha)
+    {
+        var transitions = inner.Transitions.ToList();
+        foreach (var acc in inner.AcceptStates)
+        {
+            transitions.Add(new NfaTransition(acc, AutomataSymbols.Empty, inner.StartState));
+        }
+        return new Nfa(inner.OrderedStates, alpha, transitions, inner.StartState, inner.AcceptStates);
     }
 
     private static Nfa UnionNfa(Nfa first, Nfa second, SortedSet<char> alpha)

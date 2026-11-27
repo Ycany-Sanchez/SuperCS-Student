@@ -361,4 +361,56 @@ public class FiniteAutomataTests
             }
         }
     }
+
+    [Fact]
+    public void ConstraintKleeneStarAndPlus_WorkInTextSpecForDfaAndNfa()
+    {
+        var starStartsDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.Compile("(starts with ab)*", SuperCsStudent.Automata.Synthesis.LanguageSpecMode.Auto).MinimalDfa!;
+        var starStartsNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("(starts with ab)*");
+        Assert.False(starStartsNfa.RequiredDeterminization);
+
+        var plusStartsDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.Compile("(starts with ab)+", SuperCsStudent.Automata.Synthesis.LanguageSpecMode.Auto).MinimalDfa!;
+        var plusStartsNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("(starts with ab)+");
+        Assert.False(plusStartsNfa.RequiredDeterminization);
+
+        var evenLenByStarDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.Compile("(length = 2)*", SuperCsStudent.Automata.Synthesis.LanguageSpecMode.Auto).MinimalDfa!;
+        var prefixStarDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.Compile("star(starts with ab)", SuperCsStudent.Automata.Synthesis.LanguageSpecMode.Auto).MinimalDfa!;
+        var negatedStarNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("(does not contain aba)*");
+        var negatedStarDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("(does not contain aba)*");
+        Assert.True(negatedStarNfa.RequiredDeterminization);
+
+        // Regex star patterns still route cleanly to RegexCompiler in Auto mode
+        var regexStar = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.Compile("(ab)*", SuperCsStudent.Automata.Synthesis.LanguageSpecMode.Auto);
+        Assert.Equal(SuperCsStudent.Automata.Synthesis.LanguageSpecMode.Regex, regexStar.ResolvedMode);
+
+        // Check exact language behavior
+        Assert.True(starStartsDfa.Accepts(""));
+        Assert.True(starStartsDfa.Accepts("ab"));
+        Assert.True(starStartsDfa.Accepts("abab"));
+        Assert.True(starStartsDfa.Accepts("abbab"));
+        Assert.False(starStartsDfa.Accepts("b"));
+        Assert.False(starStartsDfa.Accepts("ba"));
+        Assert.False(starStartsDfa.Accepts("a"));
+
+        Assert.False(plusStartsDfa.Accepts(""));
+        Assert.True(plusStartsDfa.Accepts("ab"));
+        Assert.True(plusStartsDfa.Accepts("abab"));
+
+        var q = new Queue<string>();
+        q.Enqueue("");
+        while (q.Count > 0)
+        {
+            var w = q.Dequeue();
+            Assert.Equal(starStartsDfa.Accepts(w), starStartsNfa.Nfa.Accepts(w));
+            Assert.Equal(starStartsDfa.Accepts(w), prefixStarDfa.Accepts(w));
+            Assert.Equal(plusStartsDfa.Accepts(w), plusStartsNfa.Nfa.Accepts(w));
+            Assert.Equal(w.Length % 2 == 0, evenLenByStarDfa.Accepts(w));
+            Assert.Equal(negatedStarDfa.Accepts(w), negatedStarNfa.Nfa.Accepts(w));
+            if (w.Length < 5)
+            {
+                q.Enqueue(w + "a");
+                q.Enqueue(w + "b");
+            }
+        }
+    }
 }
