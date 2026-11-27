@@ -181,4 +181,80 @@ public class FiniteAutomataTests
         Assert.Contains(scene.Nodes, n => n.IsAccepting && n.Shape == NodeShapes.DoubleCircle);
         Assert.NotEmpty(scene.Edges);
     }
+
+    [Fact]
+    public void ConstraintNfa_BuildsCompactStringEdgeNfaAndOnlyDeterminizesOnNegation()
+    {
+        // starts with aba -> compact 2-state NFA: q0 --aba--> q1 (self-loop a, b), NO dead state!
+        var startsRes = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("starts with aba");
+        Assert.False(startsRes.RequiredDeterminization);
+        Assert.Equal(2, startsRes.Nfa.States.Count);
+        Assert.True(startsRes.Nfa.HasStringTransitions);
+        Assert.Contains(startsRes.Nfa.Transitions, t => t.FromState == "q0" && t.Symbol == "aba" && t.ToState == "q1");
+
+        // Compare against complete minimal DFA (5 states including dead sink) — must accept exact same language!
+        var startsDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("starts with aba");
+        Assert.Equal(5, startsDfa.States.Count);
+
+        var endsRes = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("ends with aba");
+        Assert.False(endsRes.RequiredDeterminization);
+        Assert.Equal(2, endsRes.Nfa.States.Count);
+        var endsDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("ends with aba");
+
+        var containsRes = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("contains aba");
+        Assert.False(containsRes.RequiredDeterminization);
+        Assert.Equal(2, containsRes.Nfa.States.Count);
+        var containsDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("contains aba");
+
+        // Union OR stays true nondeterministic NFA without determinization
+        var orRes = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("starts with aba OR ends with bab");
+        Assert.False(orRes.RequiredDeterminization);
+        var orDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("starts with aba OR ends with bab");
+
+        // Negated constraints MUST determinize to complete DFA before complementing
+        var notStart = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("does not start with aba");
+        var notEnd = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("does not end with aba");
+        var notContain = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("does not contain aba");
+        Assert.True(notStart.RequiredDeterminization);
+        Assert.True(notEnd.RequiredDeterminization);
+        Assert.True(notContain.RequiredDeterminization);
+        Assert.NotNull(notStart.DeterminizationReason);
+
+        var notStartDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("does not start with aba");
+        var notEndDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("does not end with aba");
+        var notContainDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("does not contain aba");
+
+        // Exhaustively check all strings over {a, b} up to length 5 across NFA, FaTracer, and DFA
+        var queue = new Queue<string>();
+        queue.Enqueue("");
+        while (queue.Count > 0)
+        {
+            var w = queue.Dequeue();
+            Assert.Equal(startsDfa.Accepts(w), startsRes.Nfa.Accepts(w));
+            Assert.Equal(endsDfa.Accepts(w), endsRes.Nfa.Accepts(w));
+            Assert.Equal(containsDfa.Accepts(w), containsRes.Nfa.Accepts(w));
+            Assert.Equal(orDfa.Accepts(w), orRes.Nfa.Accepts(w));
+            Assert.Equal(notStartDfa.Accepts(w), notStart.Nfa.Accepts(w));
+            Assert.Equal(notEndDfa.Accepts(w), notEnd.Nfa.Accepts(w));
+            Assert.Equal(notContainDfa.Accepts(w), notContain.Nfa.Accepts(w));
+
+            if (w.Length <= 4)
+            {
+                Assert.Equal(endsDfa.Accepts(w), FaTracer.Trace(endsRes.Nfa, w).IsSuccess);
+                Assert.Equal(startsDfa.Accepts(w), FaTracer.Trace(startsRes.Nfa, w).IsSuccess);
+            }
+
+            if (w.Length < 5)
+            {
+                queue.Enqueue(w + "a");
+                queue.Enqueue(w + "b");
+            }
+        }
+
+        // Verify FaTracer highlights intermediate string-edge progress cleanly on "ababa"
+        var trace = FaTracer.Trace(startsRes.Nfa, "ababa");
+        Assert.True(trace.IsSuccess);
+        Assert.Contains(trace.Steps, s => s.State.ActiveStates.Any(st => st.Contains("a·ba")));
+        Assert.Contains(trace.Steps, s => s.State.ActiveStates.Any(st => st.Contains("ab·a")));
+    }
 }

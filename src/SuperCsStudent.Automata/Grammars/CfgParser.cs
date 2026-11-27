@@ -8,13 +8,31 @@ public sealed record ParseTreeNode(
     bool IsTerminal,
     IReadOnlyList<ParseTreeNode> Children);
 
+public sealed record CfgQueueSymbol(
+    string Symbol,
+    bool IsTerminal,
+    bool IsNewlyProduced = false,
+    bool IsExpandHead = false);
+
+public sealed record CfgDerivationQueueStep(
+    int StepIndex,
+    string SententialForm,
+    IReadOnlyList<string> ResolvedOutput,
+    int NewlyResolvedCount,
+    IReadOnlyList<CfgQueueSymbol> QueueSymbols,
+    string? ExpandedNonTerminal,
+    IReadOnlyList<string> ProducedSymbols,
+    string? AppliedRule,
+    bool IsComplete);
+
 public sealed record CfgParseResult(
     bool Accepted,
     string Input,
     IReadOnlyList<string> DerivationSteps,
     ParseTreeNode? Root,
     DiagramScene ParseTreeScene,
-    string Summary);
+    string Summary,
+    IReadOnlyList<CfgDerivationQueueStep>? QueueSteps = null);
 
 /// <summary>
 /// General Earley parser for arbitrary context-free grammars supporting left recursion,
@@ -146,7 +164,7 @@ public static class CfgParser
         }
 
         var root = ExtractMinimalParseTree(grammar, tokens, chart);
-        var derivation = BuildLeftmostDerivation(root);
+        var (derivation, queueSteps) = BuildLeftmostDerivationWithQueue(root);
         var scene = BuildParseTreeScene(root, $"Parse tree for '{displayInput}' ({derivation.Count - 1} steps)");
 
         return new CfgParseResult(
@@ -155,7 +173,8 @@ public static class CfgParser
             DerivationSteps: derivation,
             Root: root,
             ParseTreeScene: scene,
-            Summary: $"Accepted '{displayInput}' in {derivation.Count - 1} derivation step(s).");
+            Summary: $"Accepted '{displayInput}' in {derivation.Count - 1} derivation step(s).",
+            QueueSteps: queueSteps);
     }
 
     private static bool TryTokenizeInput(Cfg grammar, string normalized, out List<string> tokens)
@@ -386,12 +405,13 @@ public static class CfgParser
         return BuildNode(grammar.StartSymbol, 0, n);
     }
 
-    private static IReadOnlyList<string> BuildLeftmostDerivation(ParseTreeNode root)
+    private static (IReadOnlyList<string> Steps, IReadOnlyList<CfgDerivationQueueStep> QueueSteps) BuildLeftmostDerivationWithQueue(ParseTreeNode root)
     {
         var steps = new List<string>();
+        var queueSteps = new List<CfgDerivationQueueStep>();
         var frontier = new List<ParseTreeNode> { root };
 
-        string FormatFrontier(List<ParseTreeNode> nodes)
+        static string FormatNodes(IReadOnlyList<ParseTreeNode> nodes)
         {
             if (nodes.Count == 0)
             {
@@ -401,7 +421,39 @@ public static class CfgParser
             return string.Join(needsSpace ? " " : string.Empty, nodes.Select(x => x.Symbol));
         }
 
-        steps.Add(FormatFrontier(frontier));
+        static string FormatSymbols(IReadOnlyList<string> syms)
+        {
+            if (syms.Count == 0) return AutomataSymbols.Empty;
+            var needsSpace = syms.Any(x => x.Length > 1);
+            return string.Join(needsSpace ? " " : string.Empty, syms);
+        }
+
+        var initialForm = FormatNodes(frontier);
+        steps.Add(initialForm);
+
+        var initExpandIdx = frontier.FindIndex(x => !x.IsTerminal);
+        var initResolvedEnd = initExpandIdx < 0 ? frontier.Count : initExpandIdx;
+        var initResolved = frontier.Take(initResolvedEnd).Select(x => x.Symbol).ToArray();
+        var initQueue = new List<CfgQueueSymbol>();
+        for (var j = initResolvedEnd; j < frontier.Count; j++)
+        {
+            initQueue.Add(new CfgQueueSymbol(
+                frontier[j].Symbol,
+                frontier[j].IsTerminal,
+                IsNewlyProduced: false,
+                IsExpandHead: j == initExpandIdx));
+        }
+
+        queueSteps.Add(new CfgDerivationQueueStep(
+            StepIndex: 0,
+            SententialForm: initialForm,
+            ResolvedOutput: initResolved,
+            NewlyResolvedCount: 0,
+            QueueSymbols: initQueue,
+            ExpandedNonTerminal: null,
+            ProducedSymbols: Array.Empty<string>(),
+            AppliedRule: null,
+            IsComplete: initExpandIdx < 0));
 
         while (true)
         {
@@ -411,6 +463,7 @@ public static class CfgParser
                 break;
             }
 
+            var prevResolvedCount = expandIdx;
             var target = frontier[expandIdx];
             frontier.RemoveAt(expandIdx);
 
@@ -419,15 +472,48 @@ public static class CfgParser
                 && target.Children[0].IsTerminal
                 && target.Children[0].Symbol == AutomataSymbols.Empty;
 
+            var produced = isEpsilonExpansion
+                ? Array.Empty<string>()
+                : target.Children.Select(c => c.Symbol).ToArray();
+
             if (!isEpsilonExpansion)
             {
                 frontier.InsertRange(expandIdx, target.Children);
             }
 
-            steps.Add(FormatFrontier(frontier));
+            var form = FormatNodes(frontier);
+            steps.Add(form);
+
+            var nextExpandIdx = frontier.FindIndex(x => !x.IsTerminal);
+            var resolvedEnd = nextExpandIdx < 0 ? frontier.Count : nextExpandIdx;
+            var resolvedOutput = frontier.Take(resolvedEnd).Select(x => x.Symbol).ToArray();
+            var newlyResolvedCount = System.Math.Max(0, resolvedEnd - prevResolvedCount);
+
+            var producedEndExclusive = expandIdx + produced.Length;
+            var queueSyms = new List<CfgQueueSymbol>();
+            for (var j = resolvedEnd; j < frontier.Count; j++)
+            {
+                queueSyms.Add(new CfgQueueSymbol(
+                    frontier[j].Symbol,
+                    frontier[j].IsTerminal,
+                    IsNewlyProduced: j >= expandIdx && j < producedEndExclusive,
+                    IsExpandHead: j == nextExpandIdx));
+            }
+
+            var ruleStr = $"{target.Symbol} → {FormatSymbols(produced)}";
+            queueSteps.Add(new CfgDerivationQueueStep(
+                StepIndex: queueSteps.Count,
+                SententialForm: form,
+                ResolvedOutput: resolvedOutput,
+                NewlyResolvedCount: newlyResolvedCount,
+                QueueSymbols: queueSyms,
+                ExpandedNonTerminal: target.Symbol,
+                ProducedSymbols: produced,
+                AppliedRule: ruleStr,
+                IsComplete: nextExpandIdx < 0));
         }
 
-        return steps;
+        return (steps, queueSteps);
     }
 
     private static DiagramScene BuildParseTreeScene(ParseTreeNode root, string caption)

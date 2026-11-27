@@ -64,11 +64,13 @@ public sealed class Nfa
 
             var normSym = raw.Symbol.Length == 1 && alphaSet.Contains(raw.Symbol[0])
                 ? raw.Symbol
-                : AutomataSymbols.NormalizeSymbol(raw.Symbol);
+                : raw.Symbol.Length > 1 && raw.Symbol.All(c => alphaSet.Contains(c))
+                    ? raw.Symbol
+                    : AutomataSymbols.NormalizeSymbol(raw.Symbol);
 
             if (normSym != AutomataSymbols.Empty)
             {
-                if (normSym.Length != 1 || !alphaSet.Contains(normSym[0]))
+                if (normSym.Length == 0 || !normSym.All(c => alphaSet.Contains(c)))
                 {
                     throw new ArgumentException($"Transition symbol '{raw.Symbol}' is not in Alphabet or epsilon.", nameof(transitions));
                 }
@@ -159,8 +161,103 @@ public sealed class Nfa
         return result;
     }
 
+    public bool HasStringTransitions =>
+        Transitions.Any(t => !t.IsEpsilon && t.Symbol.Length > 1);
+
+    /// <summary>
+    /// Expands any multi-character string-labeled transitions (e.g. q0 --aba--> q1) into
+    /// single-character intermediate chains for exact subset construction and simulation.
+    /// </summary>
+    public Nfa ExpandStringTransitions() => ExpandStringTransitionsWithMetadata(out _);
+
+    internal Nfa ExpandStringTransitionsWithMetadata(
+        out Dictionary<string, (NfaTransition Parent, int MatchedLength)> midStateMap)
+    {
+        midStateMap = new Dictionary<string, (NfaTransition, int)>(StringComparer.Ordinal);
+        if (!HasStringTransitions)
+        {
+            return this;
+        }
+
+        var states = new HashSet<string>(States, StringComparer.Ordinal);
+        var expanded = new List<NfaTransition>();
+        var edgeCounter = 0;
+
+        foreach (var t in Transitions)
+        {
+            if (t.IsEpsilon || t.Symbol.Length <= 1)
+            {
+                expanded.Add(t);
+                continue;
+            }
+
+            var prev = t.FromState;
+            var edgeIdx = edgeCounter++;
+            for (var k = 0; k < t.Symbol.Length; k++)
+            {
+                var next = k == t.Symbol.Length - 1
+                    ? t.ToState
+                    : $"__se_{edgeIdx}_{k + 1}";
+                if (k < t.Symbol.Length - 1)
+                {
+                    while (!states.Add(next))
+                    {
+                        next = $"__se_{edgeIdx}_{k + 1}_{states.Count}";
+                    }
+                    midStateMap[next] = (t, k + 1);
+                }
+                expanded.Add(new NfaTransition(prev, t.Symbol[k].ToString(), next));
+                prev = next;
+            }
+        }
+
+        return new Nfa(states, OrderedAlphabet, expanded, StartState, AcceptStates);
+    }
+
+    /// <summary>
+    /// Compacts linear single-character chains (u --a--> m --b--> v where m has in-degree 1,
+    /// out-degree 1, is non-start, and non-accepting) into readable string-labeled transitions u --ab--> v.
+    /// </summary>
+    public Nfa CompactLiteralChains()
+    {
+        var states = new HashSet<string>(States, StringComparer.Ordinal);
+        var trans = new List<NfaTransition>(Transitions);
+
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var mid in states.ToList())
+            {
+                if (mid == StartState || AcceptStates.Contains(mid)) continue;
+                var incoming = trans.Where(t => t.ToState == mid).ToList();
+                var outgoing = trans.Where(t => t.FromState == mid).ToList();
+                if (incoming.Count != 1 || outgoing.Count != 1) continue;
+
+                var inc = incoming[0];
+                var outg = outgoing[0];
+                if (inc.IsEpsilon || outg.IsEpsilon) continue;
+                if (inc.FromState == mid || outg.ToState == mid) continue;
+
+                trans.Remove(inc);
+                trans.Remove(outg);
+                trans.Add(new NfaTransition(inc.FromState, inc.Symbol + outg.Symbol, outg.ToState));
+                states.Remove(mid);
+                changed = true;
+                break;
+            }
+        }
+
+        return new Nfa(states, OrderedAlphabet, trans, StartState, AcceptStates);
+    }
+
     public bool Accepts(string? input)
     {
+        if (HasStringTransitions)
+        {
+            return ExpandStringTransitions().Accepts(input);
+        }
+
         var word = AutomataSymbols.NormalizeWord(input, Alphabet);
         var active = EpsilonClosure(StartState);
         foreach (var ch in word)
@@ -188,6 +285,28 @@ public sealed class Nfa
 
     public Dfa ToDfaWithSubsetMap(out IReadOnlyDictionary<string, IReadOnlyList<string>> stateMap, bool renameStates = true)
     {
+        if (HasStringTransitions)
+        {
+            var expanded = ExpandStringTransitionsWithMetadata(out var midMap);
+            var dfa = expanded.ToDfaWithSubsetMap(out var rawMap, renameStates);
+            var cleanMap = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            foreach (var (dfaState, subset) in rawMap)
+            {
+                cleanMap[dfaState] = subset.Select(s =>
+                {
+                    if (midMap.TryGetValue(s, out var info))
+                    {
+                        var matched = info.Parent.Symbol[..info.MatchedLength];
+                        var rest = info.Parent.Symbol[info.MatchedLength..];
+                        return $"{info.Parent.FromState}→{info.Parent.ToState}({matched}·{rest})";
+                    }
+                    return s;
+                }).ToList();
+            }
+            stateMap = cleanMap;
+            return dfa;
+        }
+
         var startSubset = EpsilonClosure(StartState).OrderBy(s => s, StringComparer.Ordinal).ToList();
         var subsetKeyToName = new Dictionary<string, string>(StringComparer.Ordinal);
         var map = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);

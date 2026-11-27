@@ -22,6 +22,11 @@ public enum LanguageClass
     Transducer
 }
 
+public sealed record ConstraintNfaResult(
+    Nfa Nfa,
+    bool RequiredDeterminization,
+    string? DeterminizationReason);
+
 public sealed record LanguageSpecCompilationResult(
     string Specification,
     LanguageSpecMode ResolvedMode,
@@ -34,7 +39,9 @@ public sealed record LanguageSpecCompilationResult(
     PushdownAutomaton? Pda,
     TmSchema TmSchema,
     TmCompiledSchema CompiledTm,
-    IReadOnlyList<LanguageTestCase>? SuggestedTests = null);
+    IReadOnlyList<LanguageTestCase>? SuggestedTests = null,
+    bool NfaRequiredDeterminization = false,
+    string? NfaDeterminizationReason = null);
 
 /// <summary>
 /// 100% deterministic formal-language specification compiler supporting:
@@ -121,23 +128,54 @@ public static class LanguageSpecCompiler
     public static LanguageSpecCompilationResult CompileConstraint(string constraintSpec, IEnumerable<char>? alphabet = null)
     {
         var dfa = CompileConstraintToDfa(constraintSpec, alphabet);
+        var nfaResult = CompileConstraintToNfa(constraintSpec, alphabet);
         var rg = RegularGrammarConverter.DfaToRegularGrammar(dfa);
         var schema = DfaToDecidableTmSchema(dfa, $"Decider: {constraintSpec}");
         var compiledTm = TmSchemaCompiler.Compile(schema);
+
+        var desc = nfaResult.RequiredDeterminization
+            ? $"Negated regular constraint determinized into complete minimal DFA ({dfa.States.Count} states) for complementation and converted to a decidable TM Schema."
+            : $"Synthesized compact NFA ({nfaResult.Nfa.States.Count} states) and exact minimal DFA ({dfa.States.Count} states) → Decidable TM Schema.";
 
         return new LanguageSpecCompilationResult(
             Specification: constraintSpec,
             ResolvedMode: LanguageSpecMode.Constraint,
             LanguageClass: LanguageClass.Regular,
             Title: $"Regular Constraint: {constraintSpec}",
-            Description: $"Synthesized exact minimal DFA ({dfa.States.Count} states) via Boolean DFA closure and converted to a decidable TM Schema.",
+            Description: desc,
             MinimalDfa: dfa,
-            Nfa: dfa.ToNfa(),
+            Nfa: nfaResult.Nfa,
             Grammar: rg,
             Pda: null,
             TmSchema: schema,
             CompiledTm: compiledTm,
-            SuggestedTests: GenerateDfaSuggestedTests(dfa));
+            SuggestedTests: GenerateDfaSuggestedTests(dfa),
+            NfaRequiredDeterminization: nfaResult.RequiredDeterminization,
+            NfaDeterminizationReason: nfaResult.DeterminizationReason);
+    }
+
+    /// <summary>
+    /// Compiles a Boolean regular constraint into a true compact NFA (supporting string-labeled edges
+    /// like q0 --aba--> q1 with no dead sink states for positive constraints).
+    /// When negation (does not start/contain/end with or NOT) appears, explicitly determinizes to a
+    /// complete DFA before complementing accept states (F' = Q \ F) and flags RequiredDeterminization = true.
+    /// </summary>
+    public static ConstraintNfaResult CompileConstraintToNfa(string expression, IEnumerable<char>? explicitAlphabet = null)
+    {
+        var tokens = TokenizeConstraint(expression);
+        if (tokens.Count == 0)
+        {
+            throw new FormatException("Constraint expression is empty.");
+        }
+
+        var alpha = InferConstraintAlphabet(tokens, explicitAlphabet);
+        var parser = new ConstraintNfaParser(tokens, alpha);
+        var res = parser.ParseOr();
+        if (!parser.IsAtEnd)
+        {
+            throw new FormatException($"Unexpected token '{parser.Current.Text}' in constraint expression.");
+        }
+        return res;
     }
 
     internal static IReadOnlyList<LanguageTestCase> GenerateDfaSuggestedTests(Dfa dfa)
@@ -1564,5 +1602,261 @@ public static class LanguageSpecCompiler
         }
 
         return new Dfa(states, alpha, trans, "q0", accept).Minimize();
+    }
+
+    // --- Compact NFA Constraint Synthesizer (True String-Edge NFAs + Negation-to-DFA Rule) ---
+
+    private const string NegationDetReason =
+        "Negation (does not start/contain/end with or NOT) cannot flip accept states on a nondeterministic NFA — determinized to a complete DFA before complementing accept states (F' = Q \\ F).";
+
+    private sealed class ConstraintNfaParser
+    {
+        private readonly List<ConstraintToken> _tokens;
+        private readonly SortedSet<char> _alpha;
+        private int _pos;
+
+        public ConstraintNfaParser(List<ConstraintToken> tokens, SortedSet<char> alpha)
+        {
+            _tokens = tokens;
+            _alpha = alpha;
+        }
+
+        public bool IsAtEnd => _pos >= _tokens.Count;
+        public ConstraintToken Current => _tokens[_pos];
+
+        public ConstraintNfaResult ParseOr()
+        {
+            var left = ParseAnd();
+            while (!IsAtEnd && Current.Kind == ConstraintTokenKind.Or)
+            {
+                _pos++;
+                var right = ParseAnd();
+                var union = UnionNfa(left.Nfa, right.Nfa, _alpha);
+                var reqDet = left.RequiredDeterminization || right.RequiredDeterminization;
+                left = new ConstraintNfaResult(union, reqDet, reqDet ? NegationDetReason : null);
+            }
+            return left;
+        }
+
+        private ConstraintNfaResult ParseAnd()
+        {
+            var left = ParseNot();
+            while (!IsAtEnd && Current.Kind == ConstraintTokenKind.And)
+            {
+                _pos++;
+                var right = ParseNot();
+                var reqDet = left.RequiredDeterminization || right.RequiredDeterminization;
+                var inter = IntersectNfa(left.Nfa, right.Nfa, _alpha, pruneDeadStates: !reqDet);
+                left = new ConstraintNfaResult(inter, reqDet, reqDet ? NegationDetReason : null);
+            }
+            return left;
+        }
+
+        private ConstraintNfaResult ParseNot()
+        {
+            if (!IsAtEnd && Current.Kind == ConstraintTokenKind.Not)
+            {
+                _pos++;
+                var inner = ParseNot();
+                var compDfa = FaOperations.Complement(inner.Nfa.ToDfa().Complete(), _alpha).Minimize();
+                return new ConstraintNfaResult(compDfa.ToNfa(), RequiredDeterminization: true, DeterminizationReason: NegationDetReason);
+            }
+            return ParsePrimary();
+        }
+
+        private ConstraintNfaResult ParsePrimary()
+        {
+            if (IsAtEnd)
+            {
+                throw new FormatException("Unexpected end of constraint expression.");
+            }
+
+            if (Current.Kind == ConstraintTokenKind.LParen)
+            {
+                _pos++;
+                var inner = ParseOr();
+                if (IsAtEnd || Current.Kind != ConstraintTokenKind.RParen)
+                {
+                    throw new FormatException("Missing closing ')' in constraint expression.");
+                }
+                _pos++;
+                return inner;
+            }
+
+            if (Current.Kind == ConstraintTokenKind.Atom)
+            {
+                var atom = Current.Text;
+                _pos++;
+                return BuildAtomicNfa(atom, _alpha);
+            }
+
+            throw new FormatException($"Unexpected token '{Current.Text}' in constraint expression.");
+        }
+    }
+
+    private static ConstraintNfaResult BuildAtomicNfa(string rawAtom, SortedSet<char> alpha)
+    {
+        var atom = Regex.Replace(rawAtom.Trim(), @"\s+", " ");
+
+        // Negated constraints MUST determinize to a complete DFA before complementing!
+        if (Regex.IsMatch(atom, @"^(?:does not|doesn't)\s+(?:(?:start|begin|end)\s+with|contain)\s+.+$", RegexOptions.IgnoreCase))
+        {
+            var compDfa = BuildAtomicDfa(atom, alpha).Complete().Minimize();
+            return new ConstraintNfaResult(compDfa.ToNfa(), RequiredDeterminization: true, DeterminizationReason: NegationDetReason);
+        }
+
+        // Positive: starts with w  =>  q0 --w--> q1 (accept, self-loop Σ)
+        var m = Regex.Match(atom, @"^(?:starts? with|begins? with)\s+(.+)$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var w = Unquote(m.Groups[1].Value.Trim());
+            return new ConstraintNfaResult(BuildStartsWithNfa(w, alpha), false, null);
+        }
+
+        // Positive: ends with w  =>  q0 (self-loop Σ) --w--> q1 (accept)
+        m = Regex.Match(atom, @"^ends? with\s+(.+)$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var w = Unquote(m.Groups[1].Value.Trim());
+            return new ConstraintNfaResult(BuildEndsWithNfa(w, alpha), false, null);
+        }
+
+        // Positive: contains w  =>  q0 (self-loop Σ) --w--> q1 (accept, self-loop Σ)
+        m = Regex.Match(atom, @"^(?:contains?|has substring)\s+(.+)$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var w = Unquote(m.Groups[1].Value.Trim());
+            return new ConstraintNfaResult(BuildContainsNfa(w, alpha), false, null);
+        }
+
+        // Other positive constraints (even/odd, divisible, at least/at most/exactly): minimal NFA with dead sink pruned
+        var baseDfa = BuildAtomicDfa(atom, alpha);
+        return new ConstraintNfaResult(PruneDeadStatesAsNfa(baseDfa), false, null);
+    }
+
+    private static Nfa BuildStartsWithNfa(string w, SortedSet<char> alpha)
+    {
+        if (AutomataSymbols.IsEmptyToken(w))
+        {
+            var loops = alpha.Select(c => new NfaTransition("q0", c.ToString(), "q0"));
+            return new Nfa(new[] { "q0" }, alpha, loops, "q0", new[] { "q0" });
+        }
+
+        var transitions = new List<NfaTransition> { new("q0", w, "q1") };
+        foreach (var c in alpha)
+        {
+            transitions.Add(new NfaTransition("q1", c.ToString(), "q1"));
+        }
+        return new Nfa(new[] { "q0", "q1" }, alpha, transitions, "q0", new[] { "q1" });
+    }
+
+    private static Nfa BuildEndsWithNfa(string w, SortedSet<char> alpha)
+    {
+        if (AutomataSymbols.IsEmptyToken(w))
+        {
+            var loops = alpha.Select(c => new NfaTransition("q0", c.ToString(), "q0"));
+            return new Nfa(new[] { "q0" }, alpha, loops, "q0", new[] { "q0" });
+        }
+
+        var transitions = new List<NfaTransition>();
+        foreach (var c in alpha)
+        {
+            transitions.Add(new NfaTransition("q0", c.ToString(), "q0"));
+        }
+        transitions.Add(new NfaTransition("q0", w, "q1"));
+        return new Nfa(new[] { "q0", "q1" }, alpha, transitions, "q0", new[] { "q1" });
+    }
+
+    private static Nfa BuildContainsNfa(string w, SortedSet<char> alpha)
+    {
+        if (AutomataSymbols.IsEmptyToken(w))
+        {
+            var loops = alpha.Select(c => new NfaTransition("q0", c.ToString(), "q0"));
+            return new Nfa(new[] { "q0" }, alpha, loops, "q0", new[] { "q0" });
+        }
+
+        var transitions = new List<NfaTransition>();
+        foreach (var c in alpha)
+        {
+            transitions.Add(new NfaTransition("q0", c.ToString(), "q0"));
+            transitions.Add(new NfaTransition("q1", c.ToString(), "q1"));
+        }
+        transitions.Add(new NfaTransition("q0", w, "q1"));
+        return new Nfa(new[] { "q0", "q1" }, alpha, transitions, "q0", new[] { "q1" });
+    }
+
+    private static Nfa UnionNfa(Nfa first, Nfa second, SortedSet<char> alpha)
+    {
+        var states = new List<string> { "q0" };
+        var transitions = new List<NfaTransition>();
+        var accept = new HashSet<string>(StringComparer.Ordinal);
+        var nextId = 1;
+
+        string AddBranch(Nfa branch)
+        {
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var s in branch.OrderedStates)
+            {
+                var renamed = $"q{nextId++}";
+                map[s] = renamed;
+                states.Add(renamed);
+                if (branch.AcceptStates.Contains(s)) accept.Add(renamed);
+            }
+            foreach (var t in branch.Transitions)
+            {
+                transitions.Add(new NfaTransition(map[t.FromState], t.Symbol, map[t.ToState]));
+            }
+            return map[branch.StartState];
+        }
+
+        var s1 = AddBranch(first);
+        var s2 = AddBranch(second);
+        transitions.Add(new NfaTransition("q0", AutomataSymbols.Empty, s1));
+        transitions.Add(new NfaTransition("q0", AutomataSymbols.Empty, s2));
+
+        return new Nfa(states, alpha, transitions, "q0", accept);
+    }
+
+    private static Nfa IntersectNfa(Nfa first, Nfa second, SortedSet<char> alpha, bool pruneDeadStates)
+    {
+        var d1 = first.ToDfa().Complete();
+        var d2 = second.ToDfa().Complete();
+        var prod = FaOperations.Intersection(d1, d2).Minimize();
+        return pruneDeadStates ? PruneDeadStatesAsNfa(prod) : prod.ToNfa();
+    }
+
+    private static Nfa PruneDeadStatesAsNfa(Dfa dfa)
+    {
+        // Reverse BFS from accept states to find co-accessible (live) states
+        var revAdj = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var q in dfa.States) revAdj[q] = new List<string>();
+        foreach (var ((from, _), to) in dfa.Transitions)
+        {
+            revAdj[to].Add(from);
+        }
+
+        var live = new HashSet<string>(dfa.AcceptStates, StringComparer.Ordinal);
+        var queue = new Queue<string>(dfa.AcceptStates);
+        while (queue.Count > 0)
+        {
+            var cur = queue.Dequeue();
+            foreach (var prev in revAdj[cur])
+            {
+                if (live.Add(prev)) queue.Enqueue(prev);
+            }
+        }
+        live.Add(dfa.StartState);
+
+        var transitions = new List<NfaTransition>();
+        foreach (var ((from, sym), to) in dfa.Transitions)
+        {
+            if (live.Contains(from) && live.Contains(to))
+            {
+                transitions.Add(new NfaTransition(from, sym.ToString(), to));
+            }
+        }
+
+        var pruned = new Nfa(live, dfa.OrderedAlphabet, transitions, dfa.StartState, dfa.AcceptStates);
+        return pruned.CompactLiteralChains();
     }
 }

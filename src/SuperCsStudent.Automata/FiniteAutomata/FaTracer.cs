@@ -141,12 +141,47 @@ public static class FaTracer
         var steps = new List<TraceStep<FaStepState>>();
         var opLog = new List<string>();
 
-        var active = nfa.EpsilonClosure(nfa.StartState);
-        var activeList = active.OrderBy(s => s, StringComparer.Ordinal).ToList();
+        Dictionary<string, (NfaTransition Parent, int MatchedLength)> midMap;
+        Nfa sim;
+        if (nfa.HasStringTransitions)
+        {
+            sim = nfa.ExpandStringTransitionsWithMetadata(out midMap);
+        }
+        else
+        {
+            sim = nfa;
+            midMap = new Dictionary<string, (NfaTransition Parent, int MatchedLength)>(StringComparer.Ordinal);
+        }
+
+        List<string> FormatDisplayStates(IEnumerable<string> rawStates)
+        {
+            var list = new List<string>();
+            foreach (var s in rawStates.OrderBy(x => x, StringComparer.Ordinal))
+            {
+                if (midMap.TryGetValue(s, out var info))
+                {
+                    var matched = info.Parent.Symbol[..info.MatchedLength];
+                    var rest = info.Parent.Symbol[info.MatchedLength..];
+                    list.Add($"{info.Parent.FromState}→{info.Parent.ToState}({matched}·{rest})");
+                }
+                else
+                {
+                    list.Add(s);
+                }
+            }
+            return list;
+        }
+
+        HashSet<string> VisibleStates(IEnumerable<string> rawStates) =>
+            new(rawStates.Where(s => nfa.States.Contains(s)), StringComparer.Ordinal);
+
+        var active = sim.EpsilonClosure(sim.StartState);
+        var activeList = FormatDisplayStates(active);
+        var visActive = VisibleStates(active);
         var setLabel = "{" + string.Join(", ", activeList) + "}";
         var initialRem = AutomataSymbols.FormatWord(word, nfa.Alphabet);
         var initialConfig = $"({setLabel}, {initialRem})";
-        var initialScene = BuildDiagramScene(nfa, active, null, null, $"Config: {initialConfig}");
+        var initialScene = BuildDiagramScene(nfa, visActive, null, null, $"Config: {initialConfig}");
 
         steps.Add(new TraceStep<FaStepState>(
             StepIndex: 0,
@@ -154,7 +189,7 @@ public static class FaTracer
             Explanation: $"Start with E({nfa.StartState}) = {setLabel} and remaining input '{initialRem}'.",
             ActivePseudocodeLine: 0,
             State: new FaStepState(setLabel, activeList, string.Empty, initialRem, initialConfig, null, initialScene),
-            HighlightedNodeIds: activeList,
+            HighlightedNodeIds: visActive.ToList(),
             HighlightedEdgeIds: Array.Empty<string>(),
             OperationCode: "INIT",
             BadgeLabel: initialConfig));
@@ -167,34 +202,46 @@ public static class FaTracer
             var nextConsumed = consumed + sym;
             var nextRem = AutomataSymbols.FormatWord(word[(i + 1)..], nfa.Alphabet);
 
-            var usedTransitions = new HashSet<NfaTransition>();
+            var usedVisualTransitions = new HashSet<NfaTransition>();
             IReadOnlySet<string> nextActive;
-            if (!nfa.Alphabet.Contains(sym))
+            if (!sim.Alphabet.Contains(sym))
             {
                 nextActive = new HashSet<string>(StringComparer.Ordinal);
             }
             else
             {
-                var moved = nfa.Move(active, sym);
+                var moved = sim.Move(active, sym);
                 var symStr = sym.ToString();
-                foreach (var t in nfa.Transitions)
+                foreach (var t in sim.Transitions)
                 {
                     if (active.Contains(t.FromState) && t.Symbol == symStr && moved.Contains(t.ToState))
                     {
-                        usedTransitions.Add(t);
+                        if (midMap.TryGetValue(t.ToState, out var toInfo))
+                        {
+                            usedVisualTransitions.Add(toInfo.Parent);
+                        }
+                        else if (midMap.TryGetValue(t.FromState, out var fromInfo))
+                        {
+                            usedVisualTransitions.Add(fromInfo.Parent);
+                        }
+                        else if (nfa.States.Contains(t.FromState) && nfa.States.Contains(t.ToState))
+                        {
+                            usedVisualTransitions.Add(t);
+                        }
                     }
                 }
-                nextActive = nfa.EpsilonClosure(moved);
+                nextActive = sim.EpsilonClosure(moved);
             }
 
             active = nextActive;
-            activeList = active.OrderBy(s => s, StringComparer.Ordinal).ToList();
+            activeList = FormatDisplayStates(active);
+            visActive = VisibleStates(active);
             setLabel = activeList.Count == 0 ? "∅" : "{" + string.Join(", ", activeList) + "}";
             consumed = nextConsumed;
 
             var config = $"({setLabel}, {nextRem})";
-            var edgeIds = usedTransitions.Select(t => EdgeId(t.FromState, t.ToState)).Distinct().ToList();
-            var scene = BuildDiagramScene(nfa, active, usedTransitions, null, $"Read '{sym}' | {config}");
+            var edgeIds = usedVisualTransitions.Select(t => EdgeId(t.FromState, t.ToState)).Distinct().ToList();
+            var scene = BuildDiagramScene(nfa, visActive, usedVisualTransitions, null, $"Read '{sym}' | {config}");
 
             steps.Add(new TraceStep<FaStepState>(
                 StepIndex: steps.Count,
@@ -202,17 +249,17 @@ public static class FaTracer
                 Explanation: $"Active states after reading '{sym}' and taking ε-closure: {setLabel}.",
                 ActivePseudocodeLine: 2,
                 State: new FaStepState(setLabel, activeList, consumed, nextRem, config, null, scene),
-                HighlightedNodeIds: activeList,
+                HighlightedNodeIds: visActive.ToList(),
                 HighlightedEdgeIds: edgeIds,
                 OperationCode: "STEP",
                 BadgeLabel: config));
             opLog.Add($"Read '{sym}' -> {config}");
         }
 
-        var accepted = active.Any(s => nfa.AcceptStates.Contains(s));
+        var accepted = active.Any(s => sim.AcceptStates.Contains(s));
         var finalConfig = $"({setLabel}, {AutomataSymbols.Empty})";
         var verdict = accepted ? "Accepted" : "Rejected";
-        var finalScene = BuildDiagramScene(nfa, active, null, accepted, $"{finalConfig} — {verdict}");
+        var finalScene = BuildDiagramScene(nfa, visActive, null, accepted, $"{finalConfig} — {verdict}");
 
         steps.Add(new TraceStep<FaStepState>(
             StepIndex: steps.Count,
@@ -222,7 +269,7 @@ public static class FaTracer
                 : $"Active set {setLabel} contains no accepting state. String rejected.",
             ActivePseudocodeLine: 3,
             State: new FaStepState(setLabel, activeList, consumed, AutomataSymbols.Empty, finalConfig, accepted, finalScene),
-            HighlightedNodeIds: activeList,
+            HighlightedNodeIds: visActive.ToList(),
             HighlightedEdgeIds: Array.Empty<string>(),
             OperationCode: accepted ? "ACCEPT" : "REJECT",
             BadgeLabel: verdict));

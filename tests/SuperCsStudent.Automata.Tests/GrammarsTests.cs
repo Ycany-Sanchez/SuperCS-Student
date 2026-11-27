@@ -109,4 +109,56 @@ public class GrammarsTests
         Assert.True(CfgParser.Parse(star, "abaabbab").Accepted);
         Assert.False(CfgParser.Parse(star, "aba").Accepted);
     }
+
+    [Fact]
+    public void CfgParser_EmitsStructuredFifoQueueStepsMatchingLeftmostDerivation()
+    {
+        var g = Cfg.ParseFromText("S -> aSb | aA\nA -> aA | e");
+
+        // Multi-step derivation on "aab"
+        var res = CfgParser.Parse(g, "aab");
+        Assert.True(res.Accepted);
+        Assert.NotNull(res.QueueSteps);
+        Assert.Equal(res.DerivationSteps.Count, res.QueueSteps!.Count);
+
+        // Step 0: empty output, queue = [S (HEAD)]
+        Assert.Empty(res.QueueSteps[0].ResolvedOutput);
+        Assert.Single(res.QueueSteps[0].QueueSymbols);
+        Assert.Equal("S", res.QueueSteps[0].QueueSymbols[0].Symbol);
+        Assert.True(res.QueueSteps[0].QueueSymbols[0].IsExpandHead);
+
+        // Final step: empty queue, full matched output ["a", "a", "b"], IsComplete == true
+        var last = res.QueueSteps[^1];
+        Assert.True(last.IsComplete);
+        Assert.Empty(last.QueueSymbols);
+        Assert.Equal(new[] { "a", "a", "b" }, last.ResolvedOutput);
+
+        // Longer string "aaaabbb"
+        var longRes = CfgParser.Parse(g, "aaaabbb");
+        Assert.True(longRes.Accepted);
+        Assert.Equal(new[] { "a", "a", "a", "a", "b", "b", "b" }, longRes.QueueSteps![^1].ResolvedOutput);
+        Assert.Empty(longRes.QueueSteps[^1].QueueSymbols);
+
+        // Left-recursive arithmetic grammar
+        var arith = Cfg.ParseFromText("E -> E+T | T\nT -> T*F | F\nF -> (E) | x | y");
+        var arithRes = CfgParser.Parse(arith, "(x+y)+x");
+        Assert.True(arithRes.Accepted);
+        Assert.Equal(arithRes.DerivationSteps.Count, arithRes.QueueSteps!.Count);
+        Assert.True(arithRes.QueueSteps[^1].IsComplete);
+        Assert.Equal("(x+y)+x", string.Concat(arithRes.QueueSteps[^1].ResolvedOutput));
+
+        // Epsilon derivation "e"
+        var epsG = Cfg.ParseFromText("S -> aSb | e");
+        var epsRes = CfgParser.Parse(epsG, "e");
+        Assert.True(epsRes.Accepted);
+        Assert.Equal(2, epsRes.QueueSteps!.Count);
+        Assert.True(epsRes.QueueSteps[^1].IsComplete);
+        Assert.Empty(epsRes.QueueSteps[^1].ResolvedOutput);
+        Assert.Empty(epsRes.QueueSteps[^1].QueueSymbols);
+
+        // Rejected input has null/empty QueueSteps
+        var rej = CfgParser.Parse(arith, "x+");
+        Assert.False(rej.Accepted);
+        Assert.True(rej.QueueSteps is null or { Count: 0 });
+    }
 }
