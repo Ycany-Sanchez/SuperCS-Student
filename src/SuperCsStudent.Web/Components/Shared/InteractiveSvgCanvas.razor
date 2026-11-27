@@ -20,11 +20,65 @@
         </div>
     }
 
-    @if (EnableSelection && (!string.IsNullOrEmpty(SelectedNodeId) || !string.IsNullOrEmpty(SelectedEdgeId)))
+    @if (ActiveEdgeId is not null)
     {
-        var selKind = !string.IsNullOrEmpty(SelectedNodeId) ? "node" : "edge";
-        var selId = !string.IsNullOrEmpty(SelectedNodeId) ? SelectedNodeId! : SelectedEdgeId!;
-        var selDisplay = !string.IsNullOrWhiteSpace(SelectedLabel) ? SelectedLabel : selId;
+        var edgeDisplay = !string.IsNullOrWhiteSpace(_inspectedEdgeLabel)
+            ? _inspectedEdgeLabel
+            : (!string.IsNullOrWhiteSpace(SelectedLabel) ? SelectedLabel : ActiveEdgeId);
+        <div class="absolute top-3 right-3 z-20 flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-xl bp-floating text-xs">
+            <span class="font-mono font-semibold" style="color: var(--accent);">@edgeDisplay</span>
+            <span class="w-px h-4" style="background: var(--border);"></span>
+            <div class="bp-seg" role="group" aria-label="Arrow routing style">
+                <button type="button"
+                        class="bp-seg-btn !h-5 !px-2 !text-[11px]"
+                        data-active="@(_inspectedEdgeStyle == "classic" ? "true" : "false")"
+                        @onclick='() => SetSelectedEdgeStyle("classic")'>
+                    Classic
+                </button>
+                <button type="button"
+                        class="bp-seg-btn !h-5 !px-2 !text-[11px]"
+                        data-active="@(_inspectedEdgeStyle == "blocky" ? "true" : "false")"
+                        @onclick='() => SetSelectedEdgeStyle("blocky")'>
+                    Blocky
+                </button>
+            </div>
+            <button type="button"
+                    class="bp-btn-ghost !h-6 !px-1.5 text-[11px]"
+                    title="Pin a bend-point on this arrow (or drag anywhere on the arrow / + handle)"
+                    @onclick="AddBendToSelectedEdge">
+                + Pin
+            </button>
+            @if (_inspectedWaypointCount > 0)
+            {
+                <button type="button"
+                        class="bp-btn-ghost !h-6 !px-1.5 text-[11px]"
+                        title="Remove all pinned bend-points on this arrow"
+                        @onclick="ClearBendsOnSelectedEdge">
+                    Clear (@_inspectedWaypointCount)
+                </button>
+            }
+            @if (OnDeleteSelected.HasDelegate)
+            {
+                <button type="button"
+                        class="bp-btn-ghost !h-6 !px-1.5 text-[11px]"
+                        style="color: var(--negative);"
+                        title="@(_inspectedWaypointIndex >= 0 ? "Remove selected pin (Backspace)" : "Delete edge (Backspace)")"
+                        @onclick='() => TriggerDeleteSelected("edge", ActiveEdgeId)'>
+                    Delete <kbd class="bp-kbd !h-4 !min-w-0 !px-1 !text-[9.5px] ml-0.5">⌫</kbd>
+                </button>
+            }
+            <button type="button"
+                    class="daa-tab-close"
+                    title="Clear selection"
+                    aria-label="Clear selection"
+                    @onclick="ClearSelection">
+                ×
+            </button>
+        </div>
+    }
+    else if (EnableSelection && !string.IsNullOrEmpty(SelectedNodeId))
+    {
+        var selDisplay = !string.IsNullOrWhiteSpace(SelectedLabel) ? SelectedLabel : SelectedNodeId;
         <div class="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-xl bp-floating text-xs">
             <span class="font-mono font-semibold" style="color: var(--accent);">@selDisplay</span>
             <span class="hidden sm:inline text-[11px]" style="color: var(--muted);">·</span>
@@ -32,7 +86,7 @@
                     class="bp-btn-ghost !h-6 !px-1.5 text-[11px]"
                     style="color: var(--negative);"
                     title="Delete selected (Backspace)"
-                    @onclick="() => TriggerDeleteSelected(selKind, selId)">
+                    @onclick='() => TriggerDeleteSelected("node", SelectedNodeId!)'>
                 Delete <kbd class="bp-kbd !h-4 !min-w-0 !px-1 !text-[9.5px] ml-0.5">⌫</kbd>
             </button>
             <button type="button"
@@ -50,7 +104,7 @@
         <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Fit diagram" aria-label="Fit diagram to canvas" @onclick="Fit">Fit</button>
         <button type="button" class="bp-btn-ghost !h-7 !w-7 !p-0 text-xs font-mono" title="Zoom in" aria-label="Zoom in" @onclick="() => Zoom(1.18)">+</button>
         <span class="w-px h-4 mx-0.5" style="background: var(--border);"></span>
-        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Reset node positions" aria-label="Reset node positions" @onclick="ResetLayout">Reset</button>
+        <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Reset node positions and custom arrows" aria-label="Reset node positions" @onclick="ResetLayout">Reset</button>
         <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Export SVG" aria-label="Export diagram as SVG" @onclick="ExportSvg">SVG</button>
         <button type="button" class="bp-btn-ghost !h-7 !px-2 text-xs" title="Export PNG" aria-label="Export diagram as PNG" @onclick="ExportPng">PNG</button>
     </div>
@@ -62,6 +116,17 @@
     private bool _mounted;
     private DiagramScene? _lastScene;
     private string? _lastOptionsKey;
+
+    private string? _inspectedEdgeId;
+    private string? _inspectedEdgeLabel;
+    private string _inspectedEdgeStyle = "classic";
+    private int _inspectedWaypointCount;
+    private int _inspectedWaypointIndex = -1;
+
+    private string? ActiveEdgeId =>
+        !string.IsNullOrEmpty(SelectedEdgeId)
+            ? SelectedEdgeId
+            : (!string.IsNullOrEmpty(_inspectedEdgeId) ? _inspectedEdgeId : null);
 
     [Parameter] public DiagramScene? Scene { get; set; }
     [Parameter] public bool SnapMotion { get; set; }
@@ -95,7 +160,8 @@
 
         if (_mounted)
         {
-            var optionsKey = $"{EnableConnectHandles}|{EnableSelection}|{EnableDoubleClickAdd}|{IsDirectedGraph}|{SelectedNodeId}|{SelectedEdgeId}";
+            var canDeleteEdges = OnDeleteSelected.HasDelegate;
+            var optionsKey = $"{EnableConnectHandles}|{EnableSelection}|{EnableDoubleClickAdd}|{canDeleteEdges}|{IsDirectedGraph}|{SelectedNodeId}|{SelectedEdgeId}";
             if (_lastOptionsKey != optionsKey)
             {
                 _lastOptionsKey = optionsKey;
@@ -104,6 +170,7 @@
                     enableConnectHandles = EnableConnectHandles,
                     enableSelection = EnableSelection,
                     enableDoubleClickAdd = EnableDoubleClickAdd,
+                    canDeleteEdges,
                     isDirected = IsDirectedGraph,
                     selectedNodeId = SelectedNodeId,
                     selectedEdgeId = SelectedEdgeId
@@ -142,6 +209,37 @@
     public Task HandleCanvasDoubleClick(double x, double y) =>
         OnCanvasDoubleClicked.HasDelegate ? OnCanvasDoubleClicked.InvokeAsync((x, y)) : Task.CompletedTask;
 
+    [JSInvokable]
+    public Task HandleEdgeInspectState(string edgeId, string displayLabel, string style, int waypointCount, int selectedWaypointIndex)
+    {
+        _inspectedEdgeId = string.IsNullOrEmpty(edgeId) ? null : edgeId;
+        _inspectedEdgeLabel = string.IsNullOrEmpty(displayLabel) ? null : displayLabel;
+        _inspectedEdgeStyle = string.Equals(style, "blocky", StringComparison.OrdinalIgnoreCase) ? "blocky" : "classic";
+        _inspectedWaypointCount = waypointCount;
+        _inspectedWaypointIndex = selectedWaypointIndex;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task SetSelectedEdgeStyle(string style)
+    {
+        if (!_mounted || ActiveEdgeId is null) return;
+        _inspectedEdgeStyle = style;
+        await JS.InvokeVoidAsync("SuperCs.svg.setEdgeStyle", _host, ActiveEdgeId, style);
+    }
+
+    private async Task AddBendToSelectedEdge()
+    {
+        if (!_mounted || ActiveEdgeId is null) return;
+        await JS.InvokeVoidAsync("SuperCs.svg.addEdgeWaypoint", _host, ActiveEdgeId);
+    }
+
+    private async Task ClearBendsOnSelectedEdge()
+    {
+        if (!_mounted || ActiveEdgeId is null) return;
+        await JS.InvokeVoidAsync("SuperCs.svg.clearEdgeWaypoints", _host, ActiveEdgeId);
+    }
+
     public async Task SeedNodePositionAsync(string nodeId, double x, double y)
     {
         if (_mounted)
@@ -150,11 +248,36 @@
         }
     }
 
-    private Task TriggerDeleteSelected(string kind, string id) =>
-        OnDeleteSelected.HasDelegate ? OnDeleteSelected.InvokeAsync((kind, id)) : Task.CompletedTask;
+    private async Task TriggerDeleteSelected(string kind, string id)
+    {
+        if (kind == "edge")
+        {
+            _inspectedEdgeId = null;
+            _inspectedEdgeLabel = null;
+            _inspectedWaypointCount = 0;
+            _inspectedWaypointIndex = -1;
+        }
+        if (OnDeleteSelected.HasDelegate)
+        {
+            await OnDeleteSelected.InvokeAsync((kind, id));
+        }
+    }
 
-    private Task ClearSelection() =>
-        OnSelectionChanged.HasDelegate ? OnSelectionChanged.InvokeAsync(("none", "")) : Task.CompletedTask;
+    private async Task ClearSelection()
+    {
+        _inspectedEdgeId = null;
+        _inspectedEdgeLabel = null;
+        _inspectedWaypointCount = 0;
+        _inspectedWaypointIndex = -1;
+        if (_mounted)
+        {
+            await JS.InvokeVoidAsync("SuperCs.svg.clearEdgeSelection", _host);
+        }
+        if (OnSelectionChanged.HasDelegate)
+        {
+            await OnSelectionChanged.InvokeAsync(("none", ""));
+        }
+    }
 
     public async Task Zoom(double factor)
     {

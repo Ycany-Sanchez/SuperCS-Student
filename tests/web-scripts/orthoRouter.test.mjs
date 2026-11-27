@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   EDGE_PALETTE_SIZE,
   assignEdgeColors,
+  computeBlockyEdgePathWithWaypoints,
+  computeClassicEdgePath,
   polylineToRoundedPath,
   routeOrthogonalEdges
 } from "../../src/SuperCsStudent.Web/Scripts/orthoRouter.js";
@@ -169,4 +171,158 @@ test("label pills for multiple edges avoid direct coordinate overlap", () => {
   const overlapX = Math.abs(r1.labelX - r2.labelX) < 42;
   const overlapY = Math.abs(r1.labelY - r2.labelY) < 18;
   assert.equal(overlapX && overlapY, false, `Labels overlapped: (${r1.labelX},${r1.labelY}) vs (${r2.labelX},${r2.labelY})`);
+});
+
+test("computeClassicEdgePath routes classic straight/curved by default and through pinned waypoints when present", () => {
+  const src = { id: "A", x: 100, y: 120, width: 52, height: 52, shape: "circle" };
+  const tgt = { id: "B", x: 300, y: 120, width: 52, height: 52, shape: "circle" };
+
+  // Default straight classic edge with 1 midpoint handle
+  const plain = computeClassicEdgePath(src, tgt, 0, true, []);
+  assert.ok(plain.d.startsWith("M ") && plain.d.includes("L "));
+  assert.ok(!plain.d.includes("NaN"));
+  assert.equal(plain.midpoints.length, 1);
+  assert.ok(Math.abs(plain.midpoints[0].x - 200) < 5);
+
+  // Curved classic edge with 1 midpoint handle near curve apex
+  const curved = computeClassicEdgePath(src, tgt, 30, true, []);
+  assert.ok(curved.d.includes("Q "));
+  assert.equal(curved.midpoints.length, 1);
+
+  // Pinned waypoints route cleanly through each pinned point and produce N+1 midpoint handles
+  const wps = [{ x: 170, y: 210 }, { x: 240, y: 210 }];
+  const pinned = computeClassicEdgePath(src, tgt, 0, true, wps);
+  assert.ok(!pinned.d.includes("NaN"));
+  assert.equal(pinned.points.length, 4); // start, wp0, wp1, end
+  assert.deepEqual(pinned.points[1], wps[0]);
+  assert.deepEqual(pinned.points[2], wps[1]);
+  assert.equal(pinned.midpoints.length, 3);
+});
+
+function pointOnOrthoPolyline(pt, points, tol = 0.6) {
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const onH = Math.abs(a.y - b.y) <= tol &&
+      Math.abs(pt.y - a.y) <= tol &&
+      pt.x >= Math.min(a.x, b.x) - tol &&
+      pt.x <= Math.max(a.x, b.x) + tol;
+    const onV = Math.abs(a.x - b.x) <= tol &&
+      Math.abs(pt.x - a.x) <= tol &&
+      pt.y >= Math.min(a.y, b.y) - tol &&
+      pt.y <= Math.max(a.y, b.y) + tol;
+    if (onH || onV) return true;
+  }
+  return false;
+}
+
+function assertStrictlyOrthogonalNoHairpins(points, label) {
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    assert.ok(
+      Math.abs(a.x - b.x) < 0.05 || Math.abs(a.y - b.y) < 0.05,
+      `${label}: Non-orthogonal segment: (${a.x},${a.y}) -> (${b.x},${b.y})`
+    );
+  }
+  for (let i = 1; i < points.length - 1; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const c = points[i + 1];
+    const dx1 = b.x - a.x;
+    const dy1 = b.y - a.y;
+    const dx2 = c.x - b.x;
+    const dy2 = c.y - b.y;
+    const dot = dx1 * dx2 + dy1 * dy2;
+    assert.ok(
+      dot >= -0.05,
+      `${label}: 180-degree hairpin reversal at (${b.x},${b.y}) between (${a.x},${a.y}) and (${c.x},${c.y})`
+    );
+  }
+}
+
+test("computeBlockyEdgePathWithWaypoints routes strictly 90-degree orthogonal segments through pinned waypoints", () => {
+  const src = { id: "A", x: 100, y: 120, width: 56, height: 42, shape: "schema-node" };
+  const tgt = { id: "B", x: 340, y: 200, width: 56, height: 42, shape: "schema-node" };
+  const wps = [{ x: 200, y: 60 }, { x: 290, y: 150 }];
+
+  const blocky = computeBlockyEdgePathWithWaypoints(src, tgt, true, wps);
+  assert.ok(!blocky.d.includes("NaN"));
+  assert.ok(blocky.points.length >= 4);
+  assert.equal(blocky.midpoints.length, 3);
+  assertStrictlyOrthogonalNoHairpins(blocky.points, "two-waypoints");
+
+  for (const wp of wps) {
+    assert.ok(
+      pointOnOrthoPolyline(wp, blocky.points),
+      `Waypoint (${wp.x},${wp.y}) missing from blocky path: ${JSON.stringify(blocky.points)}`
+    );
+  }
+  for (const mp of blocky.midpoints) {
+    assert.ok(
+      pointOnOrthoPolyline(mp, blocky.points),
+      `Midpoint (${mp.x},${mp.y}) does not lie on blocky path: ${JSON.stringify(blocky.points)}`
+    );
+  }
+});
+
+test("computeBlockyEdgePathWithWaypoints keeps waypoints attached on horizontal, diagonal, arch, C-wrap, and self-loop edges", () => {
+  const cases = [
+    {
+      name: "horizontal JFK-ORD pulled down",
+      src: { id: "JFK", x: 580, y: 468, width: 52, height: 52, shape: "circle" },
+      tgt: { id: "ORD", x: 144, y: 468, width: 52, height: 52, shape: "circle" },
+      isDirected: false,
+      wps: [{ x: 364, y: 510 }]
+    },
+    {
+      name: "diagonal JFK-DFW pulled right",
+      src: { id: "JFK", x: 580, y: 468, width: 52, height: 52, shape: "circle" },
+      tgt: { id: "DFW", x: 610, y: 324, width: 52, height: 52, shape: "circle" },
+      isDirected: false,
+      wps: [{ x: 658, y: 385 }]
+    },
+    {
+      name: "arch above horizontal pair",
+      src: { id: "L", x: 100, y: 200, width: 52, height: 52, shape: "circle" },
+      tgt: { id: "R", x: 300, y: 200, width: 52, height: 52, shape: "circle" },
+      isDirected: true,
+      wps: [{ x: 200, y: 80 }]
+    },
+    {
+      name: "C-wrap left of vertical pair",
+      src: { id: "T", x: 200, y: 120, width: 52, height: 52, shape: "circle" },
+      tgt: { id: "B", x: 200, y: 300, width: 52, height: 52, shape: "circle" },
+      isDirected: true,
+      wps: [{ x: 80, y: 210 }]
+    },
+    {
+      name: "self-loop pinned upward",
+      src: { id: "Q0", x: 180, y: 180, width: 52, height: 52, shape: "circle" },
+      tgt: { id: "Q0", x: 180, y: 180, width: 52, height: 52, shape: "circle" },
+      isDirected: true,
+      wps: [{ x: 180, y: 80 }]
+    }
+  ];
+
+  for (const c of cases) {
+    const blocky = computeBlockyEdgePathWithWaypoints(c.src, c.tgt, c.isDirected, c.wps);
+    assert.ok(!blocky.d.includes("NaN"), `${c.name}: path contains NaN`);
+    assert.ok(blocky.points.length >= 4, `${c.name}: expected multi-segment path, got ${JSON.stringify(blocky.points)}`);
+    assert.equal(blocky.midpoints.length, c.wps.length + 1, `${c.name}: expected N+1 midpoints`);
+    assertStrictlyOrthogonalNoHairpins(blocky.points, c.name);
+
+    for (const wp of c.wps) {
+      assert.ok(
+        pointOnOrthoPolyline(wp, blocky.points),
+        `${c.name}: waypoint (${wp.x},${wp.y}) detached from blocky path ${JSON.stringify(blocky.points)}`
+      );
+    }
+    for (const mp of blocky.midpoints) {
+      assert.ok(
+        pointOnOrthoPolyline(mp, blocky.points),
+        `${c.name}: midpoint (${mp.x},${mp.y}) detached from blocky path ${JSON.stringify(blocky.points)}`
+      );
+    }
+  }
 });

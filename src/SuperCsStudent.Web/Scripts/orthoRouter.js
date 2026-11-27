@@ -139,7 +139,8 @@ function simplifyOrthoPoints(rawPoints) {
     const c = dedup[i + 1];
     const colinearX = Math.abs(a.x - b.x) < 0.05 && Math.abs(b.x - c.x) < 0.05;
     const colinearY = Math.abs(a.y - b.y) < 0.05 && Math.abs(b.y - c.y) < 0.05;
-    if (!colinearX && !colinearY) {
+    const sameDir = (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y) > 0;
+    if (!(sameDir && (colinearX || colinearY))) {
       clean.push(b);
     }
   }
@@ -333,6 +334,345 @@ function selectFreeLabelPosition(points, label, allBoxes, placedLabels) {
     bottom: cy + pillH / 2 + 2
   });
   return { labelX: Math.round(cx * 10) / 10, labelY: Math.round(cy * 10) / 10 };
+}
+
+function borderAnchorToward(node, targetPt, extraOut = 0) {
+  const box = nodeBox(node);
+  const dx = targetPt.x - box.cx;
+  const dy = targetPt.y - box.cy;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 0.001) {
+    return { x: box.cx + box.hw + extraOut, y: box.cy };
+  }
+  const ux = dx / dist;
+  const uy = dy / dist;
+
+  if (box.isCircle) {
+    const r = box.hw + extraOut;
+    return { x: box.cx + ux * r, y: box.cy + uy * r };
+  }
+
+  const hw = box.hw + extraOut;
+  const hh = box.hh + extraOut;
+  const tx = Math.abs(ux) > 1e-6 ? hw / Math.abs(ux) : Infinity;
+  const ty = Math.abs(uy) > 1e-6 ? hh / Math.abs(uy) : Infinity;
+  const t = Math.min(tx, ty);
+  return { x: box.cx + ux * t, y: box.cy + uy * t };
+}
+
+function buildMidpoints(pts) {
+  const mids = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    mids.push({
+      x: Math.round(((pts[i].x + pts[i + 1].x) / 2) * 10) / 10,
+      y: Math.round(((pts[i].y + pts[i + 1].y) / 2) * 10) / 10,
+      insertIndex: i
+    });
+  }
+  return mids;
+}
+
+function longestSegmentMidpoint(pts) {
+  let bestLen = -1;
+  let best = { x: pts[0]?.x || 0, y: pts[0]?.y || 0 };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > bestLen) {
+      bestLen = len;
+      best = {
+        x: Math.round(((a.x + b.x) / 2) * 10) / 10,
+        y: Math.round(((a.y + b.y) / 2) * 10) / 10
+      };
+    }
+  }
+  return best;
+}
+
+/**
+ * Classic straight/curved Bezier edge path, upgraded to support Draw.io-style pinned waypoints.
+ */
+export function computeClassicEdgePath(src, tgt, curveOffset = 0, isDirected = true, waypoints = []) {
+  const cleanWps = (waypoints || []).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+
+  if (cleanWps.length > 0) {
+    const startPt = borderAnchorToward(src, cleanWps[0], 0);
+    const endPt = borderAnchorToward(tgt, cleanWps[cleanWps.length - 1], isDirected ? 3 : 0);
+    const pts = [startPt, ...cleanWps.map((p) => ({ x: p.x, y: p.y })), endPt];
+    const d = polylineToRoundedPath(pts, 6);
+    const lbl = longestSegmentMidpoint(pts);
+    return {
+      d,
+      points: pts,
+      labelX: lbl.x,
+      labelY: lbl.y,
+      midpoints: buildMidpoints(pts),
+      isMultiSegment: true
+    };
+  }
+
+  if (src.id === tgt.id) {
+    const r = Math.min(src.width, src.height) / 2;
+    const x1 = src.x - r * 0.45;
+    const y1 = src.y - r * 0.85;
+    const x2 = src.x + r * 0.45;
+    const y2 = src.y - r * 0.85;
+    const topY = src.y - r - 44;
+    const apexY = 0.125 * y1 + 0.75 * topY + 0.125 * y2;
+    return {
+      d: `M ${x1} ${y1} C ${src.x - 36} ${topY}, ${src.x + 36} ${topY}, ${x2} ${y2}`,
+      points: [{ x: x1, y: y1 }, { x: src.x, y: apexY }, { x: x2, y: y2 }],
+      labelX: src.x,
+      labelY: topY - 4,
+      midpoints: [{ x: Math.round(src.x * 10) / 10, y: Math.round(apexY * 10) / 10, insertIndex: 0 }],
+      isMultiSegment: false
+    };
+  }
+
+  const dx = tgt.x - src.x;
+  const dy = tgt.y - src.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const ux = dx / dist;
+  const uy = dy / dist;
+
+  const srcR = (src.shape === "circle" || src.shape === "double-circle")
+    ? Math.min(src.width, src.height) / 2
+    : Math.min(src.width, src.height) / 2 + 4;
+  const tgtR = (tgt.shape === "circle" || tgt.shape === "double-circle")
+    ? Math.min(tgt.width, tgt.height) / 2 + 3
+    : Math.min(tgt.width, tgt.height) / 2 + 6;
+
+  const sx = src.x + ux * srcR;
+  const sy = src.y + uy * srcR;
+  const tx = tgt.x - ux * tgtR;
+  const ty = tgt.y - uy * tgtR;
+
+  if (!curveOffset) {
+    const midX = (sx + tx) / 2;
+    const midY = (sy + ty) / 2;
+    return {
+      d: `M ${sx} ${sy} L ${tx} ${ty}`,
+      points: [{ x: sx, y: sy }, { x: tx, y: ty }],
+      labelX: midX - uy * 13,
+      labelY: midY + ux * 13,
+      midpoints: [{ x: Math.round(midX * 10) / 10, y: Math.round(midY * 10) / 10, insertIndex: 0 }],
+      isMultiSegment: false
+    };
+  }
+
+  const mx = (sx + tx) / 2 - uy * curveOffset;
+  const my = (sy + ty) / 2 + ux * curveOffset;
+  const apexX = 0.25 * sx + 0.5 * mx + 0.25 * tx;
+  const apexY = 0.25 * sy + 0.5 * my + 0.25 * ty;
+  return {
+    d: `M ${sx} ${sy} Q ${mx} ${my} ${tx} ${ty}`,
+    points: [{ x: sx, y: sy }, { x: tx, y: ty }],
+    labelX: apexX,
+    labelY: apexY - 4,
+    midpoints: [{ x: Math.round(apexX * 10) / 10, y: Math.round(apexY * 10) / 10, insertIndex: 0 }],
+    isMultiSegment: false
+  };
+}
+
+function buildOrthoLeg(a, b, startAxis, endAxis) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+    return {
+      pts: [a, b],
+      startDir: { x: 0, y: 0 },
+      endDir: { x: 0, y: 0 },
+      bends: 0
+    };
+  }
+  if (Math.abs(dy) < 0.5) {
+    const dir = { x: Math.sign(dx), y: 0 };
+    return {
+      pts: [a, b],
+      startDir: dir,
+      endDir: dir,
+      bends: (startAxis === "H" ? 0 : 1) + (endAxis === "H" ? 0 : 1)
+    };
+  }
+  if (Math.abs(dx) < 0.5) {
+    const dir = { x: 0, y: Math.sign(dy) };
+    return {
+      pts: [a, b],
+      startDir: dir,
+      endDir: dir,
+      bends: (startAxis === "V" ? 0 : 1) + (endAxis === "V" ? 0 : 1)
+    };
+  }
+
+  if (startAxis === "H" && endAxis === "V") {
+    return {
+      pts: [a, { x: b.x, y: a.y }, b],
+      startDir: { x: Math.sign(dx), y: 0 },
+      endDir: { x: 0, y: Math.sign(dy) },
+      bends: 1
+    };
+  }
+  if (startAxis === "V" && endAxis === "H") {
+    return {
+      pts: [a, { x: a.x, y: b.y }, b],
+      startDir: { x: 0, y: Math.sign(dy) },
+      endDir: { x: Math.sign(dx), y: 0 },
+      bends: 1
+    };
+  }
+  if (startAxis === "H" && endAxis === "H") {
+    const midX = (a.x + b.x) / 2;
+    return {
+      pts: [a, { x: midX, y: a.y }, { x: midX, y: b.y }, b],
+      startDir: { x: Math.sign(dx), y: 0 },
+      endDir: { x: Math.sign(dx), y: 0 },
+      bends: 2
+    };
+  }
+  const midY = (a.y + b.y) / 2;
+  return {
+    pts: [a, { x: a.x, y: midY }, { x: b.x, y: midY }, b],
+    startDir: { x: 0, y: Math.sign(dy) },
+    endDir: { x: 0, y: Math.sign(dy) },
+    bends: 2
+  };
+}
+
+/**
+ * Routes a single Blocky 90-degree orthogonal arrow pinned through one or more Draw.io waypoints.
+ * Picks minimum-bend, non-reversing L/Z legs via small DP so every pinned waypoint stays attached
+ * to the rendered path without 180-degree hairpin collapses.
+ */
+export function computeBlockyEdgePathWithWaypoints(src, tgt, isDirected = true, waypoints = [], cornerRadius = CORNER_RADIUS) {
+  const cleanWps = (waypoints || []).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (cleanWps.length === 0) {
+    return computeClassicEdgePath(src, tgt, 0, isDirected, []);
+  }
+
+  const srcBox = nodeBox(src);
+  const tgtBox = nodeBox(tgt);
+  const firstWp = cleanWps[0];
+  const lastWp = cleanWps[cleanWps.length - 1];
+
+  const pickSide = (box, pt) => {
+    const dx = pt.x - box.cx;
+    const dy = pt.y - box.cy;
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "E" : "W";
+    return dy >= 0 ? "S" : "N";
+  };
+
+  const srcSide = pickSide(srcBox, firstWp);
+  const tgtSide = pickSide(tgtBox, lastWp);
+  const isSelfLoop = src.id === tgt.id;
+  let startPt;
+  let endPt;
+  if (isSelfLoop && srcSide === tgtSide) {
+    const spanBase = (srcSide === "N" || srcSide === "S") ? srcBox.hw : srcBox.hh;
+    const span = Math.min(18, Math.max(11, spanBase * 0.45));
+    startPt = portOnBox(srcBox, srcSide, -span, 0);
+    endPt = portOnBox(tgtBox, tgtSide, span, isDirected ? 3 : 0);
+  } else {
+    startPt = portOnBox(srcBox, srcSide, 0, 0);
+    endPt = portOnBox(tgtBox, tgtSide, 0, isDirected ? 3 : 0);
+  }
+
+  const anchors = [startPt, ...cleanWps.map((p) => ({ x: p.x, y: p.y })), endPt];
+  const legCount = anchors.length - 1;
+  const srcAxis = (srcSide === "E" || srcSide === "W") ? "H" : "V";
+  const tgtAxis = (tgtSide === "E" || tgtSide === "W") ? "H" : "V";
+  const axisPairs = [
+    ["H", "H"],
+    ["H", "V"],
+    ["V", "H"],
+    ["V", "V"]
+  ];
+
+  // Build candidate orthogonal legs for each anchor-to-anchor span
+  const legOptions = [];
+  for (let k = 0; k < legCount; k++) {
+    const opts = [];
+    for (let s = 0; s < axisPairs.length; s++) {
+      const [sa, ea] = axisPairs[s];
+      if (k === 0 && sa !== srcAxis) {
+        opts.push(null);
+        continue;
+      }
+      if (k === legCount - 1 && ea !== tgtAxis) {
+        opts.push(null);
+        continue;
+      }
+      opts.push(buildOrthoLeg(anchors[k], anchors[k + 1], sa, ea));
+    }
+    legOptions.push(opts);
+  }
+
+  // DP across legs to minimize bends while forbidding 180-degree hairpin reversals at waypoints
+  const dpCost = Array.from({ length: legCount }, () => new Array(4).fill(Infinity));
+  const dpPrev = Array.from({ length: legCount }, () => new Array(4).fill(-1));
+
+  for (let s = 0; s < 4; s++) {
+    const leg = legOptions[0][s];
+    if (leg) dpCost[0][s] = leg.bends;
+  }
+
+  for (let k = 1; k < legCount; k++) {
+    for (let cur = 0; cur < 4; cur++) {
+      const curLeg = legOptions[k][cur];
+      if (!curLeg) continue;
+      for (let prev = 0; prev < 4; prev++) {
+        if (!Number.isFinite(dpCost[k - 1][prev])) continue;
+        const prevLeg = legOptions[k - 1][prev];
+        const dot = prevLeg.endDir.x * curLeg.startDir.x + prevLeg.endDir.y * curLeg.startDir.y;
+        const junctionCost = dot < -0.5 ? 1000 : (dot > 0.5 ? 0 : 1.1);
+        const total = dpCost[k - 1][prev] + junctionCost + curLeg.bends;
+        if (total < dpCost[k][cur]) {
+          dpCost[k][cur] = total;
+          dpPrev[k][cur] = prev;
+        }
+      }
+    }
+  }
+
+  let bestState = 0;
+  let bestTotal = Infinity;
+  for (let s = 0; s < 4; s++) {
+    if (dpCost[legCount - 1][s] < bestTotal) {
+      bestTotal = dpCost[legCount - 1][s];
+      bestState = s;
+    }
+  }
+
+  const chosenLegs = new Array(legCount);
+  let curState = bestState;
+  for (let k = legCount - 1; k >= 0; k--) {
+    chosenLegs[k] = legOptions[k][curState];
+    curState = dpPrev[k][curState];
+  }
+
+  const rawPts = [startPt];
+  const legMidpoints = [];
+  for (let k = 0; k < legCount; k++) {
+    const leg = chosenLegs[k];
+    for (let i = 1; i < leg.pts.length; i++) {
+      rawPts.push(leg.pts[i]);
+    }
+    const mp = longestSegmentMidpoint(leg.pts);
+    legMidpoints.push({ x: mp.x, y: mp.y, insertIndex: k });
+  }
+
+  const cleanPts = simplifyOrthoPoints(rawPts);
+  const d = polylineToRoundedPath(cleanPts, cornerRadius);
+  const lbl = longestSegmentMidpoint(cleanPts);
+
+  return {
+    d,
+    points: cleanPts,
+    labelX: lbl.x,
+    labelY: lbl.y,
+    midpoints: legMidpoints,
+    isMultiSegment: true
+  };
 }
 
 /**
@@ -695,6 +1035,7 @@ export function routeOrthogonalEdges(nodesMap, edges, options = {}) {
       points: cleanPts,
       labelX,
       labelY,
+      midpoints: buildMidpoints(cleanPts).map((m) => ({ ...m, insertIndex: 0 })),
       colorIndex: plan.colorIndex,
       isMultiSegment: cleanPts.length > 2
     });

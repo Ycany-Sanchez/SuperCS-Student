@@ -558,6 +558,23 @@ svg.svg-connecting .svg-connect-port {
   stroke: var(--surface) !important;
 }
 
+/* Draw.io-style edge waypoint & midpoint bend handles */
+.svg-waypoint-handle {
+  cursor: move;
+  transition: r 110ms ease, fill 110ms ease, stroke 110ms ease;
+}
+.svg-waypoint-handle:hover {
+  fill: var(--accent) !important;
+}
+.svg-midpoint-handle {
+  cursor: crosshair;
+  opacity: 0.72;
+  transition: opacity 110ms ease, transform 110ms ease;
+}
+.svg-midpoint-handle:hover {
+  opacity: 1;
+}
+
 /* Modernized Blockly overrides */
 .blocklyMainBackground {
   stroke: none !important;

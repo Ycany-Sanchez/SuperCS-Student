@@ -2,7 +2,14 @@ import gsap from "gsap";
 import { Flip } from "gsap/Flip";
 import { MotionPathPlugin } from "gsap/MotionPathPlugin";
 import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
-import { EDGE_PALETTE_SIZE, polylineToRoundedPath, routeOrthogonalEdges } from "./orthoRouter.js";
+import {
+  EDGE_PALETTE_SIZE,
+  assignEdgeColors,
+  computeBlockyEdgePathWithWaypoints,
+  computeClassicEdgePath,
+  polylineToRoundedPath,
+  routeOrthogonalEdges
+} from "./orthoRouter.js";
 
 gsap.registerPlugin(Flip, MotionPathPlugin, DrawSVGPlugin);
 
@@ -127,6 +134,13 @@ export function mountSvgCanvas(container, dotNetRef) {
     pointerMoved: false,
     downNodeId: null,
     downEdgeId: null,
+    localSelectedEdgeId: null,
+    selectedWaypoint: null,
+    draggingWaypoint: null,
+    pendingEdgeBend: null,
+    edgeStyles: new Map(),
+    edgeWaypoints: new Map(),
+    renderedEdgeMeta: new Map(),
     connecting: null,
     connectPreviewGroup: null,
     lastScene: null,
@@ -143,10 +157,47 @@ export function mountSvgCanvas(container, dotNetRef) {
       enableConnectHandles: false,
       enableSelection: false,
       enableDoubleClickAdd: false,
+      canDeleteEdges: false,
       selectedNodeId: null,
       selectedEdgeId: null,
       isDirected: true
     }
+  };
+
+  const getSelectedEdgeId = () => state.options.selectedEdgeId || state.localSelectedEdgeId;
+
+  const notifyEdgeInspect = () => {
+    if (!state.dotNetRef) return;
+    const edgeId = getSelectedEdgeId();
+    if (!edgeId) {
+      state.dotNetRef.invokeMethodAsync("HandleEdgeInspectState", "", "", "classic", 0, -1).catch(() => {});
+      return;
+    }
+    const meta = state.renderedEdgeMeta.get(edgeId);
+    const arrow = meta?.isDirected ? "→" : "—";
+    const displayLabel = meta ? `${meta.sourceId} ${arrow} ${meta.targetId}` : edgeId;
+    const style = state.edgeStyles.get(edgeId) || "classic";
+    const wps = state.edgeWaypoints.get(edgeId) || [];
+    const wpIdx = state.selectedWaypoint && state.selectedWaypoint.edgeId === edgeId ? state.selectedWaypoint.index : -1;
+    state.dotNetRef.invokeMethodAsync("HandleEdgeInspectState", edgeId, displayLabel, style, wps.length, wpIdx).catch(() => {});
+  };
+  state.notifyEdgeInspect = notifyEdgeInspect;
+
+  const nearestInsertIndexForPoint = (edgeId, pt) => {
+    const meta = state.renderedEdgeMeta.get(edgeId);
+    const wps = state.edgeWaypoints.get(edgeId) || [];
+    if (!meta || wps.length === 0) return 0;
+    const mids = meta.midpoints || [];
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (const m of mids) {
+      const d = Math.hypot(m.x - pt.x, m.y - pt.y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = m.insertIndex;
+      }
+    }
+    return bestIdx;
   };
 
   const applyTransform = () => {
@@ -238,6 +289,44 @@ export function mountSvgCanvas(container, dotNetRef) {
     state.pointerMoved = false;
     state.downNodeId = null;
     state.downEdgeId = null;
+    state.pendingEdgeBend = null;
+
+    // 0a. Existing pinned waypoint handle press (drag to move or click to focus for Backspace)
+    const wpHandle = e.target.closest?.("[data-waypoint-handle]");
+    if (wpHandle) {
+      e.stopPropagation();
+      const edgeId = wpHandle.getAttribute("data-edge-id");
+      const index = Number(wpHandle.getAttribute("data-waypoint-index"));
+      if (edgeId && Number.isInteger(index)) {
+        state.selectedWaypoint = { edgeId, index };
+        state.draggingWaypoint = { edgeId, index };
+        if (state.lastScene) renderScene(container, state.lastScene, true);
+        notifyEdgeInspect();
+        svg.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
+
+    // 0b. Ghost midpoint "+" handle press (immediately pins a new waypoint & drags it live)
+    const midHandle = e.target.closest?.("[data-midpoint-handle]");
+    if (midHandle) {
+      e.stopPropagation();
+      const edgeId = midHandle.getAttribute("data-edge-id");
+      const insertIndex = Number(midHandle.getAttribute("data-insert-index") || 0);
+      if (edgeId) {
+        const wpt = clientToWorld(e.clientX, e.clientY);
+        const wps = [...(state.edgeWaypoints.get(edgeId) || [])];
+        const safeIdx = Math.max(0, Math.min(wps.length, insertIndex));
+        wps.splice(safeIdx, 0, { x: Math.round(wpt.x * 10) / 10, y: Math.round(wpt.y * 10) / 10 });
+        state.edgeWaypoints.set(edgeId, wps);
+        state.selectedWaypoint = { edgeId, index: safeIdx };
+        state.draggingWaypoint = { edgeId, index: safeIdx };
+        if (state.lastScene) renderScene(container, state.lastScene, true);
+        notifyEdgeInspect();
+        svg.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
 
     // 1. Draw.io perimeter connection handle press
     const portEl = e.target.closest?.("[data-connect-port]");
@@ -277,10 +366,14 @@ export function mountSvgCanvas(container, dotNetRef) {
       return;
     }
 
-    // 3. Edge press (click to select when selection enabled)
+    // 3. Edge press (always selectable on non-tree diagrams; drag on selected edge pins a bend-point)
     const edgeHit = e.target.closest?.("[data-edge-hit]");
-    if (edgeHit && state.options.enableSelection) {
-      state.downEdgeId = edgeHit.getAttribute("data-edge-hit");
+    if (edgeHit) {
+      const edgeId = edgeHit.getAttribute("data-edge-hit");
+      state.downEdgeId = edgeId;
+      if (edgeId && getSelectedEdgeId() === edgeId) {
+        state.pendingEdgeBend = { edgeId };
+      }
       svg.setPointerCapture(e.pointerId);
       return;
     }
@@ -295,6 +388,31 @@ export function mountSvgCanvas(container, dotNetRef) {
   svg.addEventListener("pointermove", (e) => {
     if (Math.hypot(e.clientX - state.pointerDownPos.x, e.clientY - state.pointerDownPos.y) > 4) {
       state.pointerMoved = true;
+    }
+    // Promote drag on an already-selected arrow into pinning & moving a live waypoint
+    if (state.pendingEdgeBend && state.pointerMoved) {
+      const { edgeId } = state.pendingEdgeBend;
+      state.pendingEdgeBend = null;
+      const wpt = clientToWorld(e.clientX, e.clientY);
+      const insertIndex = nearestInsertIndexForPoint(edgeId, wpt);
+      const wps = [...(state.edgeWaypoints.get(edgeId) || [])];
+      wps.splice(insertIndex, 0, { x: Math.round(wpt.x * 10) / 10, y: Math.round(wpt.y * 10) / 10 });
+      state.edgeWaypoints.set(edgeId, wps);
+      state.selectedWaypoint = { edgeId, index: insertIndex };
+      state.draggingWaypoint = { edgeId, index: insertIndex };
+      if (state.lastScene) renderScene(container, state.lastScene, true);
+      notifyEdgeInspect();
+      return;
+    }
+    if (state.draggingWaypoint && state.lastScene) {
+      const { edgeId, index } = state.draggingWaypoint;
+      const wps = state.edgeWaypoints.get(edgeId);
+      if (wps && index >= 0 && index < wps.length) {
+        const wpt = clientToWorld(e.clientX, e.clientY);
+        wps[index] = { x: Math.round(wpt.x * 10) / 10, y: Math.round(wpt.y * 10) / 10 };
+        renderScene(container, state.lastScene, true);
+      }
+      return;
     }
     if (state.connecting && state.lastScene) {
       const wpt = clientToWorld(e.clientX, e.clientY);
@@ -338,6 +456,14 @@ export function mountSvgCanvas(container, dotNetRef) {
   });
 
   const endDrag = (e) => {
+    if (state.draggingWaypoint) {
+      state.draggingWaypoint = null;
+      state.pendingEdgeBend = null;
+      notifyEdgeInspect();
+      return;
+    }
+    state.pendingEdgeBend = null;
+
     if (state.connecting) {
       const { fromId, targetId } = state.connecting;
       state.connecting = null;
@@ -358,26 +484,38 @@ export function mountSvgCanvas(container, dotNetRef) {
 
     if (wasClick && state.dotNetRef && e && e.type === "pointerup") {
       if (clickedNode) {
+        state.localSelectedEdgeId = null;
+        state.selectedWaypoint = null;
         if (state.options.enableSelection) {
           state.options.selectedNodeId = clickedNode;
           state.options.selectedEdgeId = null;
-          if (state.lastScene) renderScene(container, state.lastScene, true);
           state.dotNetRef.invokeMethodAsync("HandleSelectionChanged", "node", clickedNode).catch(() => {});
         }
+        if (state.lastScene) renderScene(container, state.lastScene, true);
+        notifyEdgeInspect();
         state.dotNetRef.invokeMethodAsync("HandleNodeClick", clickedNode).catch(() => {});
       } else if (clickedEdge) {
+        state.localSelectedEdgeId = clickedEdge;
+        state.selectedWaypoint = null;
         if (state.options.enableSelection) {
           state.options.selectedNodeId = null;
           state.options.selectedEdgeId = clickedEdge;
-          if (state.lastScene) renderScene(container, state.lastScene, true);
           state.dotNetRef.invokeMethodAsync("HandleSelectionChanged", "edge", clickedEdge).catch(() => {});
         }
+        if (state.lastScene) renderScene(container, state.lastScene, true);
+        notifyEdgeInspect();
       } else {
+        const hadAny = Boolean(state.options.selectedNodeId || state.options.selectedEdgeId || state.localSelectedEdgeId || state.selectedWaypoint);
+        state.localSelectedEdgeId = null;
+        state.selectedWaypoint = null;
         if (state.options.enableSelection && (state.options.selectedNodeId || state.options.selectedEdgeId)) {
           state.options.selectedNodeId = null;
           state.options.selectedEdgeId = null;
-          if (state.lastScene) renderScene(container, state.lastScene, true);
           state.dotNetRef.invokeMethodAsync("HandleSelectionChanged", "none", "").catch(() => {});
+        }
+        if (hadAny && state.lastScene) {
+          renderScene(container, state.lastScene, true);
+          notifyEdgeInspect();
         }
         const wpt = clientToWorld(e.clientX, e.clientY);
         state.dotNetRef.invokeMethodAsync("HandleCanvasClick", wpt.x, wpt.y).catch(() => {});
@@ -388,8 +526,49 @@ export function mountSvgCanvas(container, dotNetRef) {
   svg.addEventListener("pointercancel", endDrag);
 
   svg.addEventListener("dblclick", (e) => {
+    // Double-click a pinned waypoint handle to remove just that bend-point
+    const wpHandle = e.target.closest?.("[data-waypoint-handle]");
+    if (wpHandle) {
+      e.stopPropagation();
+      const edgeId = wpHandle.getAttribute("data-edge-id");
+      const index = Number(wpHandle.getAttribute("data-waypoint-index"));
+      const wps = state.edgeWaypoints.get(edgeId);
+      if (wps && index >= 0 && index < wps.length) {
+        wps.splice(index, 1);
+        if (wps.length === 0) state.edgeWaypoints.delete(edgeId);
+        state.selectedWaypoint = null;
+        if (state.lastScene) renderScene(container, state.lastScene, true);
+        notifyEdgeInspect();
+      }
+      return;
+    }
+
+    // Double-click directly on an arrow to pin a bend-point right at cursor
+    const edgeHit = e.target.closest?.("[data-edge-hit]");
+    if (edgeHit) {
+      e.stopPropagation();
+      const edgeId = edgeHit.getAttribute("data-edge-hit");
+      if (edgeId) {
+        const wpt = clientToWorld(e.clientX, e.clientY);
+        const insertIndex = nearestInsertIndexForPoint(edgeId, wpt);
+        const wps = [...(state.edgeWaypoints.get(edgeId) || [])];
+        wps.splice(insertIndex, 0, { x: Math.round(wpt.x * 10) / 10, y: Math.round(wpt.y * 10) / 10 });
+        state.edgeWaypoints.set(edgeId, wps);
+        state.localSelectedEdgeId = edgeId;
+        if (state.options.enableSelection) {
+          state.options.selectedNodeId = null;
+          state.options.selectedEdgeId = edgeId;
+          state.dotNetRef?.invokeMethodAsync("HandleSelectionChanged", "edge", edgeId).catch(() => {});
+        }
+        state.selectedWaypoint = { edgeId, index: insertIndex };
+        if (state.lastScene) renderScene(container, state.lastScene, true);
+        notifyEdgeInspect();
+      }
+      return;
+    }
+
     if (!state.options.enableDoubleClickAdd || !state.dotNetRef) return;
-    if (e.target.closest?.("[data-node-id]") || e.target.closest?.("[data-edge-hit]") || e.target.closest?.("[data-connect-port]")) {
+    if (e.target.closest?.("[data-node-id]") || e.target.closest?.("[data-connect-port]") || e.target.closest?.("[data-midpoint-handle]")) {
       return;
     }
     const wpt = clientToWorld(e.clientX, e.clientY);
@@ -397,29 +576,63 @@ export function mountSvgCanvas(container, dotNetRef) {
   });
 
   const onKeyDown = (e) => {
-    if (!state.options.enableSelection || !state.dotNetRef) return;
+    if (!state.dotNetRef) return;
     if (e.key !== "Backspace" && e.key !== "Delete") return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (!container.isConnected || container.offsetParent === null) return;
 
     const isEditable = (el) => {
       if (!el || el.nodeType !== 1) return false;
-      const tag = el.tagName;
+      const tag = (el.tagName || "").toUpperCase();
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
     };
     if (isEditable(e.target) || isEditable(document.activeElement)) return;
-    if (document.querySelector('[role="dialog"]')) return;
+    if (document.querySelector('[role="dialog"], dialog[open], [aria-modal="true"]')) return;
 
-    if (state.options.selectedNodeId) {
+    // Priority 1: Remove focused pinned waypoint
+    if (state.selectedWaypoint) {
+      const { edgeId, index } = state.selectedWaypoint;
+      const wps = state.edgeWaypoints.get(edgeId);
+      if (wps && index >= 0 && index < wps.length) {
+        e.preventDefault();
+        wps.splice(index, 1);
+        if (wps.length === 0) state.edgeWaypoints.delete(edgeId);
+        state.selectedWaypoint = null;
+        if (state.lastScene) renderScene(container, state.lastScene, true);
+        notifyEdgeInspect();
+        return;
+      }
+      state.selectedWaypoint = null;
+    }
+
+    // Priority 2: Selected edge (delete edge in editable graphs, or clear pinned bends in read-only automata)
+    const selEdge = getSelectedEdgeId();
+    if (selEdge) {
+      if (state.options.canDeleteEdges) {
+        e.preventDefault();
+        state.options.selectedEdgeId = null;
+        state.localSelectedEdgeId = null;
+        state.edgeStyles.delete(selEdge);
+        state.edgeWaypoints.delete(selEdge);
+        notifyEdgeInspect();
+        state.dotNetRef.invokeMethodAsync("HandleDeleteSelected", "edge", selEdge).catch(() => {});
+        return;
+      }
+      if (state.edgeWaypoints.has(selEdge)) {
+        e.preventDefault();
+        state.edgeWaypoints.delete(selEdge);
+        if (state.lastScene) renderScene(container, state.lastScene, true);
+        notifyEdgeInspect();
+        return;
+      }
+    }
+
+    // Priority 3: Selected node (Graph vertex or Tree node)
+    if (state.options.enableSelection && state.options.selectedNodeId) {
       e.preventDefault();
       const id = state.options.selectedNodeId;
       state.options.selectedNodeId = null;
       state.dotNetRef.invokeMethodAsync("HandleDeleteSelected", "node", id).catch(() => {});
-    } else if (state.options.selectedEdgeId) {
-      e.preventDefault();
-      const id = state.options.selectedEdgeId;
-      state.options.selectedEdgeId = null;
-      state.dotNetRef.invokeMethodAsync("HandleDeleteSelected", "edge", id).catch(() => {});
     }
   };
   window.addEventListener("keydown", onKeyDown);
@@ -476,6 +689,7 @@ export function configureCanvas(container, options = {}) {
     enableConnectHandles: Boolean(options.enableConnectHandles),
     enableSelection: Boolean(options.enableSelection),
     enableDoubleClickAdd: Boolean(options.enableDoubleClickAdd),
+    canDeleteEdges: Boolean(options.canDeleteEdges),
     selectedNodeId: options.selectedNodeId || null,
     selectedEdgeId: options.selectedEdgeId || null,
     isDirected: options.isDirected !== undefined ? Boolean(options.isDirected) : true
@@ -484,13 +698,67 @@ export function configureCanvas(container, options = {}) {
     st.options.enableConnectHandles !== next.enableConnectHandles ||
     st.options.enableSelection !== next.enableSelection ||
     st.options.enableDoubleClickAdd !== next.enableDoubleClickAdd ||
+    st.options.canDeleteEdges !== next.canDeleteEdges ||
     st.options.selectedNodeId !== next.selectedNodeId ||
     st.options.selectedEdgeId !== next.selectedEdgeId ||
     st.options.isDirected !== next.isDirected;
   st.options = next;
+  if (next.enableSelection && !next.selectedEdgeId) {
+    st.localSelectedEdgeId = null;
+    st.selectedWaypoint = null;
+  }
   if (changed && st.lastScene) {
     renderScene(container, st.lastScene, true);
+    st.notifyEdgeInspect?.();
   }
+}
+
+export function setEdgeStyle(container, edgeId, style) {
+  const st = instances.get(container);
+  if (!st || !edgeId) return;
+  if (style === "blocky") {
+    st.edgeStyles.set(edgeId, "blocky");
+  } else {
+    st.edgeStyles.delete(edgeId);
+  }
+  if (st.lastScene) renderScene(container, st.lastScene, true);
+  st.notifyEdgeInspect?.();
+}
+
+export function addEdgeWaypoint(container, edgeId) {
+  const st = instances.get(container);
+  if (!st || !edgeId) return;
+  const meta = st.renderedEdgeMeta.get(edgeId);
+  const firstMid = meta?.midpoints?.[0];
+  if (!firstMid) return;
+  const wps = [...(st.edgeWaypoints.get(edgeId) || [])];
+  const insertIdx = Math.max(0, Math.min(wps.length, firstMid.insertIndex ?? 0));
+  wps.splice(insertIdx, 0, { x: firstMid.x, y: firstMid.y });
+  st.edgeWaypoints.set(edgeId, wps);
+  st.selectedWaypoint = { edgeId, index: insertIdx };
+  if (st.lastScene) renderScene(container, st.lastScene, true);
+  st.notifyEdgeInspect?.();
+}
+
+export function clearEdgeWaypoints(container, edgeId) {
+  const st = instances.get(container);
+  if (!st || !edgeId) return;
+  st.edgeWaypoints.delete(edgeId);
+  if (st.selectedWaypoint?.edgeId === edgeId) {
+    st.selectedWaypoint = null;
+  }
+  if (st.lastScene) renderScene(container, st.lastScene, true);
+  st.notifyEdgeInspect?.();
+}
+
+export function clearEdgeSelection(container) {
+  const st = instances.get(container);
+  if (!st) return;
+  st.localSelectedEdgeId = null;
+  st.selectedWaypoint = null;
+  if (st.options.selectedEdgeId) st.options.selectedEdgeId = null;
+  if (st.lastScene) renderScene(container, st.lastScene, true);
+  st.notifyEdgeInspect?.();
 }
 
 export function seedNodePosition(container, nodeId, x, y) {
@@ -532,6 +800,10 @@ export function renderScene(container, scene, snap = false) {
   if (overlayChanged) {
     st.userInteracted = false;
     st.customOffsets.clear();
+    st.edgeStyles.clear();
+    st.edgeWaypoints.clear();
+    st.localSelectedEdgeId = null;
+    st.selectedWaypoint = null;
   }
   const skipMotion = snap || prefersReducedMotion();
   const prevPositions = new Map(st.nodePositions);
@@ -571,10 +843,17 @@ export function renderScene(container, scene, snap = false) {
   st.nodesLayer.innerHTML = "";
   st.effectsLayer.innerHTML = "";
   st.connectPreviewGroup = null;
+  st.renderedEdgeMeta.clear();
 
   const isTreeScene = scene.routingMode === "tree";
-  const orthoRoutes = isTreeScene ? null : routeOrthogonalEdges(resolved, edges, { cornerRadius: 5 });
+  const edgeColors = isTreeScene ? null : assignEdgeColors(edges);
+  const needsAutoBlocky = !isTreeScene && edges.some((e, i) => {
+    const eid = e.id || `${e.sourceId}->${e.targetId}#${i}`;
+    return st.edgeStyles.get(eid) === "blocky" && !(st.edgeWaypoints.get(eid)?.length);
+  });
+  const blockyRoutes = needsAutoBlocky ? routeOrthogonalEdges(resolved, edges, { cornerRadius: 5 }) : null;
   const hasAnyActiveEdge = edges.some((e) => e.semanticState === "active");
+  const activeSelEdgeId = st.options.selectedEdgeId || st.localSelectedEdgeId;
 
   // Render edges
   const activeEdgePaths = [];
@@ -586,27 +865,52 @@ export function renderScene(container, scene, snap = false) {
 
     const key = e.id ?? `${e.sourceId}->${e.targetId}#${idx}`;
     const edgeId = e.id || key;
-    const ortho = orthoRoutes ? orthoRoutes.get(key) : null;
-    const { d, labelX, labelY } = ortho || computeEdgePath(src, tgt, e.curveOffset || 0, Boolean(e.isDirected));
-    const paletteIdx = (!isTreeScene && ortho) ? ortho.colorIndex : null;
-    const isSelectedEdge = st.options.enableSelection && st.options.selectedEdgeId === edgeId;
+    const style = !isTreeScene ? (st.edgeStyles.get(edgeId) || "classic") : "tree";
+    const wps = !isTreeScene ? (st.edgeWaypoints.get(edgeId) || []) : [];
+
+    let route;
+    if (isTreeScene) {
+      route = computeEdgePath(src, tgt, e.curveOffset || 0, Boolean(e.isDirected));
+    } else if (style === "blocky") {
+      route = wps.length > 0
+        ? computeBlockyEdgePathWithWaypoints(src, tgt, Boolean(e.isDirected), wps, 5)
+        : (blockyRoutes?.get(key) || computeClassicEdgePath(src, tgt, e.curveOffset || 0, Boolean(e.isDirected), []));
+    } else {
+      route = computeClassicEdgePath(src, tgt, e.curveOffset || 0, Boolean(e.isDirected), wps);
+    }
+
+    const { d, labelX, labelY } = route;
+    const paletteIdx = !isTreeScene ? (edgeColors.get(key) ?? (idx % EDGE_PALETTE_SIZE)) : null;
+    const isSelectedEdge = !isTreeScene && activeSelEdgeId === edgeId;
     const stroke = isSelectedEdge ? "var(--accent)" : edgeColor(e.semanticState, paletteIdx);
     const isActive = isSelectedEdge || e.semanticState === "active" || e.semanticState === "accepted" || e.semanticState === "frontier" || e.semanticState === "rejected" || e.semanticState === "violation";
     const isSteppingActive = e.semanticState === "active";
+
+    if (!isTreeScene) {
+      st.renderedEdgeMeta.set(edgeId, {
+        midpoints: route.midpoints || [],
+        points: route.points || [],
+        style,
+        sourceId: e.sourceId,
+        targetId: e.targetId,
+        isDirected: Boolean(e.isDirected),
+        label: e.label || ""
+      });
+    }
 
     const baseOpacity = e.isDimmed
       ? "0.22"
       : (isActive ? "1" : (isTreeScene ? "0.72" : (hasAnyActiveEdge ? "0.52" : "0.90")));
 
     const edgeGroup = createEl("g", {
-      class: `${isTreeScene ? "svg-tree-edge" : "svg-edge-group"}${!isTreeScene && st.options.enableSelection ? " cursor-pointer" : ""}`,
+      class: `${isTreeScene ? "svg-tree-edge" : "svg-edge-group cursor-pointer"}`,
       "data-edge-id": edgeId,
       "data-edge-hit": !isTreeScene ? edgeId : null,
       opacity: baseOpacity
     });
 
-    // Subtle background gap-casing beneath multi-segment orthogonal wires so crossings read clearly
-    if (!isTreeScene && ortho && ortho.isMultiSegment && !e.isDimmed) {
+    // Subtle background gap-casing beneath multi-segment / blocky / pinned wires
+    if (!isTreeScene && route.isMultiSegment && !e.isDimmed) {
       edgeGroup.appendChild(createEl("path", {
         d,
         fill: "none",
@@ -867,9 +1171,78 @@ export function renderScene(container, scene, snap = false) {
     renderActiveMotion(st, st.effectsLayer, resolved, scene.activeMotion, skipMotion);
   }
 
+  // Render Draw.io-style pinned waypoint & midpoint "+" bend handles for the selected arrow
+  if (!isTreeScene && activeSelEdgeId && st.renderedEdgeMeta.has(activeSelEdgeId)) {
+    renderEdgeHandles(st, activeSelEdgeId);
+  }
+
   if (isFirstRender || overlayChanged || (!st.userInteracted && viewBoxChanged)) {
     fitCanvas(container);
   }
+}
+
+function renderEdgeHandles(st, edgeId) {
+  const meta = st.renderedEdgeMeta.get(edgeId);
+  if (!meta) return;
+  const wps = st.edgeWaypoints.get(edgeId) || [];
+  const group = createEl("g", { "data-role": "edge-handles" });
+
+  // Ghost midpoint "+" handles for dragging out new pinned bend-points
+  for (const mid of meta.midpoints || []) {
+    const mg = createEl("g", {
+      class: "svg-midpoint-handle",
+      "data-midpoint-handle": "true",
+      "data-edge-id": edgeId,
+      "data-insert-index": mid.insertIndex
+    });
+    mg.appendChild(createEl("circle", {
+      cx: mid.x,
+      cy: mid.y,
+      r: "6",
+      fill: "var(--surface)",
+      stroke: "var(--accent)",
+      "stroke-width": "1.5",
+      "stroke-dasharray": "2.5 2"
+    }));
+    mg.appendChild(createEl("path", {
+      d: `M ${mid.x - 2.6} ${mid.y} L ${mid.x + 2.6} ${mid.y} M ${mid.x} ${mid.y - 2.6} L ${mid.x} ${mid.y + 2.6}`,
+      stroke: "var(--accent)",
+      "stroke-width": "1.4",
+      "stroke-linecap": "round",
+      "pointer-events": "none"
+    }));
+    group.appendChild(mg);
+  }
+
+  // Solid draggable pinned waypoint handles
+  wps.forEach((wp, i) => {
+    const isFocused = st.selectedWaypoint?.edgeId === edgeId && st.selectedWaypoint?.index === i;
+    if (isFocused) {
+      group.appendChild(createEl("circle", {
+        cx: wp.x,
+        cy: wp.y,
+        r: "9.5",
+        fill: "none",
+        stroke: "var(--warning)",
+        "stroke-width": "2",
+        "pointer-events": "none"
+      }));
+    }
+    group.appendChild(createEl("circle", {
+      cx: wp.x,
+      cy: wp.y,
+      r: "6",
+      fill: isFocused ? "var(--warning)" : "var(--surface)",
+      stroke: isFocused ? "var(--surface)" : "var(--accent)",
+      "stroke-width": "2.2",
+      class: "svg-waypoint-handle",
+      "data-waypoint-handle": "true",
+      "data-edge-id": edgeId,
+      "data-waypoint-index": i
+    }));
+  });
+
+  st.effectsLayer.appendChild(group);
 }
 
 /**
@@ -1283,9 +1656,13 @@ export function resetNodeOffsets(container) {
   const st = instances.get(container);
   if (!st) return;
   st.customOffsets.clear();
+  st.edgeStyles.clear();
+  st.edgeWaypoints.clear();
+  st.selectedWaypoint = null;
   if (st.lastScene) {
     renderScene(container, st.lastScene, false);
     fitCanvas(container);
+    st.notifyEdgeInspect?.();
   }
 }
 
@@ -1302,7 +1679,7 @@ function buildResolvedSvgClone(st) {
     });
 
   const clone = st.svg.cloneNode(true);
-  clone.querySelectorAll("[data-connect-port], [data-role='connect-preview']").forEach((el) => el.remove());
+  clone.querySelectorAll("[data-connect-port], [data-role='connect-preview'], [data-role='edge-handles'], [data-waypoint-handle], [data-midpoint-handle]").forEach((el) => el.remove());
   clone.setAttribute("xmlns", NS);
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));
