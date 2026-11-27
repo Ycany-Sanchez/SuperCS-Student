@@ -12,7 +12,8 @@ public sealed record TreeStepState(
     IReadOnlyList<string> LevelOrder,
     bool ParentLinksHealthy,
     string StatusSummary,
-    DiagramScene? IsomorphicScene = null);
+    DiagramScene? IsomorphicScene = null,
+    DiagramScene? SplayCompareScene = null);
 
 public enum TreeCommandKind
 {

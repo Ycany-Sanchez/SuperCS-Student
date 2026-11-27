@@ -43,6 +43,13 @@ public enum RedBlackRestructureMode
     StandardRotations
 }
 
+public enum RedBlackCompareView
+{
+    None,
+    TwoFourIsomorphism,
+    SplayTree
+}
+
 public enum NeighborOrder
 {
     AlphabeticalAsc,

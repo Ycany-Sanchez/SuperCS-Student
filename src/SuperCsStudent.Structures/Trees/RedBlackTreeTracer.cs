@@ -48,20 +48,36 @@ public sealed class RedBlackTreeTracer
 
     private RbNode? _root;
     private int _nextId = 1;
+    private TreeRuleset _ruleset;
+    private readonly SplayTracer _splayCompanion;
+    private DiagramScene? _cachedSplayScene;
 
-    public TreeRuleset Ruleset { get; set; }
+    public TreeRuleset Ruleset
+    {
+        get => _ruleset;
+        set
+        {
+            _ruleset = value;
+            _splayCompanion.Ruleset = value;
+            _cachedSplayScene = null;
+        }
+    }
+
     public int Count => CountNodes(_root);
     public int? RootKey => _root?.Key;
 
     public RedBlackTreeTracer(TreeRuleset? ruleset = null)
     {
-        Ruleset = ruleset ?? TreeRuleset.CourseStandard;
+        _ruleset = ruleset ?? TreeRuleset.CourseStandard;
+        _splayCompanion = new SplayTracer(_ruleset);
     }
 
     public void Clear()
     {
         _root = null;
         _nextId = 1;
+        _splayCompanion.Clear();
+        _cachedSplayScene = null;
     }
 
     public bool VerifyParentLinks()
@@ -103,7 +119,10 @@ public sealed class RedBlackTreeTracer
     {
         if (_root is null)
         {
-            return DiagramLayout.LayoutTidyTree(null, caption: "Isomorphic (2,4) Tree (Empty)");
+            return DiagramLayout.LayoutTidyTree(null, caption: "Isomorphic (2,4) Tree (Empty)") with
+            {
+                OverlayTag = "(2,4) Tree (Empty)"
+            };
         }
 
         LayoutTreeNode ConvertBlackCluster(RbNode blackNode)
@@ -153,13 +172,53 @@ public sealed class RedBlackTreeTracer
         }
 
         var rootCluster = ConvertBlackCluster(_root);
-        return DiagramLayout.LayoutTidyTree(rootCluster, horizontalGap: 28, levelGap: 88, caption: "Isomorphic (2,4) Tree");
+        return DiagramLayout.LayoutTidyTree(rootCluster, horizontalGap: 28, levelGap: 88, caption: "Isomorphic (2,4) Tree") with
+        {
+            OverlayTag = "(2,4) Tree"
+        };
+    }
+
+    /// <summary>
+    /// Builds a companion Splay Tree scene reflecting the exact same operation sequence
+    /// executed on this Red-Black tree so users can compare both trees side-by-side.
+    /// </summary>
+    public DiagramScene BuildSplayCompareScene()
+    {
+        if (_cachedSplayScene is not null)
+        {
+            return _cachedSplayScene;
+        }
+
+        var tag = _splayCompanion.RootKey.HasValue
+            ? $"Splay Tree · Root {_splayCompanion.RootKey.Value}"
+            : "Splay Tree (Empty)";
+        var snap = _splayCompanion.BuildSnapshot(tag);
+        _cachedSplayScene = snap.Scene with { OverlayTag = tag };
+        return _cachedSplayScene;
+    }
+
+    private void ApplySplayCompanionCommand(TreeCommandKind kind, int key)
+    {
+        switch (kind)
+        {
+            case TreeCommandKind.Insert:
+                _splayCompanion.Insert(key);
+                break;
+            case TreeCommandKind.Delete:
+                _splayCompanion.Delete(key);
+                break;
+            case TreeCommandKind.Search:
+                _splayCompanion.Search(key);
+                break;
+        }
+        _cachedSplayScene = null;
     }
 
     public TraceTimeline<TreeStepState> Search(int key)
     {
         var steps = new List<TraceStep<TreeStepState>>();
         var ops = new List<string>();
+        ApplySplayCompanionCommand(TreeCommandKind.Search, key);
         ExecuteSearch(key, steps, ops, out var found);
         return new TraceTimeline<TreeStepState>(
             steps,
@@ -173,6 +232,7 @@ public sealed class RedBlackTreeTracer
     {
         var steps = new List<TraceStep<TreeStepState>>();
         var ops = new List<string>();
+        ApplySplayCompanionCommand(TreeCommandKind.Insert, key);
         ExecuteInsert(key, steps, ops, out var inserted);
         return new TraceTimeline<TreeStepState>(
             steps,
@@ -186,6 +246,7 @@ public sealed class RedBlackTreeTracer
     {
         var steps = new List<TraceStep<TreeStepState>>();
         var ops = new List<string>();
+        ApplySplayCompanionCommand(TreeCommandKind.Delete, key);
         ExecuteDelete(key, steps, ops, out var deleted);
         return new TraceTimeline<TreeStepState>(
             steps,
@@ -212,14 +273,17 @@ public sealed class RedBlackTreeTracer
                     steps.Add(MakeStep(steps.Count, "Clear Red-Black Tree", "Reset Red-Black tree to empty.", null, Array.Empty<string>(), opCode: "CLEAR"));
                     break;
                 case TreeCommandKind.Insert when cmd.Key.HasValue:
+                    ApplySplayCompanionCommand(TreeCommandKind.Insert, cmd.Key.Value);
                     ExecuteInsert(cmd.Key.Value, steps, ops, out var insOk);
                     allOk &= insOk;
                     break;
                 case TreeCommandKind.Delete when cmd.Key.HasValue:
+                    ApplySplayCompanionCommand(TreeCommandKind.Delete, cmd.Key.Value);
                     ExecuteDelete(cmd.Key.Value, steps, ops, out var delOk);
                     allOk &= delOk;
                     break;
                 case TreeCommandKind.Search when cmd.Key.HasValue:
+                    ApplySplayCompanionCommand(TreeCommandKind.Search, cmd.Key.Value);
                     ExecuteSearch(cmd.Key.Value, steps, ops, out var srchOk);
                     allOk &= srchOk;
                     break;
@@ -249,9 +313,8 @@ public sealed class RedBlackTreeTracer
             ? null
             : ToLayoutNode(_root, stateOverrides, doubleBlackSentinelParentId, doubleBlackSentinelIsLeft);
         var scene = DiagramLayout.LayoutTidyTree(layoutRoot, caption: summary);
-        var iso = Ruleset.ShowTwoFourIsomorphism && VerifyInvariants()
-            ? BuildIsomorphicTwoFourScene()
-            : null;
+        var iso = VerifyInvariants() ? BuildIsomorphicTwoFourScene() : null;
+        var splayScene = BuildSplayCompareScene();
 
         return new TreeStepState(
             Scene: scene,
@@ -261,7 +324,8 @@ public sealed class RedBlackTreeTracer
             LevelOrder: GetLevelOrder(),
             ParentLinksHealthy: VerifyParentLinks(),
             StatusSummary: summary,
-            IsomorphicScene: iso);
+            IsomorphicScene: iso,
+            SplayCompareScene: splayScene);
     }
 
     public TraceTimeline<TreeStepState> TraceWalk(TreeTraversalMode mode) =>

@@ -193,10 +193,11 @@
                     </div>
 
                     <div class="bp-rule-row">
-                        <span style="color: var(--muted);">RB ↔ (2,4) mirror</span>
+                        <span style="color: var(--muted);">RB compare view</span>
                         <div class="bp-seg">
-                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(!_treeRuleset.ShowTwoFourIsomorphism ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowTwoFourIsomorphism = false })">Off</button>
-                            <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_treeRuleset.ShowTwoFourIsomorphism ? "true" : "false")" @onclick="() => ApplyTreeRuleset(_treeRuleset with { Name = CustomLabel, ShowTwoFourIsomorphism = true })">Mirror</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-1.5 !text-[11px]" data-active="@(_rbCompareView == RedBlackCompareView.None ? "true" : "false")" @onclick="() => SetRedBlackCompareView(RedBlackCompareView.None)">Off</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-1.5 !text-[11px]" data-active="@(_rbCompareView == RedBlackCompareView.TwoFourIsomorphism ? "true" : "false")" @onclick="() => SetRedBlackCompareView(RedBlackCompareView.TwoFourIsomorphism)">(2,4)</button>
+                            <button type="button" class="bp-seg-btn !h-6 !px-1.5 !text-[11px]" data-active="@(_rbCompareView == RedBlackCompareView.SplayTree ? "true" : "false")" @onclick="() => SetRedBlackCompareView(RedBlackCompareView.SplayTree)">Splay</button>
                         </div>
                     </div>
                 </div>
@@ -258,6 +259,33 @@
                    @bind="_batchScript" />
             <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="RunTreeBatchScript">Run Script</button>
             <button type="button" class="bp-btn-ghost !h-8 text-xs" @onclick="ClearTree">Clear</button>
+            @if (_category == StructureCategory.RedBlack)
+            {
+                <span class="w-px h-5" style="background: var(--border);"></span>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[11px] font-medium whitespace-nowrap" style="color: var(--muted);">Compare</span>
+                    <div class="bp-seg" role="group" aria-label="Red-Black side-by-side comparison">
+                        <button type="button"
+                                class="bp-seg-btn !h-7 !px-2 !text-[11px]"
+                                data-active="@(_rbCompareView == RedBlackCompareView.None ? "true" : "false")"
+                                @onclick="() => SetRedBlackCompareView(RedBlackCompareView.None)">
+                            Off
+                        </button>
+                        <button type="button"
+                                class="bp-seg-btn !h-7 !px-2 !text-[11px]"
+                                data-active="@(_rbCompareView == RedBlackCompareView.TwoFourIsomorphism ? "true" : "false")"
+                                @onclick="() => SetRedBlackCompareView(RedBlackCompareView.TwoFourIsomorphism)">
+                            (2,4) Tree
+                        </button>
+                        <button type="button"
+                                class="bp-seg-btn !h-7 !px-2 !text-[11px]"
+                                data-active="@(_rbCompareView == RedBlackCompareView.SplayTree ? "true" : "false")"
+                                @onclick="() => SetRedBlackCompareView(RedBlackCompareView.SplayTree)">
+                            Splay Tree
+                        </button>
+                    </div>
+                </div>
+            }
         }
     </div>
 
@@ -276,10 +304,10 @@
                 </div>
             }
 
-            <div class="flex-1 min-h-0 min-w-0 grid @(_showIsomorphicMirror ? "grid-cols-1 lg:grid-cols-2 gap-2.5" : "grid-cols-1")">
+            <div class="flex-1 min-h-0 min-w-0 grid @(_showRedBlackCompare ? "grid-cols-1 lg:grid-cols-2 gap-2.5" : "grid-cols-1")">
                 <div class="relative min-h-[200px] min-w-0 overflow-hidden">
                     <InteractiveSvgCanvas @ref="_mainCanvas"
-                                          Scene="@ActiveScene"
+                                          Scene="@MainCanvasScene"
                                           SnapMotion="@AppState.SnapMotion"
                                           EnableConnectHandles="@(_category == StructureCategory.Graph)"
                                           EnableSelection="true"
@@ -304,7 +332,7 @@
 
                     @if (CanTraverseCurrentCategory)
                     {
-                        <div class="structures-traverse-wrap">
+                        <div class="structures-traverse-wrap" style="@(_showRedBlackCompare ? "bottom: 54px;" : null)">
                             @if (_traverseMenuOpen)
                             {
                                 <div class="structures-traverse-menu" role="menu" aria-label="Choose tree traversal">
@@ -358,12 +386,13 @@
                     }
                 </div>
 
-                @if (_showIsomorphicMirror && ActiveTreeStep?.State.IsomorphicScene is not null)
+                @if (_showRedBlackCompare && ActiveCompareScene is not null)
                 {
                     <div class="relative min-h-[200px] min-w-0 overflow-hidden">
-                        <InteractiveSvgCanvas Scene="@ActiveTreeStep.State.IsomorphicScene"
+                        <InteractiveSvgCanvas @key="_rbCompareView"
+                                              Scene="@ActiveCompareScene"
                                               SnapMotion="@AppState.SnapMotion"
-                                              ExportFileName="rb-24-isomorphism.svg" />
+                                              ExportFileName="@CompareExportFileName" />
                     </div>
                 }
             </div>
@@ -664,6 +693,7 @@
     private GraphRuleset _graphRuleset = GraphRuleset.CourseStandard;
 
     private InteractiveSvgCanvas? _mainCanvas;
+    private RedBlackCompareView _rbCompareView = RedBlackCompareView.None;
     private bool _rulesOpen;
     private bool _inspectorCollapsed;
     private bool _graphEditorOpen;
@@ -707,10 +737,57 @@
         ? ActiveGraphStep?.State.Scene
         : ActiveTreeStep?.State.Scene;
 
-    private bool _showIsomorphicMirror =>
+    private DiagramScene? MainCanvasScene =>
+        _showRedBlackCompare && ActiveScene is not null && string.IsNullOrWhiteSpace(ActiveScene.OverlayTag)
+            ? ActiveScene with { OverlayTag = "Red-Black Tree" }
+            : ActiveScene;
+
+    private DiagramScene? ActiveCompareScene
+    {
+        get
+        {
+            if (_category != StructureCategory.RedBlack || _rbCompareView == RedBlackCompareView.None)
+            {
+                return null;
+            }
+
+            if (_rbCompareView == RedBlackCompareView.SplayTree)
+            {
+                return ActiveTreeStep?.State.SplayCompareScene ?? _rb.BuildSplayCompareScene();
+            }
+
+            // (2,4) isomorphism: if an intermediate violation frame temporarily has null IsomorphicScene,
+            // fall back to the most recent valid (2,4) projection so the split pane never flickers.
+            var currentIso = ActiveTreeStep?.State.IsomorphicScene;
+            if (currentIso is not null)
+            {
+                return currentIso;
+            }
+
+            if (_treeTimeline is not null)
+            {
+                for (var i = System.Math.Min(_stepIndex - 1, _treeTimeline.Count - 1); i >= 0; i--)
+                {
+                    var prevIso = _treeTimeline.Steps[i].State.IsomorphicScene;
+                    if (prevIso is not null)
+                    {
+                        return prevIso with { OverlayTag = "(2,4) Tree · Rebalancing" };
+                    }
+                }
+            }
+
+            return _rb.BuildIsomorphicTwoFourScene();
+        }
+    }
+
+    private bool _showRedBlackCompare =>
         _category == StructureCategory.RedBlack &&
-        _treeRuleset.ShowTwoFourIsomorphism &&
-        ActiveTreeStep?.State.IsomorphicScene is not null;
+        _rbCompareView != RedBlackCompareView.None &&
+        ActiveCompareScene is not null;
+
+    private string CompareExportFileName => _rbCompareView == RedBlackCompareView.SplayTree
+        ? "rb-splay-compare.svg"
+        : "rb-24-isomorphism.svg";
 
     private string? ActiveStepTitle => _category == StructureCategory.Graph ? ActiveGraphStep?.Title : ActiveTreeStep?.Title;
     private string? ActiveStepExplanation => _category == StructureCategory.Graph ? ActiveGraphStep?.Explanation : ActiveTreeStep?.Explanation;
@@ -746,6 +823,13 @@
             _treeRuleset = preset.RecommendedTreeRuleset;
         if (preset.RecommendedGraphRuleset is not null)
             _graphRuleset = preset.RecommendedGraphRuleset;
+
+        if (preset.Category == StructureCategory.RedBlack)
+        {
+            _rbCompareView = _treeRuleset.ShowTwoFourIsomorphism
+                ? RedBlackCompareView.TwoFourIsomorphism
+                : RedBlackCompareView.None;
+        }
 
         if (preset.Category == StructureCategory.BinaryTree)
         {
@@ -800,9 +884,26 @@
         }
     }
 
+    private void SetRedBlackCompareView(RedBlackCompareView next)
+    {
+        _rbCompareView = next;
+        _treeRuleset = _treeRuleset with
+        {
+            ShowTwoFourIsomorphism = next == RedBlackCompareView.TwoFourIsomorphism
+        };
+        _rb.Ruleset = _treeRuleset;
+    }
+
     private void ApplyTreeRuleset(TreeRuleset next)
     {
+        var isoChanged = next.ShowTwoFourIsomorphism != _treeRuleset.ShowTwoFourIsomorphism;
         _treeRuleset = next;
+        if (isoChanged)
+        {
+            _rbCompareView = next.ShowTwoFourIsomorphism
+                ? RedBlackCompareView.TwoFourIsomorphism
+                : (_rbCompareView == RedBlackCompareView.TwoFourIsomorphism ? RedBlackCompareView.None : _rbCompareView);
+        }
         _binaryTree.Ruleset = next;
         _bst.Ruleset = next;
         _avl.Ruleset = next;
@@ -903,8 +1004,11 @@
         ClearSelectionState();
         _bst.Clear(); _avl.Clear(); _splay.Clear(); _twoFour.Clear(); _rb.Clear(); _binaryTree.Clear();
         _batchScript = string.Empty;
+        var emptySnapshot = _category == StructureCategory.RedBlack
+            ? _rb.BuildSnapshot("Empty")
+            : _bst.BuildSnapshot("Empty");
         _treeTimeline = new TraceTimeline<TreeStepState>(
-            [new TraceStep<TreeStepState>(0, "Cleared", "Tree is empty.", null, _bst.BuildSnapshot("Empty"), Array.Empty<string>(), Array.Empty<string>())]);
+            [new TraceStep<TreeStepState>(0, "Cleared", "Tree is empty.", null, emptySnapshot, Array.Empty<string>(), Array.Empty<string>())]);
         _stepIndex = 0;
     }
 

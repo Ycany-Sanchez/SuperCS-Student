@@ -67,15 +67,12 @@ public static class StructurePresets
         // Matches AppStateService key: "rb-demo"
         new(
             Key: "rb-demo",
-            Title: "Red-Black Tree + (2,4) Isomorphism",
-            Subtitle: "Insertion & deletion violations with isomorphic (2,4) view",
+            Title: "Red-Black Tree + Optional Compare Views",
+            Subtitle: "Insertion & deletion violations with optional (2,4) or Splay side-by-side view",
             Category: StructureCategory.RedBlack,
-            Description: "Inserts a 10-key sequence triggering double-red Case 1 restructuring and Case 2 recoloring, with live isomorphic (2,4) tree projection enabled.",
+            Description: "Inserts a 10-key sequence triggering double-red Case 1 restructuring and Case 2 recoloring, with optional side-by-side (2,4) isomorphism and Splay tree comparison.",
             TreeScript: "insert 4, 7, 12, 15, 3, 5, 14, 18, 16, 17",
-            RecommendedTreeRuleset: TreeRuleset.CourseStandard with
-            {
-                ShowTwoFourIsomorphism = true
-            }),
+            RecommendedTreeRuleset: TreeRuleset.CourseStandard),
 
         // Matches AppStateService key: "graph-airport"
         new(

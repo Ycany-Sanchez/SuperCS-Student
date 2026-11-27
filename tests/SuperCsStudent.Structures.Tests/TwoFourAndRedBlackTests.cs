@@ -1,5 +1,6 @@
 using SuperCsStudent.Core.Diagram;
 using SuperCsStudent.Structures.Config;
+using SuperCsStudent.Structures.Presets;
 using SuperCsStudent.Structures.Trees;
 
 namespace SuperCsStudent.Structures.Tests;
@@ -204,5 +205,70 @@ public sealed class TwoFourAndRedBlackTests
         Assert.True(rb.VerifyInvariants());
         Assert.Contains(timeline.Steps[^1].State.Scene.Nodes, n => n.Shape == NodeShapes.Sentinel);
         Assert.NotNull(timeline.Steps[^1].State.IsomorphicScene);
+    }
+
+    [Fact]
+    public void RedBlackTree_SplayAndTwoFourCompareScenes_StaySyncedAcrossScriptSearchInsertDeleteAndClear()
+    {
+        var rbPreset = StructurePresets.GetByKey("rb-demo");
+        Assert.NotNull(rbPreset);
+        Assert.False(rbPreset!.RecommendedTreeRuleset?.ShowTwoFourIsomorphism ?? false);
+
+        var rb = new RedBlackTreeTracer(TreeRuleset.CourseStandard);
+        var scriptTimeline = rb.RunScript("insert 4, 7, 12, 15, 3, 5, 14, 18, 16, 17");
+        Assert.True(scriptTimeline.IsSuccess);
+
+        var finalState = scriptTimeline.Steps[^1].State;
+        Assert.NotNull(finalState.IsomorphicScene);
+        Assert.NotNull(finalState.SplayCompareScene);
+        Assert.Contains("(2,4)", finalState.IsomorphicScene!.OverlayTag ?? string.Empty);
+        Assert.Contains("Splay", finalState.SplayCompareScene!.OverlayTag ?? string.Empty);
+
+        // Splay companion must hold the exact same key set and splay the last inserted key (17) to root
+        var rbKeys = rb.GetInOrder().Select(s => int.Parse(s[..^3])).ToList();
+        var splayKeys = finalState.SplayCompareScene.Nodes
+            .Where(n => n.Shape != NodeShapes.Sentinel)
+            .Select(n => int.Parse(n.Label))
+            .OrderBy(x => x)
+            .ToList();
+        Assert.Equal(rbKeys, splayKeys);
+        var splayRoot = finalState.SplayCompareScene.Nodes
+            .Where(n => n.Shape != NodeShapes.Sentinel)
+            .OrderBy(n => n.Y)
+            .First();
+        Assert.Equal("17", splayRoot.Label);
+
+        // Interactive Search(4) keeps RB balanced while splaying 4 to the root of SplayCompareScene
+        var search4 = rb.Search(4);
+        var splayAfterSearch = search4.Steps[^1].State.SplayCompareScene;
+        Assert.NotNull(splayAfterSearch);
+        var rootAfterSearch = splayAfterSearch!.Nodes
+            .Where(n => n.Shape != NodeShapes.Sentinel)
+            .OrderBy(n => n.Y)
+            .First();
+        Assert.Equal("4", rootAfterSearch.Label);
+
+        // Interactive Insert(25) and Delete(12) stay locked in sync
+        var ins25 = rb.Insert(25);
+        var rootAfterIns25 = ins25.Steps[^1].State.SplayCompareScene!.Nodes
+            .Where(n => n.Shape != NodeShapes.Sentinel)
+            .OrderBy(n => n.Y)
+            .First();
+        Assert.Equal("25", rootAfterIns25.Label);
+
+        var del12 = rb.Delete(12);
+        var splayKeysAfterDel = del12.Steps[^1].State.SplayCompareScene!.Nodes
+            .Where(n => n.Shape != NodeShapes.Sentinel)
+            .Select(n => int.Parse(n.Label))
+            .OrderBy(x => x)
+            .ToList();
+        var rbKeysAfterDel = rb.GetInOrder().Select(s => int.Parse(s[..^3])).ToList();
+        Assert.Equal(rbKeysAfterDel, splayKeysAfterDel);
+        Assert.DoesNotContain(12, splayKeysAfterDel);
+
+        // Clear resets companion too
+        rb.Clear();
+        var cleared = rb.BuildSnapshot("Cleared");
+        Assert.Empty(cleared.SplayCompareScene!.Nodes);
     }
 }
