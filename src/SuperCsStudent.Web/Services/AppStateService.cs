@@ -11,12 +11,23 @@ public sealed record QuickCommandItem(
     string Route,
     string? PresetKey = null);
 
+public sealed record SavedAutomataConstraint(
+    string Id,
+    string Name,
+    string TargetKind,
+    string Spec,
+    string SourceKind,
+    string? Alphabet,
+    string DefaultInput,
+    List<string> Samples);
+
 public sealed record WorkspaceSnapshot(
     string Theme,
     string EmptyStringSymbol,
     string BlankTapeSymbol,
     bool SnapMotion,
-    List<WorkspaceDocument> RecentWorkspaces);
+    List<WorkspaceDocument> RecentWorkspaces,
+    List<SavedAutomataConstraint>? SavedConstraints = null);
 
 public sealed class AppStateService
 {
@@ -36,8 +47,31 @@ public sealed class AppStateService
     public bool HasHydratedStorage { get; private set; }
 
     public List<WorkspaceDocument> RecentWorkspaces { get; } = new();
+    public List<SavedAutomataConstraint> SavedConstraints { get; } = new();
 
     public event Action? OnChange;
+
+    public void SaveCustomConstraint(SavedAutomataConstraint item)
+    {
+        SavedConstraints.RemoveAll(c =>
+            string.Equals(c.Id, item.Id, StringComparison.Ordinal) ||
+            (string.Equals(c.TargetKind, item.TargetKind, StringComparison.Ordinal) &&
+             string.Equals(c.Name, item.Name, StringComparison.OrdinalIgnoreCase)));
+        SavedConstraints.Insert(0, item);
+        if (SavedConstraints.Count > 30)
+        {
+            SavedConstraints.RemoveRange(30, SavedConstraints.Count - 30);
+        }
+        Notify();
+    }
+
+    public void DeleteCustomConstraint(string id)
+    {
+        if (SavedConstraints.RemoveAll(c => string.Equals(c.Id, id, StringComparison.Ordinal)) > 0)
+        {
+            Notify();
+        }
+    }
 
     public void SetTheme(string theme)
     {
@@ -79,7 +113,8 @@ public sealed class AppStateService
             EmptyStringSymbol,
             BlankTapeSymbol,
             SnapMotion,
-            RecentWorkspaces.ToList());
+            RecentWorkspaces.ToList(),
+            SavedConstraints.ToList());
         return JsonSerializer.Serialize(snap, WorkspaceJson.Options);
     }
 
@@ -128,6 +163,31 @@ public sealed class AppStateService
                 RecentWorkspaces.RemoveRange(10, RecentWorkspaces.Count - 10);
             }
 
+            if (snap.SavedConstraints is not null)
+            {
+                var existingSaved = mergeExistingRecents ? SavedConstraints.ToList() : new List<SavedAutomataConstraint>();
+                SavedConstraints.Clear();
+                foreach (var sc in existingSaved)
+                {
+                    SavedConstraints.Add(sc);
+                }
+                foreach (var sc in snap.SavedConstraints)
+                {
+                    if (!SavedConstraints.Any(x => string.Equals(x.Id, sc.Id, StringComparison.Ordinal)))
+                    {
+                        SavedConstraints.Add(sc);
+                    }
+                }
+                if (SavedConstraints.Count > 30)
+                {
+                    SavedConstraints.RemoveRange(30, SavedConstraints.Count - 30);
+                }
+            }
+            else if (!mergeExistingRecents)
+            {
+                SavedConstraints.Clear();
+            }
+
             importedCount = RecentWorkspaces.Count;
             HasHydratedStorage = true;
             Notify();
@@ -152,6 +212,7 @@ public sealed class AppStateService
         BlankTapeSymbol = "#";
         SnapMotion = false;
         RecentWorkspaces.Clear();
+        SavedConstraints.Clear();
         Notify();
     }
 
@@ -168,7 +229,7 @@ public sealed class AppStateService
         new("auto-anbn-pda", "PDA: a^n b^n", "Empty-stack + final-state 5-column trace", "Automata", "/automata", "pda-anbn"),
         new("auto-contains-aba", "DFA: Contains 'aba'", "Minimal DFA trace, regular grammar & decisions", "Automata", "/automata", "dfa-contains-aba"),
         new("auto-nfa-starts", "NFA: Starts with 'aba'", "Compact 2-state string-edge NFA & subset map", "Automata", "/automata", "nfa-starts-aba"),
-        new("auto-expr-cfg", "CFG Queue: Arithmetic E/T/F", "Leftmost derivation and FIFO queue trace", "Automata", "/automata", "cfg-arith"),
+        new("auto-expr-cfg", "CFG: Arithmetic E/T/F", "Leftmost derivation and on-demand parse tree", "Automata", "/automata", "cfg-arith"),
 
         new("daa-nested3", "3-Level Nested Dependent Loop", "T(n) = (2/3)n^3 + 4n^2 + (22/3)n + 3", "Runtime", "/daa", "nested-3"),
         new("daa-log", "Logarithmic Step Loop (i *= 2)", "T(n) = 4 log_2 n + 3", "Runtime", "/daa", "log-base2"),

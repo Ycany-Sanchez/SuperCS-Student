@@ -65,11 +65,22 @@
                                     <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
                                     <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
-                                <select id="dfa-example-select"
+                                <select @key="@($"dfa-ex-{_examplePickerGen}")"
+                                        id="dfa-example-select"
                                         class="bp-select-prominent"
                                         value="@_dfaExampleKey"
                                         @onchange="OnDfaExampleChanged">
                                     <option value="@CustomKey" disabled hidden="@(_dfaExampleKey != CustomKey)">Custom rule</option>
+                                    <option value="@CreateCustomKey">+ Create custom constraint…</option>
+                                    @if (SavedFaConstraints.Count > 0)
+                                    {
+                                        <optgroup label="My Saved Constraints">
+                                            @foreach (var saved in SavedFaConstraints)
+                                            {
+                                                <option value="@($"{SavedPrefix}{saved.Id}")">★ @saved.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
                                     @foreach (var grp in DfaExamples.GroupBy(e => e.Group))
                                     {
                                         <optgroup label="@grp.Key">
@@ -153,7 +164,7 @@
                             </div>
                         </div>
 
-                        @* Zone C: Custom Rule Toggle *@
+                        @* Zone C: Build Constraint Toggle *@
                         <div class="bp-cmd-actions">
                             <button type="button"
                                     class="bp-btn-toggle"
@@ -166,10 +177,10 @@
                                     <circle cx="10.5" cy="8" r="1.4" fill="var(--surface)" />
                                     <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
                                 </svg>
-                                <span>Custom Rule</span>
-                                @if (_dfaExampleKey == CustomKey)
+                                <span>Build Constraint</span>
+                                @if (_dfaExampleKey == CustomKey || IsSavedKey(_dfaExampleKey))
                                 {
-                                    <span class="bp-custom-dot" title="Custom rule active" aria-hidden="true"></span>
+                                    <span class="bp-custom-dot" title="Custom constraint active" aria-hidden="true"></span>
                                 }
                                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
                                      style="@(_dfaDrawerOpen ? "transform: rotate(180deg);" : "") transition: transform 140ms ease;"
@@ -183,42 +194,26 @@
                     @if (_dfaDrawerOpen)
                     {
                         <div class="bp-rule-drawer">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <div class="bp-seg" role="group" aria-label="DFA specification mode">
-                                    <button type="button" class="bp-seg-btn" data-active="@(_faSourceKind == "auto" ? "true" : "false")" @onclick='() => _faSourceKind = "auto"'>Auto</button>
-                                    <button type="button" class="bp-seg-btn" data-active="@(_faSourceKind == "constraint" ? "true" : "false")" @onclick='() => _faSourceKind = "constraint"'>Constraint</button>
-                                    <button type="button" class="bp-seg-btn" data-active="@(_faSourceKind == "regex" ? "true" : "false")" @onclick='() => _faSourceKind = "regex"'>Regex</button>
-                                </div>
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
-                                       placeholder="e.g. starts with aba | does not contain aba | (a|b)*aba(a|b)*"
-                                       aria-label="Custom DFA rule"
-                                       @bind="_faSpecText"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnDfaSpecKeyDown" />
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs w-40"
-                                       placeholder="Σ auto (e.g. x,y,z)"
-                                       title="Custom alphabet symbols (e.g. x,y,z or 0,1 — leave blank to auto-detect)"
-                                       aria-label="Custom alphabet symbols"
-                                       @bind="_faAlphabetText"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnDfaSpecKeyDown" />
-                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildCustomDfa">Build DFA</button>
-                            </div>
-
-                            <div class="flex flex-wrap items-center justify-between gap-2">
-                                <div class="bp-seg" role="group" aria-label="DFA representation">
-                                    <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "min" ? "true" : "false")" @onclick='() => SwitchFaView("min")'>Min DFA</button>
-                                    <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "dfa" ? "true" : "false")" @onclick='() => SwitchFaView("dfa")'>Subset DFA</button>
-                                </div>
-
-                                <div class="flex items-center gap-1.5 flex-wrap">
+                            <CustomConstraintBuilder TargetLabel="DFA"
+                                                     IsNfa="false"
+                                                     @bind-SpecText="_faSpecText"
+                                                     @bind-SourceKind="_faSourceKind"
+                                                     @bind-AlphabetText="_faAlphabetText"
+                                                     ActiveSavedId="@GetSavedId(_dfaExampleKey)"
+                                                     ActiveSavedName="@GetSavedName(_dfaExampleKey)"
+                                                     OnBuild="BuildCustomDfa"
+                                                     OnSave="SaveDfaConstraint"
+                                                     OnDeleteSaved="DeleteSavedConstraint">
+                                <ExtraFooter>
+                                    <div class="bp-seg" role="group" aria-label="DFA representation">
+                                        <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "min" ? "true" : "false")" @onclick='() => SwitchFaView("min")'>Min DFA</button>
+                                        <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "dfa" ? "true" : "false")" @onclick='() => SwitchFaView("dfa")'>Subset DFA</button>
+                                    </div>
                                     <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Complement current minimal DFA" @onclick="ApplyFaComplement">Complement</button>
                                     <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Kleene Star of current minimal DFA" @onclick="ApplyFaStar">Star (*)</button>
                                     <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Convert current DFA to Decidable Turing Machine" @onclick="SendDfaToTm">To TM →</button>
-                                </div>
-                            </div>
+                                </ExtraFooter>
+                            </CustomConstraintBuilder>
                         </div>
                     }
                 </div>
@@ -432,11 +427,22 @@
                                     <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
                                     <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
-                                <select id="nfa-example-select"
+                                <select @key="@($"nfa-ex-{_examplePickerGen}")"
+                                        id="nfa-example-select"
                                         class="bp-select-prominent"
                                         value="@_nfaExampleKey"
                                         @onchange="OnNfaExampleChanged">
                                     <option value="@CustomKey" disabled hidden="@(_nfaExampleKey != CustomKey)">Custom rule</option>
+                                    <option value="@CreateCustomKey">+ Create custom constraint…</option>
+                                    @if (SavedFaConstraints.Count > 0)
+                                    {
+                                        <optgroup label="My Saved Constraints">
+                                            @foreach (var saved in SavedFaConstraints)
+                                            {
+                                                <option value="@($"{SavedPrefix}{saved.Id}")">★ @saved.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
                                     @foreach (var grp in NfaExamples.GroupBy(e => e.Group))
                                     {
                                         <optgroup label="@grp.Key">
@@ -520,7 +526,7 @@
                             </div>
                         </div>
 
-                        @* Zone C: Custom Rule Toggle *@
+                        @* Zone C: Build Constraint Toggle *@
                         <div class="bp-cmd-actions">
                             <button type="button"
                                     class="bp-btn-toggle"
@@ -533,10 +539,10 @@
                                     <circle cx="10.5" cy="8" r="1.4" fill="var(--surface)" />
                                     <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
                                 </svg>
-                                <span>Custom Rule</span>
-                                @if (_nfaExampleKey == CustomKey)
+                                <span>Build Constraint</span>
+                                @if (_nfaExampleKey == CustomKey || IsSavedKey(_nfaExampleKey))
                                 {
-                                    <span class="bp-custom-dot" title="Custom rule active" aria-hidden="true"></span>
+                                    <span class="bp-custom-dot" title="Custom constraint active" aria-hidden="true"></span>
                                 }
                                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
                                      style="@(_nfaDrawerOpen ? "transform: rotate(180deg);" : "") transition: transform 140ms ease;"
@@ -550,35 +556,25 @@
                     @if (_nfaDrawerOpen)
                     {
                         <div class="bp-rule-drawer">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <div class="bp-seg" role="group" aria-label="NFA specification mode">
-                                    <button type="button" class="bp-seg-btn" data-active="@(_nfaSourceKind == "auto" ? "true" : "false")" @onclick='() => _nfaSourceKind = "auto"'>Auto</button>
-                                    <button type="button" class="bp-seg-btn" data-active="@(_nfaSourceKind == "constraint" ? "true" : "false")" @onclick='() => _nfaSourceKind = "constraint"'>Constraint</button>
-                                    <button type="button" class="bp-seg-btn" data-active="@(_nfaSourceKind == "regex" ? "true" : "false")" @onclick='() => _nfaSourceKind = "regex"'>Regex</button>
-                                </div>
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
-                                       placeholder="e.g. starts with aba | ends with aba | contains aba | (a|b)*aba"
-                                       aria-label="Custom NFA rule"
-                                       @bind="_nfaSpecText"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnNfaSpecKeyDown" />
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs w-40"
-                                       placeholder="Σ auto (e.g. x,y,z)"
-                                       title="Custom alphabet symbols (leave blank to auto-detect)"
-                                       aria-label="Custom alphabet symbols"
-                                       @bind="_nfaAlphabetText"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnNfaSpecKeyDown" />
-                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildCustomNfa">Build NFA</button>
-                                <button type="button"
-                                        class="bp-btn-secondary !h-8 text-xs"
-                                        title="Convert this NFA into a complete minimized DFA via Subset Construction"
-                                        @onclick="ConvertCurrentNfaToDfa">
-                                    Convert to DFA →
-                                </button>
-                            </div>
+                            <CustomConstraintBuilder TargetLabel="NFA"
+                                                     IsNfa="true"
+                                                     @bind-SpecText="_nfaSpecText"
+                                                     @bind-SourceKind="_nfaSourceKind"
+                                                     @bind-AlphabetText="_nfaAlphabetText"
+                                                     ActiveSavedId="@GetSavedId(_nfaExampleKey)"
+                                                     ActiveSavedName="@GetSavedName(_nfaExampleKey)"
+                                                     OnBuild="BuildCustomNfa"
+                                                     OnSave="SaveNfaConstraint"
+                                                     OnDeleteSaved="DeleteSavedConstraint">
+                                <ExtraFooter>
+                                    <button type="button"
+                                            class="bp-btn-secondary !h-8 text-xs"
+                                            title="Convert this NFA into a complete minimized DFA via Subset Construction"
+                                            @onclick="ConvertCurrentNfaToDfa">
+                                        Convert to DFA →
+                                    </button>
+                                </ExtraFooter>
+                            </CustomConstraintBuilder>
                         </div>
                     }
                 </div>
@@ -747,11 +743,22 @@
                                     <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
                                     <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
-                                <select id="cfg-example-select"
+                                <select @key="@($"cfg-ex-{_examplePickerGen}")"
+                                        id="cfg-example-select"
                                         class="bp-select-prominent"
                                         value="@_cfgExampleKey"
                                         @onchange="OnCfgExampleChanged">
                                     <option value="@CustomKey" disabled hidden="@(_cfgExampleKey != CustomKey)">Custom grammar</option>
+                                    <option value="@CreateCustomKey">+ Create custom rule…</option>
+                                    @if (SavedCfgRules.Count > 0)
+                                    {
+                                        <optgroup label="My Saved Rules">
+                                            @foreach (var saved in SavedCfgRules)
+                                            {
+                                                <option value="@($"{SavedPrefix}{saved.Id}")">★ @saved.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
                                     @foreach (var grp in CfgExamples.GroupBy(e => e.Group))
                                     {
                                         <optgroup label="@grp.Key">
@@ -849,7 +856,7 @@
                                     <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
                                 </svg>
                                 <span>Custom Rule</span>
-                                @if (_cfgExampleKey == CustomKey)
+                                @if (_cfgExampleKey == CustomKey || IsSavedKey(_cfgExampleKey))
                                 {
                                     <span class="bp-custom-dot" title="Custom grammar active" aria-hidden="true"></span>
                                 }
@@ -865,54 +872,125 @@
                     @if (_cfgDrawerOpen)
                     {
                         <div class="bp-rule-drawer">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
-                                       placeholder="e.g. a^n b^m where n > m | x^n y^n | palindromes"
-                                       aria-label="Parametric or regular specification to synthesize CFG"
-                                       @bind="_cfgSynthSpec"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnCfgSynthKeyDown" />
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs w-40"
-                                       placeholder="Σ auto (e.g. x,y,z)"
-                                       title="Custom alphabet symbols (leave blank to auto-detect)"
-                                       aria-label="Custom alphabet symbols"
-                                       @bind="_cfgSynthAlphabet"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnCfgSynthKeyDown" />
-                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="SynthesizeCustomCfg">Synthesize CFG</button>
-                            </div>
-                            @if (!string.IsNullOrWhiteSpace(_cfgSynthError))
-                            {
-                                <div class="text-xs px-2.5 py-1.5 rounded-md" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink);">
-                                    @_cfgSynthError
-                                </div>
-                            }
+                            <CustomParametricBuilder TargetLabel="CFG"
+                                                     AllowContextSensitive="false"
+                                                     Placeholder="e.g. a^n b^m where n > m | x^n y^n | palindromes"
+                                                     @bind-SpecText="_cfgSynthSpec"
+                                                     @bind-AlphabetText="_cfgSynthAlphabet"
+                                                     ErrorText="@_cfgSynthError"
+                                                     ActiveSavedId="@GetSavedId(_cfgExampleKey)"
+                                                     ActiveSavedName="@GetSavedName(_cfgExampleKey)"
+                                                     OnSynthesize="SynthesizeCustomCfg"
+                                                     OnSave="SaveCfgRule"
+                                                     OnDeleteSaved="DeleteSavedConstraint" />
                         </div>
                     }
                 </div>
 
-                <div class="flex-1 min-h-[280px] bp-card p-3 overflow-hidden">
+                @* Center Stage: Leftmost Derivation (Default) + On-Demand Parse Tree View *@
+                <div class="flex-1 min-h-[280px] bp-card flex flex-col overflow-hidden">
+                    <div class="px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
+                        <div class="flex items-center gap-2.5">
+                            <span class="text-xs font-semibold">@(_cfgShowParseTree ? "Parse Tree" : "Leftmost Derivation")</span>
+                            @if (_cfgParseResult is { Accepted: true, QueueSteps.Count: > 0 } cfgResHead)
+                            {
+                                <span class="font-mono text-[11.5px] tnum" style="color: var(--muted);">
+                                    @(cfgResHead.QueueSteps.Count - 1) steps@(_cfgShowParseTree ? "" : " · click to jump")
+                                </span>
+                            }
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            @if (_cfgParseResult is { Accepted: true })
+                            {
+                                <button type="button"
+                                        class="bp-btn-secondary !h-7 !px-2.5 text-xs"
+                                        @onclick="() => _cfgShowParseTree = !_cfgShowParseTree">
+                                    @if (_cfgShowParseTree)
+                                    {
+                                        <span>← Back to Derivation</span>
+                                    }
+                                    else
+                                    {
+                                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                            <circle cx="8" cy="3" r="1.7" />
+                                            <circle cx="3.8" cy="12" r="1.7" />
+                                            <circle cx="12.2" cy="12" r="1.7" />
+                                            <path d="M7.1 4.5L4.6 10.4M8.9 4.5L11.4 10.4" stroke-linecap="round" />
+                                        </svg>
+                                        <span>Show Parse Tree</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    </div>
+
                     @if (!string.IsNullOrEmpty(_cfgError))
                     {
-                        <div class="mb-2 px-3 py-2 rounded-md text-xs font-mono" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink); border: 1px solid var(--negative);">
+                        <div class="m-3 px-3 py-2 rounded-md text-xs font-mono shrink-0" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink); border: 1px solid var(--negative);">
                             @_cfgError
                         </div>
                     }
-                    <CfgQueueVisualizer Result="@_cfgParseResult"
-                                        @bind-CurrentStepIndex="_cfgStepIndex"
-                                        SnapMotion="@AppState.SnapMotion" />
+
+                    @if (_cfgShowParseTree && _cfgParseResult is { Accepted: true })
+                    {
+                        <div class="flex-1 min-h-0 p-2.5">
+                            <InteractiveSvgCanvas Scene="@_cfgParseResult.ParseTreeScene"
+                                                  SnapMotion="@AppState.SnapMotion"
+                                                  ExportFileName="cfg-parse-tree.svg" />
+                        </div>
+                    }
+                    else if (_cfgParseResult is { Accepted: true, QueueSteps.Count: > 0 } acceptedCfg)
+                    {
+                        var qSteps = acceptedCfg.QueueSteps;
+                        <div class="flex-1 min-h-0 overflow-y-auto">
+                            @for (var i = 0; i < qSteps.Count; i++)
+                            {
+                                var idx = i;
+                                var qStep = qSteps[idx];
+                                var isCur = idx == _cfgStepIndex;
+                                <button type="button"
+                                        class="cfg-deriv-row"
+                                        data-active="@(isCur ? "true" : "false")"
+                                        data-complete="@(qStep.IsComplete ? "true" : "false")"
+                                        @onclick="() => _cfgStepIndex = idx">
+                                    <span class="flex items-center gap-3 min-w-0">
+                                        <span class="tnum text-xs w-6 shrink-0 opacity-65">@idx</span>
+                                        <span class="w-3 shrink-0 opacity-55">@(idx == 0 ? "" : "⇒")</span>
+                                        <span class="break-all font-semibold">@qStep.SententialForm</span>
+                                    </span>
+                                    @if (!string.IsNullOrEmpty(qStep.AppliedRule))
+                                    {
+                                        <span class="text-xs shrink-0 opacity-80">@qStep.AppliedRule</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="flex-1 flex flex-col items-center justify-center p-6 text-center gap-2">
+                            <div class="text-sm font-semibold" style="color: var(--text);">
+                                @(_cfgParseResult is not null ? $"No derivation for '{_cfgParseResult.Input}'" : "Enter a string to derive")
+                            </div>
+                            <p class="text-xs max-w-md" style="color: var(--muted);">
+                                @(_cfgParseResult?.Summary ?? "Type an input string above or pick a sample to inspect its leftmost derivation.")
+                            </p>
+                        </div>
+                    }
                 </div>
 
-                <PlaybackBar CurrentStep="@_cfgStepIndex"
-                             TotalSteps="@(_cfgParseResult?.QueueSteps?.Count ?? 0)"
-                             CurrentStepChanged="i => _cfgStepIndex = i"
-                             SnapMotion="@AppState.SnapMotion"
-                             SnapMotionChanged="v => { AppState.SnapMotion = v; AppState.Notify(); }" />
+                @if (!_cfgShowParseTree)
+                {
+                    <PlaybackBar CurrentStep="@_cfgStepIndex"
+                                 TotalSteps="@(_cfgParseResult?.QueueSteps?.Count ?? 0)"
+                                 CurrentStepChanged="i => _cfgStepIndex = i"
+                                 SnapMotion="@AppState.SnapMotion"
+                                 SnapMotionChanged="v => { AppState.SnapMotion = v; AppState.Notify(); }" />
+                }
             </div>
 
-            @* Right: Grammar Editor + Conversions + Clickable Leftmost Derivation *@
+            @* Right: Grammar Editor + Conversions + Formal Quadruple *@
             <div class="@(_inspectorCollapsed ? "hidden" : "w-full lg:w-[400px] xl:w-[430px] min-w-0 shrink-0 flex flex-col min-h-0 overflow-y-auto p-3 space-y-3")"
                  style="border-left: 1px solid var(--border);">
                 <div class="bp-card p-3 space-y-2">
@@ -926,7 +1004,7 @@
                         }
                     </div>
 
-                    <textarea class="bp-textarea w-full text-xs" rows="6" @bind="_cfgText"></textarea>
+                    <textarea class="bp-textarea w-full text-xs" rows="7" @bind="_cfgText"></textarea>
 
                     <div class="flex flex-wrap items-center gap-1.5">
                         <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ApplyCustomCfgText">Apply Grammar</button>
@@ -944,38 +1022,6 @@
                         }
                     </div>
                 </div>
-
-                @if (_cfgParseResult is { Accepted: true } && _cfgParseResult.QueueSteps is { Count: > 0 } qSteps)
-                {
-                    <div class="bp-card p-3 space-y-2">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold">Leftmost Derivation</span>
-                            <span class="font-mono text-[11px] tnum" style="color: var(--muted);">@(qSteps.Count - 1) steps · click to jump</span>
-                        </div>
-                        <div class="rounded-md overflow-hidden" style="border: 1px solid var(--border);">
-                            @for (var i = 0; i < qSteps.Count; i++)
-                            {
-                                var idx = i;
-                                var qStep = qSteps[idx];
-                                var isCur = idx == _cfgStepIndex;
-                                <button type="button"
-                                        class="w-full text-left px-2.5 py-1.5 text-xs font-mono flex items-center justify-between gap-2 cursor-pointer transition-colors"
-                                        style="border-bottom: 1px solid var(--rule); @(isCur ? "background: var(--accent-soft); color: var(--text);" : qStep.IsComplete ? "background: var(--pill-positive-bg); color: var(--pill-positive-ink);" : "background: var(--surface); color: var(--muted);")"
-                                        @onclick="() => _cfgStepIndex = idx">
-                                    <span class="flex items-center gap-2 min-w-0">
-                                        <span class="tnum text-[11px] w-5 shrink-0 opacity-70">@idx</span>
-                                        <span class="opacity-60">@(idx == 0 ? " " : "⇒")</span>
-                                        <span class="break-all font-semibold">@qStep.SententialForm</span>
-                                    </span>
-                                    @if (!string.IsNullOrEmpty(qStep.AppliedRule))
-                                    {
-                                        <span class="text-[10.5px] shrink-0 opacity-80">@qStep.AppliedRule</span>
-                                    }
-                                </button>
-                            }
-                        </div>
-                    </div>
-                }
 
                 @if (_currentCfg is not null)
                 {
@@ -1012,11 +1058,22 @@
                                     <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
                                     <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
-                                <select id="pda-example-select"
+                                <select @key="@($"pda-ex-{_examplePickerGen}")"
+                                        id="pda-example-select"
                                         class="bp-select-prominent"
                                         value="@_pdaExampleKey"
                                         @onchange="OnPdaExampleChanged">
                                     <option value="@CustomKey" disabled hidden="@(_pdaExampleKey != CustomKey)">Custom rule</option>
+                                    <option value="@CreateCustomKey">+ Create custom rule…</option>
+                                    @if (SavedPdaRules.Count > 0)
+                                    {
+                                        <optgroup label="My Saved Rules">
+                                            @foreach (var saved in SavedPdaRules)
+                                            {
+                                                <option value="@($"{SavedPrefix}{saved.Id}")">★ @saved.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
                                     @foreach (var grp in PdaExamples.GroupBy(e => e.Group))
                                     {
                                         <optgroup label="@grp.Key">
@@ -1116,7 +1173,7 @@
                                     <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
                                 </svg>
                                 <span>Custom Rule</span>
-                                @if (_pdaExampleKey == CustomKey)
+                                @if (_pdaExampleKey == CustomKey || IsSavedKey(_pdaExampleKey))
                                 {
                                     <span class="bp-custom-dot" title="Custom rule active" aria-hidden="true"></span>
                                 }
@@ -1132,30 +1189,17 @@
                     @if (_pdaDrawerOpen)
                     {
                         <div class="bp-rule-drawer">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
-                                       placeholder="e.g. a^n b^m where n > m | a^2n b^n | #a = #b | palindromes"
-                                       aria-label="Parametric specification to synthesize PDA"
-                                       @bind="_pdaSynthSpec"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnPdaSynthKeyDown" />
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs w-40"
-                                       placeholder="Σ auto (e.g. x,y,z)"
-                                       title="Custom alphabet symbols (leave blank to auto-detect)"
-                                       aria-label="Custom alphabet symbols"
-                                       @bind="_pdaSynthAlphabet"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnPdaSynthKeyDown" />
-                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="SynthesizeCustomPda">Synthesize PDA</button>
-                            </div>
-                            @if (!string.IsNullOrWhiteSpace(_pdaSynthError))
-                            {
-                                <div class="text-xs px-2.5 py-1.5 rounded-md" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink);">
-                                    @_pdaSynthError
-                                </div>
-                            }
+                            <CustomParametricBuilder TargetLabel="PDA"
+                                                     AllowContextSensitive="false"
+                                                     Placeholder="e.g. a^n b^m where n > m | a^2n b^n | #a = #b | palindromes"
+                                                     @bind-SpecText="_pdaSynthSpec"
+                                                     @bind-AlphabetText="_pdaSynthAlphabet"
+                                                     ErrorText="@_pdaSynthError"
+                                                     ActiveSavedId="@GetSavedId(_pdaExampleKey)"
+                                                     ActiveSavedName="@GetSavedName(_pdaExampleKey)"
+                                                     OnSynthesize="SynthesizeCustomPda"
+                                                     OnSave="SavePdaRule"
+                                                     OnDeleteSaved="DeleteSavedConstraint" />
                         </div>
                     }
                 </div>
@@ -1270,11 +1314,22 @@
                                     <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
                                     <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
                                 </svg>
-                                <select id="tm-example-select"
+                                <select @key="@($"tm-ex-{_examplePickerGen}")"
+                                        id="tm-example-select"
                                         class="bp-select-prominent"
                                         value="@_tmExampleKey"
                                         @onchange="OnTmExampleChanged">
                                     <option value="@CustomKey" disabled hidden="@(_tmExampleKey != CustomKey)">Custom rule</option>
+                                    <option value="@CreateCustomKey">+ Create custom rule…</option>
+                                    @if (SavedTmRules.Count > 0)
+                                    {
+                                        <optgroup label="My Saved Rules">
+                                            @foreach (var saved in SavedTmRules)
+                                            {
+                                                <option value="@($"{SavedPrefix}{saved.Id}")">★ @saved.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
                                     @foreach (var grp in TmExamples.GroupBy(e => e.Group))
                                     {
                                         <optgroup label="@grp.Key">
@@ -1395,7 +1450,7 @@
                                     <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
                                 </svg>
                                 <span>Custom Rule</span>
-                                @if (_tmExampleKey == CustomKey)
+                                @if (_tmExampleKey == CustomKey || IsSavedKey(_tmExampleKey))
                                 {
                                     <span class="bp-custom-dot" title="Custom rule active" aria-hidden="true"></span>
                                 }
@@ -1411,42 +1466,31 @@
                     @if (_tmDrawerOpen)
                     {
                         <div class="bp-rule-drawer">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
-                                       placeholder="e.g. a^n b^m c^k where n + m = k | invert 0 and 1 | XOR | does not contain abc"
-                                       aria-label="Specification to synthesize Turing Machine"
-                                       @bind="_tmSynthSpec"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnTmSynthKeyDown" />
-                                <input type="text"
-                                       class="bp-input !h-8 font-mono text-xs w-40"
-                                       placeholder="Σ auto (e.g. x,y,z)"
-                                       title="Custom alphabet symbols (leave blank to auto-detect)"
-                                       aria-label="Custom alphabet symbols"
-                                       @bind="_tmSynthAlphabet"
-                                       @bind:event="oninput"
-                                       @onkeydown="OnTmSynthKeyDown" />
-                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="SynthesizeCustomTm">Synthesize TM</button>
-
-                                <label class="flex items-center gap-1.5 text-xs shrink-0" style="color: var(--muted);">
-                                    <span>Head start</span>
-                                    <select class="bp-input !h-8 text-xs"
-                                            title="Initial tape head position on #w#"
-                                            value="@_tmHeadStart"
-                                            @onchange="OnTmHeadStartChanged">
-                                        <option value="@HeadStartMode.RightBlank">Right # (#w[#])</option>
-                                        <option value="@HeadStartMode.FirstSymbol">First Cell (#[w]#)</option>
-                                        <option value="@HeadStartMode.LeftBlank">Left # ([#]w#)</option>
-                                    </select>
-                                </label>
-                            </div>
-                            @if (!string.IsNullOrWhiteSpace(_tmSynthError))
-                            {
-                                <div class="text-xs px-2.5 py-1.5 rounded-md" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink);">
-                                    @_tmSynthError
-                                </div>
-                            }
+                            <CustomParametricBuilder TargetLabel="TM"
+                                                     AllowContextSensitive="true"
+                                                     Placeholder="e.g. a^n b^m c^k where n + m = k | invert 0 and 1 | XOR | does not contain abc"
+                                                     @bind-SpecText="_tmSynthSpec"
+                                                     @bind-AlphabetText="_tmSynthAlphabet"
+                                                     ErrorText="@_tmSynthError"
+                                                     ActiveSavedId="@GetSavedId(_tmExampleKey)"
+                                                     ActiveSavedName="@GetSavedName(_tmExampleKey)"
+                                                     OnSynthesize="SynthesizeCustomTm"
+                                                     OnSave="SaveTmRule"
+                                                     OnDeleteSaved="DeleteSavedConstraint">
+                                <ExtraFooter>
+                                    <label class="flex items-center gap-1.5 text-xs shrink-0" style="color: var(--muted);">
+                                        <span>Head start</span>
+                                        <select class="bp-input !h-8 text-xs"
+                                                title="Initial tape head position on #w#"
+                                                value="@_tmHeadStart"
+                                                @onchange="OnTmHeadStartChanged">
+                                            <option value="@HeadStartMode.RightBlank">Right # (#w[#])</option>
+                                            <option value="@HeadStartMode.FirstSymbol">First Cell (#[w]#)</option>
+                                            <option value="@HeadStartMode.LeftBlank">Left # ([#]w#)</option>
+                                        </select>
+                                    </label>
+                                </ExtraFooter>
+                            </CustomParametricBuilder>
                         </div>
                     }
                 </div>
@@ -1656,6 +1700,8 @@
 
 @code {
     private const string CustomKey = "__custom__";
+    private const string CreateCustomKey = "__create__";
+    private const string SavedPrefix = "saved:";
 
     private enum StudioMode
     {
@@ -1677,7 +1723,8 @@
         string Spec,
         string DefaultInput,
         IReadOnlyList<string> Samples,
-        string Description);
+        string Description,
+        string? Alphabet = null);
 
     private sealed record NfaExampleItem(
         string Key,
@@ -1686,7 +1733,8 @@
         string Spec,
         string DefaultInput,
         IReadOnlyList<string> Samples,
-        string Description);
+        string Description,
+        string? Alphabet = null);
 
     private sealed record CfgExampleItem(
         string Key,
@@ -1730,10 +1778,12 @@
     private static readonly DfaExampleItem[] DfaExamples =
     [
         new("dfa-contains-aba", "Regular Constraints", "Contains substring 'aba'", "constraint", "contains aba", "bbabaa", ["aba", "bbabaa", "aabb", "bbb", "e"], "Minimal 4-state DFA accepting strings over {a, b} containing 'aba'."),
+        new("dfa-starts-aba", "Regular Constraints", "Starts with 'aba'", "constraint", "starts with aba", "ababa", ["aba", "ababa", "ab", "bbaba", "e"], "Minimal DFA accepting strings over {a, b} starting with 'aba'."),
         new("dfa-even-b", "Regular Constraints", "Even number of b's", "constraint", "even b", "abab", ["e", "aaa", "abab", "bb", "b", "abbba"], "Minimal 2-state DFA accepting strings over {a, b} with an even count of 'b'."),
         new("dfa-bb-bab-aa", "Regular Constraints", "Starts bb, contains bab, ends aa", "constraint", "starts with bb AND contains bab AND ends with aa", "bbabaa", ["bbabaa", "bbbabaa", "bbaa", "bbaba", "abaa"], "Exact minimal DFA synthesized from Boolean conjunction."),
-        new("dfa-starts-aba", "Regular Constraints", "Starts with 'aba'", "constraint", "starts with aba", "ababa", ["aba", "ababa", "ab", "bbaba", "e"], "Minimal DFA accepting strings over {a, b} starting with 'aba'."),
-        new("dfa-no-aba", "Regular Constraints", "Does not contain 'aba'", "constraint", "does not contain aba", "aabb", ["aabb", "e", "ab", "aba", "bbabaa"], "Complement DFA rejecting any string over {a, b} containing 'aba'."),
+        new("dfa-not-starts-aba", "Negated Constraints", "Does not start with 'aba'", "constraint", "does not start with aba", "bba", ["bba", "e", "ab", "aba", "ababa"], "Complement DFA rejecting any string over {a, b} starting with 'aba'."),
+        new("dfa-no-aba", "Negated Constraints", "Does not contain 'aba'", "constraint", "does not contain aba", "aabb", ["aabb", "e", "ab", "aba", "bbabaa"], "Complement DFA rejecting any string over {a, b} containing 'aba'."),
+        new("dfa-not-ends-aba", "Negated Constraints", "Does not end with 'aba'", "constraint", "does not end with aba", "abaa", ["abaa", "e", "ab", "aba", "bbaba"], "Complement DFA rejecting any string over {a, b} ending with 'aba'."),
         new("dfa-abstar", "Regular Expressions", "Pattern a*b*a*", "regex", "a*b*a*", "abba", ["abba", "aba", "e", "bbb", "babab", "baba"], "Minimal DFA compiled from regular expression a*b*a*.")
     ];
 
@@ -1743,6 +1793,7 @@
         new("nfa-ends-aba", "Compact NFA (String Edges)", "Ends with 'aba'", "ends with aba", "bbaba", ["aba", "bbaba", "abaa", "bb", "e"], "Compact 2-state string-edge NFA recognizing strings ending with 'aba'."),
         new("nfa-contains-aba", "Compact NFA (String Edges)", "Contains 'aba'", "contains aba", "bbabaa", ["aba", "bbabaa", "aabb", "bbb", "e"], "Compact NFA recognizing strings containing 'aba'."),
         new("nfa-starts-or-ends", "Compact NFA (String Edges)", "Starts 'aba' OR ends 'bab'", "starts with aba OR ends with bab", "abbab", ["abaa", "abbab", "bab", "ab", "e"], "Nondeterministic union of prefix and suffix rules."),
+        new("nfa-3rd-right-1", "Compact NFA (String Edges)", "3rd symbol from right is '1'", "3rd from right is 1", "0100", ["100", "0100", "111", "001", "10", "e"], "Classic 4-state compact NFA whose equivalent minimal DFA requires 8 states.", Alphabet: "0,1"),
         new("nfa-not-starts-aba", "Negated Rules (Determinizes → DFA)", "Does not start with 'aba' (→ DFA)", "does not start with aba", "bba", ["bba", "e", "ab", "aba", "ababa"], "Negated prefix rule determinized into a complete DFA."),
         new("nfa-not-contains-aba", "Negated Rules (Determinizes → DFA)", "Does not contain 'aba' (→ DFA)", "does not contain aba", "aabb", ["aabb", "e", "ab", "aba", "bbabaa"], "Negated substring rule determinized into a complete DFA."),
         new("nfa-not-ends-aba", "Negated Rules (Determinizes → DFA)", "Does not end with 'aba' (→ DFA)", "does not end with aba", "abaa", ["abaa", "e", "ab", "aba", "bbaba"], "Negated suffix rule determinized into a complete DFA.")
@@ -1783,6 +1834,7 @@
     private StudioMode _activeMode = StudioMode.Dfa;
     private bool _inspectorCollapsed;
     private int _samplePickerGen;
+    private int _examplePickerGen;
     private bool _disposed;
 
     private CancellationTokenSource? _cfgDebounceCts;
@@ -1833,6 +1885,7 @@
     // --- CFG Tab State ---
     private string _cfgExampleKey = "cfg-arith";
     private bool _cfgDrawerOpen;
+    private bool _cfgShowParseTree;
     private string _cfgSynthSpec = string.Empty;
     private string _cfgSynthAlphabet = string.Empty;
     private string? _cfgSynthError;
@@ -2195,6 +2248,134 @@
         }
     }
 
+    // ==================== SAVED CUSTOM CONSTRAINTS ====================
+
+    private IReadOnlyList<SavedAutomataConstraint> SavedFaConstraints =>
+        AppState.SavedConstraints.Where(c => c.TargetKind == "fa").ToList();
+
+    private IReadOnlyList<SavedAutomataConstraint> SavedCfgRules =>
+        AppState.SavedConstraints.Where(c => c.TargetKind == "cfg").ToList();
+
+    private IReadOnlyList<SavedAutomataConstraint> SavedPdaRules =>
+        AppState.SavedConstraints.Where(c => c.TargetKind == "pda").ToList();
+
+    private IReadOnlyList<SavedAutomataConstraint> SavedTmRules =>
+        AppState.SavedConstraints.Where(c => c.TargetKind == "tm").ToList();
+
+    private static bool IsSavedKey(string? key) =>
+        !string.IsNullOrEmpty(key) && key.StartsWith(SavedPrefix, StringComparison.Ordinal);
+
+    private static string? GetSavedId(string? key) =>
+        IsSavedKey(key) ? key![SavedPrefix.Length..] : null;
+
+    private string? GetSavedName(string? key)
+    {
+        var id = GetSavedId(key);
+        if (id is null) return null;
+        return AppState.SavedConstraints.FirstOrDefault(c => c.Id == id)?.Name;
+    }
+
+    private void SaveDfaConstraint(string name)
+    {
+        BuildFaFromSpec(updateSamples: true);
+        if (!string.IsNullOrEmpty(_faError)) return;
+        var id = GetSavedId(_dfaExampleKey) ?? $"fa-{Guid.NewGuid():N}"[..12];
+        var item = new SavedAutomataConstraint(
+            id,
+            name,
+            "fa",
+            _faSpecText,
+            _faSourceKind,
+            string.IsNullOrWhiteSpace(_faAlphabetText) ? null : _faAlphabetText.Trim(),
+            _faInput,
+            _faSampleInputs.ToList());
+        AppState.SaveCustomConstraint(item);
+        _dfaExampleKey = $"{SavedPrefix}{id}";
+    }
+
+    private void SaveNfaConstraint(string name)
+    {
+        BuildNfaFromSpec(updateSamples: true);
+        if (!string.IsNullOrEmpty(_nfaError)) return;
+        var id = GetSavedId(_nfaExampleKey) ?? $"fa-{Guid.NewGuid():N}"[..12];
+        var item = new SavedAutomataConstraint(
+            id,
+            name,
+            "fa",
+            _nfaSpecText,
+            _nfaSourceKind,
+            string.IsNullOrWhiteSpace(_nfaAlphabetText) ? null : _nfaAlphabetText.Trim(),
+            _nfaInput,
+            _nfaSampleInputs.ToList());
+        AppState.SaveCustomConstraint(item);
+        _nfaExampleKey = $"{SavedPrefix}{id}";
+    }
+
+    private void SaveCfgRule(string name)
+    {
+        SynthesizeCustomCfg();
+        if (!string.IsNullOrEmpty(_cfgSynthError)) return;
+        var id = GetSavedId(_cfgExampleKey) ?? $"cfg-{Guid.NewGuid():N}"[..12];
+        var item = new SavedAutomataConstraint(
+            id,
+            name,
+            "cfg",
+            _cfgSynthSpec,
+            "auto",
+            string.IsNullOrWhiteSpace(_cfgSynthAlphabet) ? null : _cfgSynthAlphabet.Trim(),
+            _cfgInput,
+            _cfgSampleInputs.ToList());
+        AppState.SaveCustomConstraint(item);
+        _cfgExampleKey = $"{SavedPrefix}{id}";
+    }
+
+    private void SavePdaRule(string name)
+    {
+        SynthesizeCustomPda();
+        if (!string.IsNullOrEmpty(_pdaSynthError)) return;
+        var id = GetSavedId(_pdaExampleKey) ?? $"pda-{Guid.NewGuid():N}"[..12];
+        var item = new SavedAutomataConstraint(
+            id,
+            name,
+            "pda",
+            _pdaSynthSpec,
+            "auto",
+            string.IsNullOrWhiteSpace(_pdaSynthAlphabet) ? null : _pdaSynthAlphabet.Trim(),
+            _pdaInput,
+            _pdaSampleInputs.ToList());
+        AppState.SaveCustomConstraint(item);
+        _pdaExampleKey = $"{SavedPrefix}{id}";
+    }
+
+    private void SaveTmRule(string name)
+    {
+        SynthesizeCustomTm();
+        if (!string.IsNullOrEmpty(_tmSynthError)) return;
+        var id = GetSavedId(_tmExampleKey) ?? $"tm-{Guid.NewGuid():N}"[..12];
+        var item = new SavedAutomataConstraint(
+            id,
+            name,
+            "tm",
+            _tmSynthSpec,
+            "auto",
+            string.IsNullOrWhiteSpace(_tmSynthAlphabet) ? null : _tmSynthAlphabet.Trim(),
+            _tmInput,
+            _tmSampleInputs.ToList());
+        AppState.SaveCustomConstraint(item);
+        _tmExampleKey = $"{SavedPrefix}{id}";
+    }
+
+    private void DeleteSavedConstraint(string id)
+    {
+        AppState.DeleteCustomConstraint(id);
+        var fullKey = $"{SavedPrefix}{id}";
+        if (_dfaExampleKey == fullKey) _dfaExampleKey = CustomKey;
+        if (_nfaExampleKey == fullKey) _nfaExampleKey = CustomKey;
+        if (_cfgExampleKey == fullKey) _cfgExampleKey = CustomKey;
+        if (_pdaExampleKey == fullKey) _pdaExampleKey = CustomKey;
+        if (_tmExampleKey == fullKey) _tmExampleKey = CustomKey;
+    }
+
     // ==================== DFA MODE ====================
 
     private Dfa? ActiveDfa => _faViewKind == "dfa" ? _faRawDfa : _faMinDfa;
@@ -2209,10 +2390,33 @@
     private void OnDfaExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
+        if (key == CreateCustomKey)
         {
-            SelectDfaExample(key, recordRecent: true);
+            _examplePickerGen++;
+            _dfaDrawerOpen = true;
+            return;
         }
+        if (IsSavedKey(key))
+        {
+            LoadSavedFaIntoDfa(GetSavedId(key)!);
+            return;
+        }
+        SelectDfaExample(key, recordRecent: true);
+    }
+
+    private void LoadSavedFaIntoDfa(string id)
+    {
+        var saved = AppState.SavedConstraints.FirstOrDefault(c => c.Id == id);
+        if (saved is null) return;
+        _dfaExampleKey = $"{SavedPrefix}{saved.Id}";
+        _faSourceKind = saved.SourceKind;
+        _faSpecText = saved.Spec;
+        _faAlphabetText = saved.Alphabet ?? string.Empty;
+        _faViewKind = "min";
+        _faInput = saved.DefaultInput;
+        if (saved.Samples.Count > 0) _faSampleInputs = saved.Samples;
+        BuildFaFromSpec(updateSamples: false);
     }
 
     private void SelectDfaExample(string key, bool recordRecent)
@@ -2223,7 +2427,7 @@
         _dfaExampleKey = ex.Key;
         _faSourceKind = ex.SourceKind;
         _faSpecText = ex.Spec;
-        _faAlphabetText = string.Empty;
+        _faAlphabetText = ex.Alphabet ?? string.Empty;
         _faViewKind = "min";
         _faInput = ex.DefaultInput;
         _faSampleInputs = ex.Samples;
@@ -2402,10 +2606,32 @@
     private void OnNfaExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
+        if (key == CreateCustomKey)
         {
-            SelectNfaExample(key, recordRecent: true);
+            _examplePickerGen++;
+            _nfaDrawerOpen = true;
+            return;
         }
+        if (IsSavedKey(key))
+        {
+            LoadSavedFaIntoNfa(GetSavedId(key)!);
+            return;
+        }
+        SelectNfaExample(key, recordRecent: true);
+    }
+
+    private void LoadSavedFaIntoNfa(string id)
+    {
+        var saved = AppState.SavedConstraints.FirstOrDefault(c => c.Id == id);
+        if (saved is null) return;
+        _nfaExampleKey = $"{SavedPrefix}{saved.Id}";
+        _nfaSourceKind = saved.SourceKind;
+        _nfaSpecText = saved.Spec;
+        _nfaAlphabetText = saved.Alphabet ?? string.Empty;
+        _nfaInput = saved.DefaultInput;
+        if (saved.Samples.Count > 0) _nfaSampleInputs = saved.Samples;
+        BuildNfaFromSpec(updateSamples: false);
     }
 
     private void SelectNfaExample(string key, bool recordRecent)
@@ -2416,7 +2642,7 @@
         _nfaExampleKey = ex.Key;
         _nfaSourceKind = "constraint";
         _nfaSpecText = ex.Spec;
-        _nfaAlphabetText = string.Empty;
+        _nfaAlphabetText = ex.Alphabet ?? string.Empty;
         _nfaInput = ex.DefaultInput;
         _nfaSampleInputs = ex.Samples;
         BuildNfaFromSpec(updateSamples: false);
@@ -2586,7 +2812,7 @@
         _faSampleInputs = _nfaSampleInputs;
         _faError = null;
         var matchingDfa = DfaExamples.FirstOrDefault(e => string.Equals(e.Spec, _nfaSpecText, StringComparison.OrdinalIgnoreCase));
-        _dfaExampleKey = matchingDfa?.Key ?? CustomKey;
+        _dfaExampleKey = IsSavedKey(_nfaExampleKey) ? _nfaExampleKey : (matchingDfa?.Key ?? CustomKey);
         TraceFa();
         _activeMode = StudioMode.Dfa;
     }
@@ -2659,9 +2885,34 @@
     private void OnCfgExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
+        if (key == CreateCustomKey)
         {
-            SelectCfgExample(key, recordRecent: true);
+            _examplePickerGen++;
+            _cfgDrawerOpen = true;
+            return;
+        }
+        if (IsSavedKey(key))
+        {
+            LoadSavedCfgRule(GetSavedId(key)!);
+            return;
+        }
+        SelectCfgExample(key, recordRecent: true);
+    }
+
+    private void LoadSavedCfgRule(string id)
+    {
+        var saved = AppState.SavedConstraints.FirstOrDefault(c => c.Id == id);
+        if (saved is null) return;
+        _cfgSynthSpec = saved.Spec;
+        _cfgSynthAlphabet = saved.Alphabet ?? string.Empty;
+        SynthesizeCustomCfg();
+        if (string.IsNullOrEmpty(_cfgSynthError))
+        {
+            _cfgExampleKey = $"{SavedPrefix}{saved.Id}";
+            if (!string.IsNullOrEmpty(saved.DefaultInput)) _cfgInput = saved.DefaultInput;
+            if (saved.Samples.Count > 0) _cfgSampleInputs = saved.Samples;
+            TraceCfgInput();
         }
     }
 
@@ -2788,6 +3039,7 @@
             _cfgError = null;
             _currentCfg = Cfg.ParseFromText(_cfgText);
             _cfgParseResult = CfgParser.Parse(_currentCfg, _cfgInput);
+            if (!_cfgParseResult.Accepted) _cfgShowParseTree = false;
             _cfgStepIndex = 0;
         }
         catch (Exception ex)
@@ -2807,6 +3059,7 @@
         {
             _cfgError = null;
             _cfgParseResult = CfgParser.Parse(_currentCfg, _cfgInput);
+            if (!_cfgParseResult.Accepted) _cfgShowParseTree = false;
             _cfgStepIndex = 0;
         }
         catch (Exception ex)
@@ -2846,9 +3099,34 @@
     private void OnPdaExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
+        if (key == CreateCustomKey)
         {
-            SelectPdaExample(key, recordRecent: true);
+            _examplePickerGen++;
+            _pdaDrawerOpen = true;
+            return;
+        }
+        if (IsSavedKey(key))
+        {
+            LoadSavedPdaRule(GetSavedId(key)!);
+            return;
+        }
+        SelectPdaExample(key, recordRecent: true);
+    }
+
+    private void LoadSavedPdaRule(string id)
+    {
+        var saved = AppState.SavedConstraints.FirstOrDefault(c => c.Id == id);
+        if (saved is null) return;
+        _pdaSynthSpec = saved.Spec;
+        _pdaSynthAlphabet = saved.Alphabet ?? string.Empty;
+        SynthesizeCustomPda();
+        if (string.IsNullOrEmpty(_pdaSynthError))
+        {
+            _pdaExampleKey = $"{SavedPrefix}{saved.Id}";
+            if (!string.IsNullOrEmpty(saved.DefaultInput)) _pdaInput = saved.DefaultInput;
+            if (saved.Samples.Count > 0) _pdaSampleInputs = saved.Samples;
+            TracePda();
         }
     }
 
@@ -3051,9 +3329,34 @@
     private void OnTmExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
+        if (key == CreateCustomKey)
         {
-            SelectTmExample(key, recordRecent: true);
+            _examplePickerGen++;
+            _tmDrawerOpen = true;
+            return;
+        }
+        if (IsSavedKey(key))
+        {
+            LoadSavedTmRule(GetSavedId(key)!);
+            return;
+        }
+        SelectTmExample(key, recordRecent: true);
+    }
+
+    private void LoadSavedTmRule(string id)
+    {
+        var saved = AppState.SavedConstraints.FirstOrDefault(c => c.Id == id);
+        if (saved is null) return;
+        _tmSynthSpec = saved.Spec;
+        _tmSynthAlphabet = saved.Alphabet ?? string.Empty;
+        SynthesizeCustomTm();
+        if (string.IsNullOrEmpty(_tmSynthError))
+        {
+            _tmExampleKey = $"{SavedPrefix}{saved.Id}";
+            if (!string.IsNullOrEmpty(saved.DefaultInput)) _tmInput = saved.DefaultInput;
+            if (saved.Samples.Count > 0) _tmSampleInputs = saved.Samples;
+            RunTmTrace();
         }
     }
 

@@ -1,0 +1,709 @@
+@namespace SuperCsStudent.Web.Components.Shared
+
+<div class="space-y-2.5">
+    @* Top row: Visual Builder vs Raw Rule/Regex + Alphabet Σ quick selector *@
+    <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+            <div class="bp-seg" role="group" aria-label="@($"{TargetLabel} builder mode")">
+                <button type="button"
+                        class="bp-seg-btn"
+                        data-active="@(_builderMode == "visual" ? "true" : "false")"
+                        @onclick='() => SwitchBuilderMode("visual")'>
+                    Visual Builder
+                </button>
+                <button type="button"
+                        class="bp-seg-btn"
+                        data-active="@(_builderMode == "raw" ? "true" : "false")"
+                        @onclick='() => SwitchBuilderMode("raw")'>
+                    Raw Rule / Regex
+                </button>
+            </div>
+
+            @if (IsNfa && _builderMode == "visual" && HasAnyNegation)
+            {
+                <span class="bp-pill bp-pill-warning text-[11px]" title="Negated rules determinize the NFA to a complete DFA before complementing accept states.">
+                    Does not → DFA
+                </span>
+            }
+        </div>
+
+        <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-[11px] font-semibold" style="color: var(--muted);">Σ</span>
+            <button type="button"
+                    class="bp-alpha-chip"
+                    data-active="@(IsAlphaPreset("a,b") ? "true" : "false")"
+                    @onclick='() => SetAlphabet("a,b")'>a,b</button>
+            <button type="button"
+                    class="bp-alpha-chip"
+                    data-active="@(IsAlphaPreset("0,1") ? "true" : "false")"
+                    @onclick='() => SetAlphabet("0,1")'>0,1</button>
+            <button type="button"
+                    class="bp-alpha-chip"
+                    data-active="@(IsAlphaPreset("x,y,z") ? "true" : "false")"
+                    @onclick='() => SetAlphabet("x,y,z")'>x,y,z</button>
+            <input type="text"
+                   class="bp-input !h-7 font-mono text-xs w-28"
+                   placeholder="Σ auto"
+                   title="Custom alphabet symbols (e.g. a,b or 0,1 or x,y,z — leave blank to auto-detect)"
+                   aria-label="Custom alphabet symbols"
+                   value="@AlphabetText"
+                   @oninput="OnAlphabetInput"
+                   @onkeydown="OnInputKeyDown" />
+        </div>
+    </div>
+
+    @if (_builderMode == "visual")
+    {
+        @* Stacked Composable Condition Rows *@
+        <div class="space-y-1.5">
+            @for (var i = 0; i < _rows.Count; i++)
+            {
+                var idx = i;
+                var row = _rows[idx];
+                <div class="bp-builder-row">
+                    @if (idx > 0)
+                    {
+                        <button type="button"
+                                class="bp-builder-op"
+                                title="Click to toggle AND / OR"
+                                aria-label="@($"Combine condition {idx + 1} with {row.Combinator}")"
+                                @onclick="() => ToggleCombinator(idx)">
+                            @row.Combinator
+                        </button>
+                    }
+
+                    @* First-class Must / Does not polarity toggle *@
+                    <div class="bp-polarity-seg" role="group" aria-label="@($"Polarity for condition {idx + 1}")">
+                        <button type="button"
+                                class="bp-polarity-btn"
+                                data-active="@(!row.Negated ? "true" : "false")"
+                                data-neg="false"
+                                @onclick="() => SetRowNegated(idx, false)">
+                            Must
+                        </button>
+                        <button type="button"
+                                class="bp-polarity-btn"
+                                data-active="@(row.Negated ? "true" : "false")"
+                                data-neg="true"
+                                @onclick="() => SetRowNegated(idx, true)">
+                            Does not
+                        </button>
+                    </div>
+
+                    @* Condition Type Selector *@
+                    <select class="bp-input !h-7 text-xs min-w-[170px]"
+                            aria-label="@($"Condition {idx + 1} type")"
+                            value="@row.Kind"
+                            @onchange="e => OnRowKindChanged(idx, e)">
+                        <optgroup label="Substrings &amp; Position">
+                            <option value="starts">start with</option>
+                            <option value="ends">end with</option>
+                            <option value="contains">contain</option>
+                            <option value="equals">equal exact string</option>
+                            <option value="kth_left">have k-th symbol =</option>
+                            <option value="kth_right">have k-th from right =</option>
+                            <option value="same_ends">start &amp; end with same symbol</option>
+                            <option value="diff_ends">start &amp; end with different symbol</option>
+                        </optgroup>
+                        <optgroup label="Counts &amp; Adjacency">
+                            <option value="even_sym">have even count of</option>
+                            <option value="odd_sym">have odd count of</option>
+                            <option value="sym_div">have count divisible by k</option>
+                            <option value="sym_mod">have count mod k = r</option>
+                            <option value="at_least">have at least k of</option>
+                            <option value="at_most">have at most k of</option>
+                            <option value="exactly">have exactly k of</option>
+                            <option value="consecutive">have consecutive pair of</option>
+                            <option value="every_followed">have every X followed by Y</option>
+                        </optgroup>
+                        <optgroup label="String Length">
+                            <option value="even_len">have even length</option>
+                            <option value="odd_len">have odd length</option>
+                            <option value="len_div">have length divisible by k</option>
+                            <option value="len_mod">have length mod k = r</option>
+                            <option value="len_eq">have length = k</option>
+                            <option value="len_ge">have length &gt;= k</option>
+                            <option value="len_le">have length &lt;= k</option>
+                            <option value="non_empty">be non-empty</option>
+                        </optgroup>
+                    </select>
+
+                    @* Dynamic Context-Sensitive Parameters *@
+                    @switch (row.Kind)
+                    {
+                        case "starts":
+                        case "ends":
+                        case "contains":
+                        case "equals":
+                            <input type="text"
+                                   class="bp-input !h-7 font-mono text-xs w-28"
+                                   placeholder="e.g. aba"
+                                   aria-label="Target substring"
+                                   value="@row.Word"
+                                   @oninput="e => UpdateRow(idx, r => r.Word = e.Value?.ToString() ?? string.Empty)"
+                                   @onkeydown="OnInputKeyDown" />
+                            break;
+
+                        case "kth_left":
+                        case "kth_right":
+                            <label class="flex items-center gap-1 text-[11px]" style="color: var(--muted);">
+                                <span>k</span>
+                                <input type="number"
+                                       class="bp-input !h-7 font-mono text-xs w-14 text-center"
+                                       min="1"
+                                       max="@(row.Kind == "kth_right" ? 8 : 12)"
+                                       aria-label="Position k"
+                                       value="@row.K"
+                                       @oninput="e => OnRowKInput(idx, e)"
+                                       @onkeydown="OnInputKeyDown" />
+                            </label>
+                            <span class="text-[11px]" style="color: var(--muted);">is</span>
+                            <input type="text"
+                                   class="bp-input !h-7 font-mono text-xs w-10 text-center"
+                                   maxlength="1"
+                                   placeholder="a"
+                                   aria-label="Target symbol"
+                                   value="@row.Symbol"
+                                   @oninput="e => UpdateRow(idx, r => r.Symbol = FirstCharOrEmpty(e.Value?.ToString()))"
+                                   @onkeydown="OnInputKeyDown" />
+                            break;
+
+                        case "even_sym":
+                        case "odd_sym":
+                        case "consecutive":
+                            <input type="text"
+                                   class="bp-input !h-7 font-mono text-xs w-10 text-center"
+                                   maxlength="1"
+                                   placeholder="a"
+                                   aria-label="Target symbol"
+                                   value="@row.Symbol"
+                                   @oninput="e => UpdateRow(idx, r => r.Symbol = FirstCharOrEmpty(e.Value?.ToString()))"
+                                   @onkeydown="OnInputKeyDown" />
+                            break;
+
+                        case "sym_div":
+                            <input type="text"
+                                   class="bp-input !h-7 font-mono text-xs w-10 text-center"
+                                   maxlength="1"
+                                   placeholder="a"
+                                   aria-label="Target symbol"
+                                   value="@row.Symbol"
+                                   @oninput="e => UpdateRow(idx, r => r.Symbol = FirstCharOrEmpty(e.Value?.ToString()))"
+                                   @onkeydown="OnInputKeyDown" />
+                            <span class="text-[11px]" style="color: var(--muted);">÷</span>
+                            <input type="number"
+                                   class="bp-input !h-7 font-mono text-xs w-14 text-center"
+                                   min="2"
+                                   max="12"
+                                   aria-label="Divisor k"
+                                   value="@row.K"
+                                   @oninput="e => UpdateRowInt(idx, e, (r, v) => r.K = System.Math.Clamp(v, 2, 12))"
+                                   @onkeydown="OnInputKeyDown" />
+                            break;
+
+                        case "sym_mod":
+                            <input type="text"
+                                   class="bp-input !h-7 font-mono text-xs w-10 text-center"
+                                   maxlength="1"
+                                   placeholder="a"
+                                   aria-label="Target symbol"
+                                   value="@row.Symbol"
+                                   @oninput="e => UpdateRow(idx, r => r.Symbol = FirstCharOrEmpty(e.Value?.ToString()))"
+                                   @onkeydown="OnInputKeyDown" />
+                            <span class="text-[11px]" style="color: var(--muted);">mod</span>
+                            <input type="number"
+                                   class="bp-input !h-7 font-mono text-xs w-14 text-center"
+                                   min="2"
+                                   max="12"
+                                   aria-label="Modulus k"
+                                   value="@row.K"
+                                   @oninput="e => UpdateRowInt(idx, e, (r, v) => r.K = System.Math.Clamp(v, 2, 12))"
+                                   @onkeydown="OnInputKeyDown" />
+                            <span class="text-[11px]" style="color: var(--muted);">=</span>
+                            <input type="number"
+                                   class="bp-input !h-7 font-mono text-xs w-12 text-center"
+                                   min="0"
+                                   max="11"
+                                   aria-label="Remainder r"
+                                   value="@row.Rem"
+                                   @oninput="e => UpdateRowInt(idx, e, (r, v) => r.Rem = System.Math.Clamp(v, 0, System.Math.Max(0, r.K - 1)))"
+                                   @onkeydown="OnInputKeyDown" />
+                            break;
+
+                        case "at_least":
+                        case "at_most":
+                        case "exactly":
+                            <input type="number"
+                                   class="bp-input !h-7 font-mono text-xs w-14 text-center"
+                                   min="0"
+                                   max="15"
+                                   aria-label="Count k"
+                                   value="@row.K"
+                                   @oninput="e => UpdateRowInt(idx, e, (r, v) => r.K = System.Math.Clamp(v, 0, 15))"
+                                   @onkeydown="OnInputKeyDown" />
+                            <input type="text"
+                                   class="bp-input !h-7 font-mono text-xs w-10 text-center"
+                                   maxlength="1"
+                                   placeholder="a"
+                                   aria-label="Target symbol"
+                                   value="@row.Symbol"
+                                   @oninput="e => UpdateRow(idx, r => r.Symbol = FirstCharOrEmpty(e.Value?.ToString()))"
+                                   @onkeydown="OnInputKeyDown" />
+                            break;
+
+                        case "every_followed":
+                            <input type="text"
+                                   class="bp-input !h-7 font-mono text-xs w-10 text-center"
+                                   maxlength="1"
+                                   placeholder="a"
+                                   aria-label="Leading symbol X"
+                                   value="@row.Symbol"
+                                   @oninput="e => UpdateRow(idx, r => r.Symbol = FirstCharOrEmpty(e.Value?.ToString()))"
+                                   @onkeydown="OnInputKeyDown" />
+                            <span class="text-[11px]" style="color: var(--muted);">→</span>
+                            <input type="text"
+                                   class="bp-input !h-7 font-mono text-xs w-10 text-center"
+                                   maxlength="1"
+                                   placeholder="b"
+                                   aria-label="Following symbol Y"
+                                   value="@row.Symbol2"
+                                   @oninput="e => UpdateRow(idx, r => r.Symbol2 = FirstCharOrEmpty(e.Value?.ToString()))"
+                                   @onkeydown="OnInputKeyDown" />
+                            break;
+
+                        case "len_div":
+                        case "len_eq":
+                        case "len_ge":
+                        case "len_le":
+                            <input type="number"
+                                   class="bp-input !h-7 font-mono text-xs w-14 text-center"
+                                   min="@(row.Kind == "len_div" ? 2 : 0)"
+                                   max="@(row.Kind == "len_div" ? 12 : 15)"
+                                   aria-label="Length k"
+                                   value="@row.K"
+                                   @oninput="e => OnRowKInput(idx, e)"
+                                   @onkeydown="OnInputKeyDown" />
+                            break;
+
+                        case "len_mod":
+                            <input type="number"
+                                   class="bp-input !h-7 font-mono text-xs w-14 text-center"
+                                   min="2"
+                                   max="12"
+                                   aria-label="Length modulus k"
+                                   value="@row.K"
+                                   @oninput="e => UpdateRowInt(idx, e, (r, v) => r.K = System.Math.Clamp(v, 2, 12))"
+                                   @onkeydown="OnInputKeyDown" />
+                            <span class="text-[11px]" style="color: var(--muted);">=</span>
+                            <input type="number"
+                                   class="bp-input !h-7 font-mono text-xs w-12 text-center"
+                                   min="0"
+                                   max="11"
+                                   aria-label="Remainder r"
+                                   value="@row.Rem"
+                                   @oninput="e => UpdateRowInt(idx, e, (r, v) => r.Rem = System.Math.Clamp(v, 0, System.Math.Max(0, r.K - 1)))"
+                                   @onkeydown="OnInputKeyDown" />
+                            break;
+                    }
+
+                    @if (_rows.Count > 1)
+                    {
+                        <button type="button"
+                                class="bp-tester-clear ml-auto"
+                                title="Remove condition"
+                                aria-label="@($"Remove condition {idx + 1}")"
+                                @onclick="() => RemoveRow(idx)">
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke-linecap="round" />
+                            </svg>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        @* Add Condition + Live Expression Preview *@
+        <div class="flex flex-wrap items-center gap-2">
+            @if (_rows.Count < 5)
+            {
+                <button type="button" class="bp-btn-secondary !h-7 !px-2.5 text-xs" @onclick="AddRow">
+                    + Add condition
+                </button>
+            }
+
+            <div class="bp-builder-preview flex-1 min-w-[180px]" title="Live compiled constraint expression">
+                <span class="text-[10.5px] font-sans font-semibold mr-1.5" style="color: var(--faint);">Rule:</span>
+                <span>@ComposedExpression</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        @* Raw Rule / Regex Input Mode *@
+        <div class="flex flex-wrap items-center gap-2">
+            <div class="bp-seg" role="group" aria-label="@($"{TargetLabel} specification mode")">
+                <button type="button" class="bp-seg-btn" data-active="@(SourceKind == "auto" ? "true" : "false")" @onclick='() => SetSourceKind("auto")'>Auto</button>
+                <button type="button" class="bp-seg-btn" data-active="@(SourceKind == "constraint" ? "true" : "false")" @onclick='() => SetSourceKind("constraint")'>Constraint</button>
+                <button type="button" class="bp-seg-btn" data-active="@(SourceKind == "regex" ? "true" : "false")" @onclick='() => SetSourceKind("regex")'>Regex</button>
+            </div>
+            <input type="text"
+                   class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
+                   placeholder="e.g. starts with ab AND does not contain aba | 3rd from right is 1 | (a|b)*aba"
+                   aria-label="@($"Custom {TargetLabel} rule")"
+                   value="@SpecText"
+                   @oninput="OnRawSpecInput"
+                   @onkeydown="OnInputKeyDown" />
+        </div>
+    }
+
+    @* Action + Save Bar + Tab Extra Actions *@
+    <div class="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+        <div class="flex flex-wrap items-center gap-1.5">
+            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="TriggerBuildAsync">
+                Build @TargetLabel
+            </button>
+
+            <input type="text"
+                   class="bp-input !h-8 text-xs w-40"
+                   placeholder="Name to save…"
+                   aria-label="Name for saved constraint"
+                   @bind="_saveName"
+                   @bind:event="oninput" />
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="TriggerSaveAsync">
+                @(_justSaved ? "Saved ✓" : "Save to Examples")
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(ActiveSavedId))
+            {
+                <button type="button"
+                        class="bp-btn-ghost !h-8 !px-2 text-xs"
+                        style="color: var(--negative);"
+                        title="Delete currently selected saved constraint"
+                        @onclick="TriggerDeleteSavedAsync">
+                    Delete saved
+                </button>
+            }
+        </div>
+
+        @if (ExtraFooter is not null)
+        {
+            <div class="flex flex-wrap items-center gap-1.5">
+                @ExtraFooter
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private sealed class ConditionRow
+    {
+        public string Combinator { get; set; } = "AND";
+        public bool Negated { get; set; }
+        public string Kind { get; set; } = "contains";
+        public string Word { get; set; } = "aba";
+        public string Symbol { get; set; } = "a";
+        public string Symbol2 { get; set; } = "b";
+        public int K { get; set; } = 2;
+        public int Rem { get; set; } = 1;
+    }
+
+    [Parameter] public string TargetLabel { get; set; } = "DFA";
+    [Parameter] public bool IsNfa { get; set; }
+    [Parameter] public string SpecText { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> SpecTextChanged { get; set; }
+    [Parameter] public string SourceKind { get; set; } = "auto";
+    [Parameter] public EventCallback<string> SourceKindChanged { get; set; }
+    [Parameter] public string AlphabetText { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> AlphabetTextChanged { get; set; }
+    [Parameter] public string? ActiveSavedId { get; set; }
+    [Parameter] public string? ActiveSavedName { get; set; }
+    [Parameter] public EventCallback OnBuild { get; set; }
+    [Parameter] public EventCallback<string> OnSave { get; set; }
+    [Parameter] public EventCallback<string> OnDeleteSaved { get; set; }
+    [Parameter] public RenderFragment? ExtraFooter { get; set; }
+
+    private string _builderMode = "visual";
+    private string _saveName = string.Empty;
+    private string? _lastSyncedSavedId;
+    private bool _justSaved;
+
+    private readonly List<ConditionRow> _rows =
+    [
+        new ConditionRow { Kind = "starts", Word = "ab", Symbol = "a", Symbol2 = "b", K = 2 }
+    ];
+
+    private bool HasAnyNegation => _rows.Any(r => r.Negated);
+
+    private string ComposedExpression
+    {
+        get
+        {
+            if (_rows.Count == 0) return "contains aba";
+            var sb = new System.Text.StringBuilder();
+            for (var i = 0; i < _rows.Count; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(' ').Append(_rows[i].Combinator).Append(' ');
+                }
+                sb.Append(FormatRow(_rows[i]));
+            }
+            return sb.ToString();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.Equals(_lastSyncedSavedId, ActiveSavedId, StringComparison.Ordinal))
+        {
+            _lastSyncedSavedId = ActiveSavedId;
+            if (!string.IsNullOrWhiteSpace(ActiveSavedName))
+            {
+                _saveName = ActiveSavedName;
+            }
+        }
+    }
+
+    private async Task SwitchBuilderMode(string mode)
+    {
+        if (_builderMode == mode) return;
+        if (mode == "raw" && _builderMode == "visual")
+        {
+            await SyncVisualSpecAsync();
+        }
+        _builderMode = mode;
+    }
+
+    private async Task SyncVisualSpecAsync()
+    {
+        var expr = ComposedExpression;
+        await SourceKindChanged.InvokeAsync("constraint");
+        await SpecTextChanged.InvokeAsync(expr);
+    }
+
+    private bool IsAlphaPreset(string preset)
+    {
+        var normCurrent = new string((AlphabetText ?? string.Empty).Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        var normPreset = new string(preset.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        return normCurrent == normPreset;
+    }
+
+    private async Task SetAlphabet(string alpha)
+    {
+        await AlphabetTextChanged.InvokeAsync(alpha);
+        // Adapt default single-char symbols cleanly when switching preset alphabets
+        if (alpha == "0,1")
+        {
+            foreach (var r in _rows)
+            {
+                if (r.Symbol is "a" or "x") r.Symbol = "1";
+                if (r.Symbol2 is "b" or "y") r.Symbol2 = "0";
+                if (r.Word is "ab" or "aba" or "xy") r.Word = "101";
+            }
+        }
+        else if (alpha == "x,y,z")
+        {
+            foreach (var r in _rows)
+            {
+                if (r.Symbol is "a" or "1") r.Symbol = "x";
+                if (r.Symbol2 is "b" or "0") r.Symbol2 = "y";
+                if (r.Word is "ab" or "aba" or "101") r.Word = "xy";
+            }
+        }
+        else if (alpha == "a,b")
+        {
+            foreach (var r in _rows)
+            {
+                if (r.Symbol is "x" or "1") r.Symbol = "a";
+                if (r.Symbol2 is "y" or "0") r.Symbol2 = "b";
+                if (r.Word is "xy" or "101") r.Word = "aba";
+            }
+        }
+    }
+
+    private Task OnAlphabetInput(ChangeEventArgs e) =>
+        AlphabetTextChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+
+    private Task SetSourceKind(string kind) =>
+        SourceKindChanged.InvokeAsync(kind);
+
+    private Task OnRawSpecInput(ChangeEventArgs e) =>
+        SpecTextChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+
+    private void ToggleCombinator(int index)
+    {
+        _rows[index].Combinator = _rows[index].Combinator == "AND" ? "OR" : "AND";
+    }
+
+    private void SetRowNegated(int index, bool negated)
+    {
+        _rows[index].Negated = negated;
+    }
+
+    private void OnRowKindChanged(int index, ChangeEventArgs e)
+    {
+        var next = e.Value?.ToString() ?? "contains";
+        var row = _rows[index];
+        row.Kind = next;
+        if (next is "sym_div" or "sym_mod" or "len_div" or "len_mod" && row.K < 2) row.K = 3;
+        if (next is "kth_right" && row.K > 8) row.K = 3;
+        if (next is "kth_left" && row.K < 1) row.K = 2;
+    }
+
+    private void UpdateRow(int index, Action<ConditionRow> mutate) => mutate(_rows[index]);
+
+    private void UpdateRowInt(int index, ChangeEventArgs e, Action<ConditionRow, int> mutate)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var parsed))
+        {
+            mutate(_rows[index], parsed);
+        }
+    }
+
+    private void OnRowKInput(int index, ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var parsed)) return;
+        var row = _rows[index];
+        var (min, max) = row.Kind switch
+        {
+            "kth_right" => (1, 8),
+            "kth_left" => (1, 12),
+            "sym_div" or "sym_mod" or "len_div" or "len_mod" => (2, 12),
+            _ => (0, 15)
+        };
+        row.K = System.Math.Clamp(parsed, min, max);
+        if (row.Rem >= row.K) row.Rem = row.K - 1;
+    }
+
+    private void AddRow()
+    {
+        if (_rows.Count >= 5) return;
+        var sym = AlphabetText.Contains('0') ? "1" : AlphabetText.Contains('x') ? "x" : "b";
+        var word = AlphabetText.Contains('0') ? "101" : AlphabetText.Contains('x') ? "xy" : "aba";
+        _rows.Add(new ConditionRow
+        {
+            Combinator = "AND",
+            Negated = true,
+            Kind = "contains",
+            Word = word,
+            Symbol = sym,
+            Symbol2 = sym == "1" ? "0" : sym == "x" ? "y" : "a",
+            K = 2
+        });
+    }
+
+    private void RemoveRow(int index)
+    {
+        if (_rows.Count > 1 && index >= 0 && index < _rows.Count)
+        {
+            _rows.RemoveAt(index);
+        }
+    }
+
+    private async Task OnInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await TriggerBuildAsync();
+        }
+    }
+
+    private async Task TriggerBuildAsync()
+    {
+        if (_builderMode == "visual")
+        {
+            await SyncVisualSpecAsync();
+        }
+        await OnBuild.InvokeAsync();
+    }
+
+    private async Task TriggerSaveAsync()
+    {
+        if (_builderMode == "visual")
+        {
+            await SyncVisualSpecAsync();
+        }
+
+        var name = string.IsNullOrWhiteSpace(_saveName)
+            ? BuildAutoTitle(_builderMode == "visual" ? ComposedExpression : SpecText)
+            : _saveName.Trim();
+
+        _saveName = name;
+        await OnSave.InvokeAsync(name);
+
+        _justSaved = true;
+        StateHasChanged();
+        await Task.Delay(1600);
+        _justSaved = false;
+    }
+
+    private async Task TriggerDeleteSavedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ActiveSavedId)) return;
+        await OnDeleteSaved.InvokeAsync(ActiveSavedId);
+        _saveName = string.Empty;
+    }
+
+    private static string FirstCharOrEmpty(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        return raw.Trim()[0].ToString();
+    }
+
+    private static string BuildAutoTitle(string spec)
+    {
+        var clean = (spec ?? string.Empty).Trim();
+        if (clean.Length == 0) return "Custom constraint";
+        return clean.Length <= 34 ? clean : clean[..31].TrimEnd() + "…";
+    }
+
+    private static string FormatRow(ConditionRow r)
+    {
+        var w = string.IsNullOrWhiteSpace(r.Word) ? "aba" : r.Word.Trim();
+        var s1 = string.IsNullOrWhiteSpace(r.Symbol) ? "a" : r.Symbol.Trim()[0].ToString();
+        var s2 = string.IsNullOrWhiteSpace(r.Symbol2) ? "b" : r.Symbol2.Trim()[0].ToString();
+
+        return r.Kind switch
+        {
+            "starts" => r.Negated ? $"does not start with {w}" : $"starts with {w}",
+            "ends" => r.Negated ? $"does not end with {w}" : $"ends with {w}",
+            "contains" => r.Negated ? $"does not contain {w}" : $"contains {w}",
+            "equals" => r.Negated ? $"does not equal {w}" : $"equals {w}",
+            "kth_left" => r.Negated ? $"does not have {Ordinal(r.K)} symbol is {s1}" : $"{Ordinal(r.K)} symbol is {s1}",
+            "kth_right" => r.Negated ? $"does not have {Ordinal(r.K)} from right is {s1}" : $"{Ordinal(r.K)} from right is {s1}",
+            "same_ends" => r.Negated ? "does not start and end with same symbol" : "starts and ends with same symbol",
+            "diff_ends" => r.Negated ? "does not start and end with different symbol" : "starts and ends with different symbol",
+            "even_sym" => r.Negated ? $"NOT (even {s1})" : $"even {s1}",
+            "odd_sym" => r.Negated ? $"NOT (odd {s1})" : $"odd {s1}",
+            "sym_div" => r.Negated ? $"NOT (#{s1} divisible by {r.K})" : $"#{s1} divisible by {r.K}",
+            "sym_mod" => r.Negated ? $"NOT (#{s1} mod {r.K} = {r.Rem})" : $"#{s1} mod {r.K} = {r.Rem}",
+            "at_least" => r.Negated ? $"NOT (at least {r.K} {s1})" : $"at least {r.K} {s1}",
+            "at_most" => r.Negated ? $"NOT (at most {r.K} {s1})" : $"at most {r.K} {s1}",
+            "exactly" => r.Negated ? $"NOT (exactly {r.K} {s1})" : $"exactly {r.K} {s1}",
+            "consecutive" => r.Negated ? $"no consecutive {s1}" : $"consecutive {s1}",
+            "every_followed" => r.Negated ? $"NOT (every {s1} is followed by {s2})" : $"every {s1} is followed by {s2}",
+            "even_len" => r.Negated ? "NOT (even length)" : "even length",
+            "odd_len" => r.Negated ? "NOT (odd length)" : "odd length",
+            "len_div" => r.Negated ? $"NOT (length divisible by {r.K})" : $"length divisible by {r.K}",
+            "len_mod" => r.Negated ? $"NOT (length mod {r.K} = {r.Rem})" : $"length mod {r.K} = {r.Rem}",
+            "len_eq" => r.Negated ? $"NOT (length = {r.K})" : $"length = {r.K}",
+            "len_ge" => r.Negated ? $"NOT (length >= {r.K})" : $"length >= {r.K}",
+            "len_le" => r.Negated ? $"NOT (length <= {r.K})" : $"length <= {r.K}",
+            "non_empty" => r.Negated ? "empty" : "non-empty",
+            _ => r.Negated ? $"does not contain {w}" : $"contains {w}"
+        };
+    }
+
+    private static string Ordinal(int k)
+    {
+        var mod100 = k % 100;
+        if (mod100 is 11 or 12 or 13) return $"{k}th";
+        return (k % 10) switch
+        {
+            1 => $"{k}st",
+            2 => $"{k}nd",
+            3 => $"{k}rd",
+            _ => $"{k}th"
+        };
+    }
+}
