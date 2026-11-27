@@ -596,9 +596,23 @@ select.bp-input optgroup {
   border-radius: 9px !important;
   box-shadow: var(--shadow-floating) !important;
 }
+.blocklyEditing > .blocklyText,
+.blocklyEditing .blocklyText {
+  opacity: 0 !important;
+}
 .blocklyWidgetDiv .blocklyHtmlInput {
-  font-family: var(--font-mono) !important;
-  font-size: 12px !important;
+  background-color: #ffffff !important;
+  color: #111318 !important;
+  caret-color: #0e6e85 !important;
+  font-family: var(--font-sans) !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 0 2px var(--accent) !important;
+}
+.blocklyWidgetDiv .blocklyHtmlInput::selection {
+  background-color: #0e6e85 !important;
+  color: #ffffff !important;
 }
 
 /* Runtime Analyzer Floating Cost Rules Pill, Tab Close & Preset Cards */
