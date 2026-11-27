@@ -1557,7 +1557,289 @@ select.bp-select-sample option {
   border: 1px solid var(--border);
 }
 
-/* CFG Main Stage Leftmost Derivation Stepper */
+/* CFG Main Stage Lecture-Style Animated Derivation Chain */
+.cfg-rule-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.cfg-rule-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-chip);
+  background-color: var(--raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.cfg-rule-chip[data-active="true"] {
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  transform: translateY(-1px);
+}
+
+.cfg-chain-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 6px;
+  padding: 14px 4px;
+}
+
+.cfg-chain-arrow {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  color: var(--muted);
+  user-select: none;
+}
+
+.cfg-chain-arrow[data-rejected="true"] {
+  color: var(--negative);
+}
+
+.cfg-chain-rule {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.1;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.cfg-chain-arrow[data-rejected="true"] .cfg-chain-rule {
+  background-color: var(--pill-negative-bg);
+  border-color: color-mix(in srgb, var(--negative) 45%, transparent);
+  color: var(--pill-negative-ink);
+  font-weight: 600;
+}
+
+.cfg-chain-glyph {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cfg-chain-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 12px;
+  border-radius: var(--radius-card);
+  background-color: var(--surface);
+  border: 1.5px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.cfg-chain-node:hover {
+  border-color: var(--control);
+  background-color: var(--raised);
+}
+
+.cfg-chain-node[data-active="true"] {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.cfg-chain-node[data-accepted="true"] {
+  border-color: var(--positive);
+  background-color: var(--pill-positive-bg);
+  color: var(--pill-positive-ink);
+}
+
+.cfg-chain-node[data-rejected="true"] {
+  border-color: var(--negative);
+  background-color: var(--pill-negative-bg);
+  color: var(--pill-negative-ink);
+}
+
+.cfg-chain-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: var(--radius-card);
+  border: 1.5px dashed var(--control);
+  background-color: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.cfg-chain-next:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.cfg-tok {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 11px;
+  padding: 0 2px;
+  border-radius: 4px;
+}
+
+.cfg-tok-expand {
+  background-color: var(--pill-warning-bg);
+  color: var(--pill-warning-ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 50%, transparent);
+  padding: 0 4px;
+}
+
+.cfg-tok-new {
+  background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  padding: 0 3px;
+}
+
+.cfg-tok-mismatch {
+  background-color: var(--negative);
+  color: #ffffff;
+  padding: 0 5px;
+}
+
+.cfg-tape-cell {
+  min-width: 28px;
+  height: 30px;
+  padding: 0 7px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--control);
+  background-color: var(--surface);
+  color: var(--muted);
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.cfg-tape-cell[data-state="matched"] {
+  background-color: var(--pill-positive-bg);
+  border-color: var(--positive);
+  color: var(--pill-positive-ink);
+}
+
+.cfg-tape-cell[data-state="mismatch"] {
+  background-color: var(--pill-negative-bg);
+  border-color: var(--negative);
+  color: var(--pill-negative-ink);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--negative) 20%, transparent);
+}
+
+.cfg-reject-card {
+  border-radius: var(--radius-control);
+  background-color: color-mix(in srgb, var(--pill-negative-bg) 55%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--negative) 45%, transparent);
+  padding: 10px 12px;
+}
+
+.cfg-reject-attempt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background-color: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--negative) 28%, var(--border));
+  font-size: 12px;
+}
+
+@keyframes cfgChainSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.93);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes cfgArrowDraw {
+  0% {
+    opacity: 0;
+    transform: translateX(-7px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes cfgSymPop {
+  0% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cfgRejectNudge {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  55% { transform: translateX(3px); }
+  80% { transform: translateX(-1.5px); }
+  100% { transform: translateX(0); }
+}
+
+.cfg-anim-enter {
+  animation: cfgChainSlideIn 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cfg-anim-arrow {
+  animation: cfgArrowDraw 200ms ease-out both;
+}
+
+.cfg-anim-sym {
+  animation: cfgSymPop 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cfg-anim-reject {
+  animation: cfgChainSlideIn 220ms ease-out both, cfgRejectNudge 300ms ease-in-out 180ms both;
+}
+
 .cfg-deriv-row {
   width: 100%;
   text-align: left;

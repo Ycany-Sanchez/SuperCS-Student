@@ -849,20 +849,59 @@
                     }
                 </div>
 
-                @* Center Stage: Leftmost Derivation (Default) + On-Demand Parse Tree View *@
-                <div class="flex-1 min-h-[280px] bp-card flex flex-col overflow-hidden">
+                @* Center Stage: Animated Lecture-Style Step-by-Step Derivation (Accepted & Rejected) + Parse Tree Toggle *@
+                <div class="flex-1 min-h-[300px] bp-card flex flex-col overflow-hidden">
+                    @{
+                        var traceSteps = _cfgParseResult?.TraceSteps;
+                        var totalTraceSteps = traceSteps?.Count ?? 0;
+                        var clampedCfgIdx = totalTraceSteps > 0 ? System.Math.Clamp(_cfgStepIndex, 0, totalTraceSteps - 1) : 0;
+                        var activeCfgStep = totalTraceSteps > 0 ? traceSteps![clampedCfgIdx] : null;
+                    }
                     <div class="px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
-                        <div class="flex items-center gap-2.5">
-                            <span class="text-xs font-semibold">@(_cfgShowParseTree ? "Parse Tree" : "Leftmost Derivation")</span>
-                            @if (_cfgParseResult is { Accepted: true, QueueSteps.Count: > 0 } cfgResHead)
+                        <div class="flex items-center gap-2.5 flex-wrap">
+                            <span class="text-xs font-semibold">@(_cfgShowParseTree ? "Parse Tree" : "Step-by-Step Derivation")</span>
+                            @if (totalTraceSteps > 0 && !_cfgShowParseTree)
                             {
                                 <span class="font-mono text-[11.5px] tnum" style="color: var(--muted);">
-                                    @(cfgResHead.QueueSteps.Count - 1) steps@(_cfgShowParseTree ? "" : " · click to jump")
+                                    Step @(clampedCfgIdx + 1) / @totalTraceSteps
+                                </span>
+                                @if (_cfgParseResult is { Accepted: false })
+                                {
+                                    <span class="bp-pill bp-pill-negative !h-5 text-[10.5px]">
+                                        Rejection Walkthrough
+                                    </span>
+                                }
+                            }
+                            else if (_cfgParseResult is { Accepted: true } && totalTraceSteps > 0)
+                            {
+                                <span class="font-mono text-[11.5px] tnum" style="color: var(--muted);">
+                                    @(totalTraceSteps - 1) steps
                                 </span>
                             }
                         </div>
 
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            @if (!_cfgShowParseTree && totalTraceSteps > 1)
+                            {
+                                @if (clampedCfgIdx < totalTraceSteps - 1)
+                                {
+                                    <button type="button"
+                                            class="bp-btn-ghost !h-7 !px-2 text-xs"
+                                            @onclick="() => _cfgStepIndex = totalTraceSteps - 1">
+                                        @(_cfgParseResult is { Accepted: false } ? "Jump to Failure →" : "Show Full Chain →")
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="button"
+                                            class="bp-btn-ghost !h-7 !px-2 text-xs"
+                                            title="Reset derivation to Step 1"
+                                            @onclick="() => { _cfgStepIndex = 0; _cfgAnimRunId++; }">
+                                        ↺ Start Over
+                                    </button>
+                                }
+                            }
+
                             @if (_cfgParseResult is { Accepted: true })
                             {
                                 <button type="button"
@@ -902,41 +941,208 @@
                                                   ExportFileName="cfg-parse-tree.svg" />
                         </div>
                     }
-                    else if (_cfgParseResult is { Accepted: true, QueueSteps.Count: > 0 } acceptedCfg)
+                    else if (traceSteps is not null && activeCfgStep is not null)
                     {
-                        var qSteps = acceptedCfg.QueueSteps;
-                        <div class="flex-1 min-h-0 overflow-y-auto">
-                            @for (var i = 0; i < qSteps.Count; i++)
+                        var targetRaw = _cfgParseResult!.Input == AutomataSymbols.Empty ? string.Empty : _cfgParseResult.Input;
+                        var activeRuleNorm = activeCfgStep.AppliedRule;
+                        <div class="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3.5">
+                            @* Lecture-style G = (V, Σ, R, S) rule bar that lights up the active production *@
+                            @if (_currentCfg is not null)
                             {
-                                var idx = i;
-                                var qStep = qSteps[idx];
-                                var isCur = idx == _cfgStepIndex;
-                                <button type="button"
-                                        class="cfg-deriv-row"
-                                        data-active="@(isCur ? "true" : "false")"
-                                        data-complete="@(qStep.IsComplete ? "true" : "false")"
-                                        @onclick="() => _cfgStepIndex = idx">
-                                    <span class="flex items-center gap-3 min-w-0">
-                                        <span class="tnum text-xs w-6 shrink-0 opacity-65">@idx</span>
-                                        <span class="w-3 shrink-0 opacity-55">@(idx == 0 ? "" : "⇒")</span>
-                                        <span class="break-all font-semibold">@qStep.SententialForm</span>
+                                <div class="cfg-rule-bar">
+                                    <span><strong style="color: var(--text);">V</strong> = &#123; @string.Join(", ", _currentCfg.NonTerminals.OrderBy(x => x).Concat(_currentCfg.Terminals.OrderBy(x => x))) &#125;</span>
+                                    <span><strong style="color: var(--text);">Σ</strong> = &#123; @string.Join(", ", _currentCfg.Terminals.OrderBy(x => x)) &#125;</span>
+                                    <span class="inline-flex flex-wrap items-center gap-1">
+                                        <strong style="color: var(--text);">R</strong> = &#123;
+                                        @foreach (var rule in _currentCfg.Rules)
+                                        {
+                                            var ruleDisplay = $"{rule.Left} → {rule.FormatRight()}";
+                                            var isActiveRule = string.Equals(activeRuleNorm, ruleDisplay, StringComparison.Ordinal);
+                                            <span class="cfg-rule-chip" data-active="@(isActiveRule ? "true" : "false")">@ruleDisplay</span>
+                                        }
+                                        &#125;
                                     </span>
-                                    @if (!string.IsNullOrEmpty(qStep.AppliedRule))
-                                    {
-                                        <span class="text-xs shrink-0 opacity-80">@qStep.AppliedRule</span>
-                                    }
-                                </button>
+                                </div>
                             }
+
+                            @* Whiteboard-Style Progressive Animated Horizontal Derivation Chain *@
+                            <div class="bp-well-grid rounded-xl px-4 py-3 min-h-[112px] flex flex-col justify-center">
+                                <div class="cfg-chain-flow" aria-live="polite">
+                                    @for (var i = 0; i <= clampedCfgIdx; i++)
+                                    {
+                                        var idx = i;
+                                        var st = traceSteps[idx];
+                                        var isCur = idx == clampedCfgIdx;
+
+                                        @if (idx > 0)
+                                        {
+                                            <div @key="@($"arr-{_cfgAnimRunId}-{idx}")"
+                                                 class="cfg-chain-arrow @(isCur && !AppState.SnapMotion ? "cfg-anim-arrow" : "")"
+                                                 data-rejected="@(st.IsRejected ? "true" : "false")">
+                                                @if (!string.IsNullOrEmpty(st.AppliedRule))
+                                                {
+                                                    <span class="cfg-chain-rule">@st.AppliedRule</span>
+                                                }
+                                                <span class="cfg-chain-glyph" aria-hidden="true">⇒</span>
+                                            </div>
+                                        }
+
+                                        <button type="button"
+                                                @key="@($"form-{_cfgAnimRunId}-{idx}")"
+                                                class="cfg-chain-node @(isCur && !AppState.SnapMotion ? (st.IsRejected ? "cfg-anim-reject" : "cfg-anim-enter") : "")"
+                                                data-active="@(isCur ? "true" : "false")"
+                                                data-accepted="@(st.IsAccepted ? "true" : "false")"
+                                                data-rejected="@(st.IsRejected ? "true" : "false")"
+                                                title="@($"Jump to step {idx + 1}: {st.SententialForm}")"
+                                                @onclick="() => _cfgStepIndex = idx">
+                                            @for (var tIdx = 0; tIdx < st.Tokens.Count; tIdx++)
+                                            {
+                                                var tok = st.Tokens[tIdx];
+                                                var tokClass = "cfg-tok";
+                                                if (tok.IsMismatch)
+                                                {
+                                                    tokClass += " cfg-tok-mismatch";
+                                                }
+                                                else if (isCur && tok.IsNextToExpand)
+                                                {
+                                                    tokClass += " cfg-tok-expand";
+                                                }
+                                                else if (isCur && tok.IsNewlyInserted && !st.IsAccepted)
+                                                {
+                                                    tokClass += AppState.SnapMotion ? " cfg-tok-new" : " cfg-tok-new cfg-anim-sym";
+                                                }
+                                                <span class="@tokClass">@tok.Symbol</span>
+                                            }
+                                            @if (st.IsAccepted)
+                                            {
+                                                <span class="ml-1 text-xs font-bold" aria-label="Accepted">✓</span>
+                                            }
+                                            else if (st.IsRejected)
+                                            {
+                                                <span class="ml-1 text-xs font-bold" aria-label="Rejected">✕</span>
+                                            }
+                                        </button>
+                                    }
+
+                                    @if (clampedCfgIdx < totalTraceSteps - 1)
+                                    {
+                                        var nextSt = traceSteps[clampedCfgIdx + 1];
+                                        <button type="button"
+                                                class="cfg-chain-next"
+                                                title="Reveal next derivation step (→)"
+                                                @onclick="() => _cfgStepIndex = clampedCfgIdx + 1">
+                                            <span>⇒</span>
+                                            <span>@(nextSt.IsRejected ? "See why rejected" : $"Step {clampedCfgIdx + 2}")</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+
+                            @* Target Input w Match Progress Strip *@
+                            <div class="rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5"
+                                 style="background: var(--raised); border: 1px solid var(--border);">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--faint);">Target w</span>
+                                    @if (targetRaw.Length == 0)
+                                    {
+                                        var emptyState = activeCfgStep.IsAccepted
+                                            ? "matched"
+                                            : activeCfgStep.IsRejected ? "mismatch" : "pending";
+                                        <span class="cfg-tape-cell !px-2.5 text-xs" data-state="@emptyState">e (empty)</span>
+                                    }
+                                    else
+                                    {
+                                        var pref = activeCfgStep.MatchedPrefixLength;
+                                        var suffStart = targetRaw.Length - activeCfgStep.MatchedSuffixLength;
+                                        <div class="flex items-center gap-1 flex-wrap">
+                                            @for (var ci = 0; ci < targetRaw.Length; ci++)
+                                            {
+                                                var isMatchedChar = activeCfgStep.IsAccepted
+                                                    || ci < pref
+                                                    || (activeCfgStep.MatchedSuffixLength > 0 && ci >= suffStart);
+                                                var isFailChar = activeCfgStep.IsRejected
+                                                    && (activeCfgStep.FailureInputIndex == ci || !isMatchedChar);
+                                                var cellState = isFailChar
+                                                    ? "mismatch"
+                                                    : isMatchedChar ? "matched" : "pending";
+                                                <span class="cfg-tape-cell" data-state="@cellState" title="@($"pos {ci + 1}: '{targetRaw[ci]}'")">@targetRaw[ci]</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <span class="text-[11px] font-mono" style="color: var(--muted);">
+                                    @if (activeCfgStep.IsAccepted)
+                                    {
+                                        <strong style="color: var(--positive);">Matched w completely</strong>
+                                    }
+                                    else if (activeCfgStep.IsRejected)
+                                    {
+                                        <strong style="color: var(--negative);">Cannot derive remaining input</strong>
+                                    }
+                                    else if (activeCfgStep.MatchedPrefixLength + activeCfgStep.MatchedSuffixLength > 0)
+                                    {
+                                        <span>@(activeCfgStep.MatchedPrefixLength + activeCfgStep.MatchedSuffixLength) / @targetRaw.Length chars matched</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Press Play (Space) or → to animate</span>
+                                    }
+                                </span>
+                            </div>
+
+                            @* Active Step Narration + Rule-by-Rule Rejection Breakdown *@
+                            <div @key="@($"note-{_cfgAnimRunId}-{clampedCfgIdx}")"
+                                 class="@(activeCfgStep.IsRejected ? "cfg-reject-card" : "bp-card p-3") space-y-2.5 @(AppState.SnapMotion ? "" : "cfg-anim-enter")">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        @if (activeCfgStep.IsAccepted)
+                                        {
+                                            <span class="bp-pill bp-pill-positive font-mono text-[11px]">✓ Accepted</span>
+                                        }
+                                        else if (activeCfgStep.IsRejected)
+                                        {
+                                            <span class="bp-pill bp-pill-negative font-mono text-[11px]">✕ Rejected · Stuck at @activeCfgStep.ExpandedNonTerminal</span>
+                                        }
+                                        else if (!string.IsNullOrEmpty(activeCfgStep.AppliedRule))
+                                        {
+                                            <span class="bp-pill bp-pill-accent font-mono text-[11px]">@activeCfgStep.AppliedRule</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="bp-pill bp-pill-neutral font-mono text-[11px]">Start Symbol</span>
+                                        }
+
+                                        <span class="text-xs font-medium" style="color: var(--text);">@activeCfgStep.Explanation</span>
+                                    </div>
+                                </div>
+
+                                @if (activeCfgStep.IsRejected && activeCfgStep.RejectedRuleAttempts is { Count: > 0 } attempts)
+                                {
+                                    <div class="space-y-1.5 pt-1">
+                                        <div class="text-[11px] font-semibold uppercase tracking-wider" style="color: var(--pill-negative-ink);">
+                                            Why every production for @activeCfgStep.ExpandedNonTerminal fails
+                                        </div>
+                                        @foreach (var attempt in attempts)
+                                        {
+                                            <div class="cfg-reject-attempt">
+                                                <span class="font-mono font-bold" style="color: var(--negative);" aria-hidden="true">✕</span>
+                                                <span class="font-mono font-semibold" style="color: var(--text);">@attempt.RuleText</span>
+                                                <span class="font-mono text-[11px]" style="color: var(--muted);">⇒ @attempt.ResultingForm</span>
+                                                <span class="text-xs" style="color: var(--muted);">— @attempt.Reason</span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
                         </div>
                     }
                     else
                     {
                         <div class="flex-1 flex flex-col items-center justify-center p-6 text-center gap-2">
-                            <div class="text-sm font-semibold" style="color: var(--text);">
-                                @(_cfgParseResult is not null ? $"No derivation for '{_cfgParseResult.Input}'" : "Enter a string to derive")
-                            </div>
+                            <div class="text-sm font-semibold" style="color: var(--text);">Enter a string to derive</div>
                             <p class="text-xs max-w-md" style="color: var(--muted);">
-                                @(_cfgParseResult?.Summary ?? "Type an input string above or pick a sample to inspect its leftmost derivation.")
+                                Type an input string above or pick a sample to animate its step-by-step derivation.
                             </p>
                         </div>
                     }
@@ -945,7 +1151,7 @@
                 @if (!_cfgShowParseTree)
                 {
                     <PlaybackBar CurrentStep="@_cfgStepIndex"
-                                 TotalSteps="@(_cfgParseResult?.QueueSteps?.Count ?? 0)"
+                                 TotalSteps="@(_cfgParseResult?.TraceSteps?.Count ?? 0)"
                                  CurrentStepChanged="i => _cfgStepIndex = i"
                                  SnapMotion="@AppState.SnapMotion"
                                  SnapMotionChanged="v => { AppState.SnapMotion = v; AppState.Notify(); }" />
@@ -1837,6 +2043,7 @@
     private Cfg? _currentCfg;
     private CfgParseResult? _cfgParseResult;
     private int _cfgStepIndex;
+    private int _cfgAnimRunId;
 
     // --- PDA Tab State ---
     private string _pdaExampleKey = CustomKey;
@@ -2994,6 +3201,7 @@
             _cfgParseResult = CfgParser.Parse(_currentCfg, _cfgInput);
             if (!_cfgParseResult.Accepted) _cfgShowParseTree = false;
             _cfgStepIndex = 0;
+            _cfgAnimRunId++;
         }
         catch (Exception ex)
         {
@@ -3014,6 +3222,7 @@
             _cfgParseResult = CfgParser.Parse(_currentCfg, _cfgInput);
             if (!_cfgParseResult.Accepted) _cfgShowParseTree = false;
             _cfgStepIndex = 0;
+            _cfgAnimRunId++;
         }
         catch (Exception ex)
         {

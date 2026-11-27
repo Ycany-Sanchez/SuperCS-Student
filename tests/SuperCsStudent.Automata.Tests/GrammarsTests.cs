@@ -161,4 +161,85 @@ public class GrammarsTests
         Assert.False(rej.Accepted);
         Assert.True(rej.QueueSteps is null or { Count: 0 });
     }
+
+    [Fact]
+    public void CfgParser_EmitsStepByStepDerivationAndRejectionTracesForAcceptedAndRejectedInputs()
+    {
+        var anbn = Cfg.ParseFromText("S -> aSb | e");
+
+        // 1. Accepted "aabb": S => aSb => aaSbb => aabb
+        var acc = CfgParser.Parse(anbn, "aabb");
+        Assert.True(acc.Accepted);
+        Assert.NotNull(acc.TraceSteps);
+        Assert.Equal(new[] { "S", "aSb", "aaSbb", "aabb" }, acc.TraceSteps!.Select(s => s.SententialForm).ToArray());
+        Assert.True(acc.TraceSteps[0].Tokens.Single().IsNextToExpand);
+        Assert.Equal("S → aSb", acc.TraceSteps[1].AppliedRule);
+        Assert.Equal(1, acc.TraceSteps[1].MatchedPrefixLength);
+        Assert.Equal(1, acc.TraceSteps[1].MatchedSuffixLength);
+        Assert.Contains(acc.TraceSteps[1].Tokens, t => t.IsNewlyInserted);
+        Assert.True(acc.TraceSteps[^1].IsAccepted);
+        Assert.False(acc.TraceSteps[^1].IsRejected);
+
+        // 2. Rejected "aab": steps S => aSb => Rejected explaining why S cannot derive "a"
+        var rejAab = CfgParser.Parse(anbn, "aab");
+        Assert.False(rejAab.Accepted);
+        Assert.NotNull(rejAab.TraceSteps);
+        Assert.Equal(3, rejAab.TraceSteps!.Count);
+        Assert.Equal("S", rejAab.TraceSteps[0].SententialForm);
+        Assert.Equal("aSb", rejAab.TraceSteps[1].SententialForm);
+        Assert.Equal("S → aSb", rejAab.TraceSteps[1].AppliedRule);
+        Assert.True(rejAab.TraceSteps[2].IsRejected);
+        Assert.Equal("S", rejAab.TraceSteps[2].ExpandedNonTerminal);
+        Assert.Equal(1, rejAab.TraceSteps[2].FailureInputIndex);
+        Assert.Equal(1, rejAab.TraceSteps[2].MatchedPrefixLength);
+        Assert.Equal(1, rejAab.TraceSteps[2].MatchedSuffixLength);
+        Assert.NotNull(rejAab.TraceSteps[2].RejectedRuleAttempts);
+        Assert.Equal(2, rejAab.TraceSteps[2].RejectedRuleAttempts!.Count);
+        Assert.All(rejAab.TraceSteps[2].RejectedRuleAttempts!, a => Assert.False(string.IsNullOrWhiteSpace(a.Reason)));
+
+        // 3. Rejected "ba": fails immediately at S on index 0
+        var rejBa = CfgParser.Parse(anbn, "ba");
+        Assert.False(rejBa.Accepted);
+        Assert.NotNull(rejBa.TraceSteps);
+        Assert.Equal(2, rejBa.TraceSteps!.Count);
+        Assert.True(rejBa.TraceSteps[^1].IsRejected);
+        Assert.Equal(0, rejBa.TraceSteps[^1].FailureInputIndex);
+
+        // 4. Rejected unknown symbol "abc"
+        var rejSym = CfgParser.Parse(anbn, "abc");
+        Assert.False(rejSym.Accepted);
+        Assert.NotNull(rejSym.TraceSteps);
+        Assert.Equal(2, rejSym.TraceSteps!.Count);
+        Assert.True(rejSym.TraceSteps[^1].IsRejected);
+        Assert.Equal(2, rejSym.TraceSteps[^1].FailureInputIndex);
+        Assert.Contains("c", rejSym.TraceSteps[^1].Explanation);
+
+        // 5. Rejected palindrome "abaa" steps S => aSa => Rejected
+        var pal = Cfg.ParseFromText("S -> aSa | bSb | a | b | e");
+        var rejPal = CfgParser.Parse(pal, "abaa");
+        Assert.False(rejPal.Accepted);
+        Assert.True(rejPal.TraceSteps!.Count >= 3);
+        Assert.Equal("aSa", rejPal.TraceSteps[1].SententialForm);
+        Assert.True(rejPal.TraceSteps[^1].IsRejected);
+
+        // 6. Rejected left-recursive arithmetic "x+" and "(x+y"
+        var arith = Cfg.ParseFromText("E -> E+T | T\nT -> T*F | F\nF -> (E) | x | y");
+        foreach (var bad in new[] { "x+", "(x+y" })
+        {
+            var r = CfgParser.Parse(arith, bad);
+            Assert.False(r.Accepted);
+            Assert.NotNull(r.TraceSteps);
+            Assert.True(r.TraceSteps!.Count >= 2);
+            Assert.True(r.TraceSteps[^1].IsRejected);
+            Assert.NotEmpty(r.TraceSteps[^1].RejectedRuleAttempts!);
+        }
+
+        // 7. Unproductive grammar "S -> aS" rejects cleanly without hanging
+        var unprod = Cfg.ParseFromText("S -> aS");
+        var rejUnprod = CfgParser.Parse(unprod, "aa");
+        Assert.False(rejUnprod.Accepted);
+        Assert.NotNull(rejUnprod.TraceSteps);
+        Assert.True(rejUnprod.TraceSteps!.Count >= 2);
+        Assert.True(rejUnprod.TraceSteps[^1].IsRejected);
+    }
 }
