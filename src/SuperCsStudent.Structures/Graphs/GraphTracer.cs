@@ -1044,6 +1044,7 @@ public sealed class GraphTracer
             edgeInputs,
             startNodeId: startVertex,
             preferCircular: preferCircular,
-            caption: caption);
+            caption: caption,
+            overlayTag: "Graph");
     }
 }

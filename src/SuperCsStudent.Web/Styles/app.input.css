@@ -542,6 +542,22 @@ select.bp-input optgroup {
   opacity: 1 !important;
 }
 
+/* Draw.io-style perimeter connection handles */
+.svg-connect-port {
+  opacity: 0;
+  cursor: crosshair;
+  transition: opacity 120ms ease, fill 120ms ease, stroke 120ms ease;
+}
+[data-node-id]:hover .svg-connect-port,
+.svg-node-selected .svg-connect-port,
+svg.svg-connecting .svg-connect-port {
+  opacity: 1;
+}
+.svg-connect-port:hover {
+  fill: var(--accent) !important;
+  stroke: var(--surface) !important;
+}
+
 /* Modernized Blockly overrides */
 .blocklyMainBackground {
   stroke: none !important;

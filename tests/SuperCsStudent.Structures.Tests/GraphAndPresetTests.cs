@@ -248,4 +248,37 @@ public sealed class GraphAndPresetTests
         var emptyTree = DiagramLayout.LayoutTidyTree(null);
         Assert.Equal("tree", emptyTree.RoutingMode);
     }
+
+    [Fact]
+    public void GraphEditing_RemoveVertexRemoveEdgeAndReconnect_StayCleanUnderTracer()
+    {
+        var graph = GraphModel.ParseEdgeList("A -> B 4\nB -> C 2\nA -> C 9", isDirected: true, isWeighted: true);
+        var tracer = new GraphTracer(GraphRuleset.CourseStandard);
+
+        // Delete edge by ID leaves both endpoints intact and reconnect works
+        var ab = graph.Edges.Single(e => e.From == "A" && e.To == "B");
+        Assert.True(graph.RemoveEdgeById(ab.Id));
+        Assert.Equal(2, graph.Edges.Count);
+        Assert.True(graph.ContainsVertex("A"));
+        Assert.True(graph.ContainsVertex("B"));
+
+        var reconnected = graph.AddEdge("A", "B", 7);
+        Assert.Equal(7, reconnected.Weight);
+        Assert.Equal(3, graph.Edges.Count);
+
+        // Delete start vertex A removes incident edges and tracer handles updated start vertex
+        Assert.True(graph.RemoveVertex("A"));
+        Assert.Single(graph.Edges);
+        var nextStart = graph.Vertices.First().Id;
+        var traceAfterDelete = tracer.TraceBfs(graph, nextStart);
+        Assert.True(traceAfterDelete.IsSuccess);
+        Assert.Equal(new[] { "B", "C" }, traceAfterDelete.Steps[^1].State.VisitOrder);
+
+        // Delete remaining vertices down to empty graph without throwing
+        Assert.True(graph.RemoveVertex("B"));
+        Assert.True(graph.RemoveVertex("C"));
+        var emptyTrace = tracer.TraceBfs(graph, "");
+        Assert.True(emptyTrace.Count >= 1);
+        Assert.Empty(emptyTrace.Steps[0].State.Scene.Nodes);
+    }
 }

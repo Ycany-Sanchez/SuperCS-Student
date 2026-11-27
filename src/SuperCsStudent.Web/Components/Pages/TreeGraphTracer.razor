@@ -233,16 +233,18 @@
                 <input type="checkbox" class="accent-[var(--accent)]" @bind="_graphWeighted" @bind:after="RebuildGraphFromEditor" />
                 <span>Weighted</span>
             </label>
+            @if (_graphWeighted)
+            {
+                <label class="flex items-center gap-1 text-xs" style="color: var(--muted);" title="Weight used for newly dragged edges">
+                    <span>W</span>
+                    <input type="number" class="bp-input !h-8 w-16 font-mono text-xs" @bind="_graphNewEdgeWeight" />
+                </label>
+            }
             <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="RunGraphAlgorithm">Run @_graphAlgorithm</button>
-            <button type="button"
-                    class="bp-btn-secondary !h-8 text-xs"
-                    style="@(_graphBuildMode ? "border-color: var(--accent); background: var(--accent-soft); color: var(--accent);" : "")"
-                    @onclick="ToggleGraphBuildMode">
-                @(_graphBuildMode ? "Build Mode: ON" : "Click-to-Build")
-            </button>
             <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="() => _graphEditorOpen = !_graphEditorOpen">
                 @(_graphEditorOpen ? "Hide Edge Editor" : "Edit Edges")
             </button>
+            <button type="button" class="bp-btn-ghost !h-8 text-xs" @onclick="ClearGraph">Clear</button>
         }
         else
         {
@@ -263,35 +265,6 @@
     <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
         @* Left/Center Canvas Stage *@
         <div class="@(_inspectorCollapsed ? "lg:col-span-12" : "lg:col-span-8") flex flex-col min-h-[340px] lg:min-h-0 p-3 gap-2.5 overflow-hidden">
-            @if (_category == StructureCategory.Graph && _graphBuildMode)
-            {
-                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs"
-                     style="border-color: var(--accent); background: var(--accent-soft);">
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="font-semibold" style="color: var(--accent);">Interactive Graph Builder</span>
-                        <span style="color: var(--text);">Click empty canvas to add a vertex, or click two vertices to connect an edge.</span>
-                        @if (!string.IsNullOrEmpty(_graphSelectedSource))
-                        {
-                            <span class="bp-pill bp-pill-warning font-mono">From: @_graphSelectedSource → click target</span>
-                        }
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                        @if (_graphWeighted)
-                        {
-                            <label class="flex items-center gap-1">
-                                <span style="color: var(--muted);">Weight</span>
-                                <input type="number" class="bp-input !h-7 w-16 font-mono text-xs" @bind="_graphNewEdgeWeight" />
-                            </label>
-                        }
-                        @if (!string.IsNullOrEmpty(_graphSelectedSource))
-                        {
-                            <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="() => _graphSelectedSource = null">Cancel Edge</button>
-                        }
-                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" @onclick="ClearGraph">Clear Graph</button>
-                    </div>
-                </div>
-            }
-
             @if (_category == StructureCategory.Graph && _graphEditorOpen)
             {
                 <div class="bp-card p-3 flex flex-col gap-2 shrink-0">
@@ -305,11 +278,29 @@
 
             <div class="flex-1 min-h-0 min-w-0 grid @(_showIsomorphicMirror ? "grid-cols-1 lg:grid-cols-2 gap-2.5" : "grid-cols-1")">
                 <div class="relative min-h-[200px] min-w-0 overflow-hidden">
-                    <InteractiveSvgCanvas Scene="@ActiveScene"
+                    <InteractiveSvgCanvas @ref="_mainCanvas"
+                                          Scene="@ActiveScene"
                                           SnapMotion="@AppState.SnapMotion"
-                                          OnNodeClicked="HandleGraphNodeClick"
-                                          OnCanvasClicked="HandleGraphCanvasClick"
+                                          EnableConnectHandles="@(_category == StructureCategory.Graph)"
+                                          EnableSelection="true"
+                                          EnableDoubleClickAdd="@(_category == StructureCategory.Graph)"
+                                          IsDirectedGraph="@_graphDirected"
+                                          SelectedNodeId="@_selectedNodeId"
+                                          SelectedEdgeId="@_selectedEdgeId"
+                                          SelectedLabel="@SelectedDisplayLabel"
+                                          OnEdgeConnected="HandleGraphEdgeConnected"
+                                          OnSelectionChanged="HandleCanvasSelectionChanged"
+                                          OnDeleteSelected="HandleCanvasDeleteSelected"
+                                          OnCanvasDoubleClicked="HandleGraphCanvasDoubleClick"
                                           ExportFileName="@($"{_category.ToString().ToLowerInvariant()}-trace.svg")" />
+
+                    @if (_category == StructureCategory.Graph)
+                    {
+                        <div class="hidden sm:inline-flex items-center gap-1.5 absolute bottom-3 left-3 px-2.5 py-1 rounded-xl bp-floating text-[11px] pointer-events-none"
+                             style="color: var(--muted);">
+                            <span>Drag node edge handles to connect · Double-click canvas to add</span>
+                        </div>
+                    }
 
                     @if (CanTraverseCurrentCategory)
                     {
@@ -672,12 +663,13 @@
     private TreeRuleset _treeRuleset = TreeRuleset.CourseStandard;
     private GraphRuleset _graphRuleset = GraphRuleset.CourseStandard;
 
+    private InteractiveSvgCanvas? _mainCanvas;
     private bool _rulesOpen;
     private bool _inspectorCollapsed;
     private bool _graphEditorOpen;
-    private bool _graphBuildMode;
-    private string? _graphSelectedSource;
     private double _graphNewEdgeWeight = 10;
+    private string? _selectedNodeId;
+    private string? _selectedEdgeId;
     private string _inspectorTab = "trace";
     private int _stepIndex;
 
@@ -748,6 +740,7 @@
         _selectedPresetKey = preset.Key;
         _category = preset.Category;
         _inspectorTab = "trace";
+        ClearSelectionState();
 
         if (preset.RecommendedTreeRuleset is not null)
             _treeRuleset = preset.RecommendedTreeRuleset;
@@ -841,6 +834,7 @@
     {
         _activeTraversalMode = null;
         _traverseMenuOpen = false;
+        ClearSelectionState();
         _treeTimeline = _category switch
         {
             StructureCategory.Bst => (_bst = new BstTracer(_treeRuleset)).RunScript(_batchScript),
@@ -905,6 +899,7 @@
     {
         _activeTraversalMode = null;
         _traverseMenuOpen = false;
+        ClearSelectionState();
         _bst.Clear(); _avl.Clear(); _splay.Clear(); _twoFour.Clear(); _rb.Clear(); _binaryTree.Clear();
         _batchScript = string.Empty;
         _treeTimeline = new TraceTimeline<TreeStepState>(
@@ -960,58 +955,153 @@
         RunGraphAlgorithm();
     }
 
-    private void ToggleGraphBuildMode()
-    {
-        _graphBuildMode = !_graphBuildMode;
-        if (!_graphBuildMode)
-        {
-            _graphSelectedSource = null;
-        }
-    }
-
     private void ClearGraph()
     {
+        ClearSelectionState();
         _graph = new GraphModel(_graphDirected, _graphWeighted);
         _graphEdgeText = string.Empty;
-        _graphSelectedSource = null;
         _graphStartVertex = string.Empty;
         RunGraphAlgorithm();
     }
 
-    private void HandleGraphNodeClick(string nodeId)
+    private string? SelectedDisplayLabel
     {
-        if (_category != StructureCategory.Graph || !_graphBuildMode) return;
-        if (!_graph.ContainsVertex(nodeId)) return;
-
-        if (string.IsNullOrEmpty(_graphSelectedSource))
+        get
         {
-            _graphSelectedSource = nodeId;
-            return;
+            if (!string.IsNullOrEmpty(_selectedNodeId))
+            {
+                var node = ActiveScene?.Nodes.FirstOrDefault(n => n.Id == _selectedNodeId);
+                return node is not null ? $"Node {node.Label}" : _selectedNodeId;
+            }
+            if (!string.IsNullOrEmpty(_selectedEdgeId))
+            {
+                var edge = ActiveScene?.Edges.FirstOrDefault(e => e.Id == _selectedEdgeId);
+                if (edge is not null)
+                {
+                    var arrow = edge.IsDirected ? "→" : "—";
+                    return $"{edge.SourceId} {arrow} {edge.TargetId}";
+                }
+                return _selectedEdgeId;
+            }
+            return null;
         }
+    }
 
-        if (string.Equals(_graphSelectedSource, nodeId, StringComparison.Ordinal))
+    private void ClearSelectionState()
+    {
+        _selectedNodeId = null;
+        _selectedEdgeId = null;
+    }
+
+    private void HandleCanvasSelectionChanged((string Kind, string Id) selection)
+    {
+        _traverseMenuOpen = false;
+        if (selection.Kind == "node" && !string.IsNullOrEmpty(selection.Id))
         {
-            _graphSelectedSource = null;
-            return;
+            _selectedNodeId = selection.Id;
+            _selectedEdgeId = null;
         }
+        else if (selection.Kind == "edge" && !string.IsNullOrEmpty(selection.Id))
+        {
+            _selectedNodeId = null;
+            _selectedEdgeId = selection.Id;
+        }
+        else
+        {
+            ClearSelectionState();
+        }
+    }
 
-        _graph.AddEdge(_graphSelectedSource, nodeId, _graphWeighted ? _graphNewEdgeWeight : 1.0);
-        _graphSelectedSource = null;
+    private void HandleGraphEdgeConnected((string FromNodeId, string ToNodeId) conn)
+    {
+        if (_category != StructureCategory.Graph) return;
+        if (!_graph.ContainsVertex(conn.FromNodeId) || !_graph.ContainsVertex(conn.ToNodeId)) return;
+
+        _graph.AddEdge(conn.FromNodeId, conn.ToNodeId, _graphWeighted ? _graphNewEdgeWeight : 1.0);
         SyncEdgeTextFromGraph();
         RunGraphAlgorithm();
     }
 
-    private void HandleGraphCanvasClick((double X, double Y) coords)
+    private async Task HandleGraphCanvasDoubleClick((double X, double Y) coords)
     {
-        if (_category != StructureCategory.Graph || !_graphBuildMode) return;
+        if (_category != StructureCategory.Graph) return;
         var nextLabel = GenerateNextVertexId();
         _graph.AddVertex(nextLabel);
         if (string.IsNullOrWhiteSpace(_graphStartVertex))
         {
             _graphStartVertex = nextLabel;
         }
+        if (_mainCanvas is not null)
+        {
+            await _mainCanvas.SeedNodePositionAsync(nextLabel, coords.X, coords.Y);
+        }
+        _selectedNodeId = nextLabel;
+        _selectedEdgeId = null;
         SyncEdgeTextFromGraph();
         RunGraphAlgorithm();
+    }
+
+    private void HandleCanvasDeleteSelected((string Kind, string Id) target)
+    {
+        if (string.IsNullOrEmpty(target.Id)) return;
+
+        if (_category == StructureCategory.Graph)
+        {
+            if (target.Kind == "node")
+            {
+                if (_graph.RemoveVertex(target.Id))
+                {
+                    if (string.Equals(_graphStartVertex, target.Id, StringComparison.Ordinal))
+                    {
+                        _graphStartVertex = _graph.Vertices.FirstOrDefault()?.Id ?? string.Empty;
+                    }
+                    ClearSelectionState();
+                    SyncEdgeTextFromGraph();
+                    RunGraphAlgorithm();
+                }
+            }
+            else if (target.Kind == "edge")
+            {
+                if (_graph.RemoveEdgeById(target.Id))
+                {
+                    ClearSelectionState();
+                    SyncEdgeTextFromGraph();
+                    RunGraphAlgorithm();
+                }
+            }
+            return;
+        }
+
+        if (target.Kind != "node") return;
+        var selectedNode = ActiveScene?.Nodes.FirstOrDefault(n => n.Id == target.Id);
+        if (selectedNode is null || selectedNode.Shape == NodeShapes.Sentinel) return;
+
+        _activeTraversalMode = null;
+        _traverseMenuOpen = false;
+        ClearSelectionState();
+
+        if (_category == StructureCategory.BinaryTree)
+        {
+            _treeTimeline = _binaryTree.Remove(selectedNode.Id);
+            _stepIndex = System.Math.Max(0, TotalSteps - 1);
+            return;
+        }
+
+        var rawKeyText = _category == StructureCategory.TwoFour && selectedNode.MultiKeys is { Count: > 0 }
+            ? selectedNode.MultiKeys[0]
+            : selectedNode.Label;
+        if (!int.TryParse(rawKeyText, out var parsedKey)) return;
+
+        _treeTimeline = _category switch
+        {
+            StructureCategory.Bst => _bst.Delete(parsedKey),
+            StructureCategory.Avl => _avl.Delete(parsedKey),
+            StructureCategory.Splay => _splay.Delete(parsedKey),
+            StructureCategory.RedBlack => _rb.Delete(parsedKey),
+            StructureCategory.TwoFour => _twoFour.Delete(parsedKey),
+            _ => _treeTimeline
+        };
+        _stepIndex = 0;
     }
 
     private string GenerateNextVertexId()

@@ -2,7 +2,7 @@ import gsap from "gsap";
 import { Flip } from "gsap/Flip";
 import { MotionPathPlugin } from "gsap/MotionPathPlugin";
 import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
-import { EDGE_PALETTE_SIZE, routeOrthogonalEdges } from "./orthoRouter.js";
+import { EDGE_PALETTE_SIZE, polylineToRoundedPath, routeOrthogonalEdges } from "./orthoRouter.js";
 
 gsap.registerPlugin(Flip, MotionPathPlugin, DrawSVGPlugin);
 
@@ -126,6 +126,9 @@ export function mountSvgCanvas(container, dotNetRef) {
     pointerDownPos: { x: 0, y: 0 },
     pointerMoved: false,
     downNodeId: null,
+    downEdgeId: null,
+    connecting: null,
+    connectPreviewGroup: null,
     lastScene: null,
     lastOverlayTag: null,
     lastViewBox: null,
@@ -133,11 +136,84 @@ export function mountSvgCanvas(container, dotNetRef) {
     lastRect: { w: 0, h: 0 },
     nodePositions: new Map(),
     customOffsets: new Map(),
-    draggingNodeId: null
+    pendingDropPos: new Map(),
+    draggingNodeId: null,
+    options: {
+      enableConnectHandles: false,
+      enableSelection: false,
+      enableDoubleClickAdd: false,
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      isDirected: true
+    }
   };
 
   const applyTransform = () => {
     viewport.setAttribute("transform", `translate(${state.panX},${state.panY}) scale(${state.scale})`);
+  };
+
+  const clientToWorld = (clientX, clientY) => {
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - state.panX) / state.scale,
+      y: (clientY - rect.top - state.panY) / state.scale
+    };
+  };
+
+  const clearConnectPreview = () => {
+    if (state.connectPreviewGroup) {
+      state.connectPreviewGroup.remove();
+      state.connectPreviewGroup = null;
+    }
+    svg.classList.remove("svg-connecting");
+  };
+
+  const drawConnectPreview = () => {
+    if (!state.connecting) return;
+    if (!state.connectPreviewGroup) {
+      state.connectPreviewGroup = createEl("g", { "data-role": "connect-preview", "pointer-events": "none" });
+      state.effectsLayer.appendChild(state.connectPreviewGroup);
+    }
+    state.connectPreviewGroup.innerHTML = "";
+    const { startX, startY, curX, curY, targetId } = state.connecting;
+
+    let endX = curX;
+    let endY = curY;
+    if (targetId && state.lastScene) {
+      const targetPos = state.nodePositions.get(targetId);
+      const targetNode = (state.lastScene.nodes || []).find((n) => n.id === targetId);
+      if (targetPos && targetNode) {
+        const tr = Math.min(targetNode.width, targetNode.height) / 2;
+        state.connectPreviewGroup.appendChild(createEl("circle", {
+          cx: targetPos.x,
+          cy: targetPos.y,
+          r: tr + 6,
+          fill: "none",
+          stroke: "var(--accent)",
+          "stroke-width": "2.4",
+          "stroke-dasharray": "4 3",
+          opacity: "0.9"
+        }));
+        const angle = Math.atan2(targetPos.y - startY, targetPos.x - startX);
+        endX = targetPos.x - Math.cos(angle) * (tr + 4);
+        endY = targetPos.y - Math.sin(angle) * (tr + 4);
+      }
+    }
+
+    const midX = (startX + endX) / 2;
+    const previewPts = Math.abs(startY - endY) < 4
+      ? [{ x: startX, y: startY }, { x: endX, y: endY }]
+      : [{ x: startX, y: startY }, { x: midX, y: startY }, { x: midX, y: endY }, { x: endX, y: endY }];
+
+    state.connectPreviewGroup.appendChild(createEl("path", {
+      d: polylineToRoundedPath(previewPts, 5),
+      fill: "none",
+      stroke: "var(--accent)",
+      "stroke-width": "2.4",
+      "stroke-dasharray": "5 4",
+      "stroke-linecap": "round",
+      "marker-end": state.options.isDirected ? `url(#${state.idPrefix}arrow-selected)` : null
+    }));
   };
 
   svg.addEventListener("wheel", (e) => {
@@ -156,17 +232,59 @@ export function mountSvgCanvas(container, dotNetRef) {
   }, { passive: false });
 
   svg.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
     state.pointerDownPos = { x: e.clientX, y: e.clientY };
     state.pointerMoved = false;
+    state.downNodeId = null;
+    state.downEdgeId = null;
+
+    // 1. Draw.io perimeter connection handle press
+    const portEl = e.target.closest?.("[data-connect-port]");
+    if (portEl && state.options.enableConnectHandles) {
+      e.stopPropagation();
+      const fromId = portEl.getAttribute("data-from-node-id");
+      const pdx = Number(portEl.getAttribute("data-port-dx") || 0);
+      const pdy = Number(portEl.getAttribute("data-port-dy") || 0);
+      const fromPos = state.nodePositions.get(fromId);
+      if (fromId && fromPos) {
+        const wpt = clientToWorld(e.clientX, e.clientY);
+        state.connecting = {
+          fromId,
+          startX: fromPos.x + pdx,
+          startY: fromPos.y + pdy,
+          curX: wpt.x,
+          curY: wpt.y,
+          targetId: null,
+          movedAway: false
+        };
+        svg.classList.add("svg-connecting");
+        drawConnectPreview();
+        svg.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
+
+    // 2. Node body press (click to select or drag to move)
     const nodeGroup = e.target.closest?.("[data-node-id]");
     if (nodeGroup) {
-      state.downNodeId = nodeGroup.getAttribute("data-node-id");
-      state.draggingNodeId = state.downNodeId;
+      const nodeId = nodeGroup.getAttribute("data-node-id");
+      const isSentinel = nodeGroup.getAttribute("data-node-shape") === "sentinel";
+      state.downNodeId = isSentinel ? null : nodeId;
+      state.draggingNodeId = nodeId;
       state.dragStart = { x: e.clientX, y: e.clientY };
       svg.setPointerCapture(e.pointerId);
       return;
     }
-    state.downNodeId = null;
+
+    // 3. Edge press (click to select when selection enabled)
+    const edgeHit = e.target.closest?.("[data-edge-hit]");
+    if (edgeHit && state.options.enableSelection) {
+      state.downEdgeId = edgeHit.getAttribute("data-edge-hit");
+      svg.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    // 4. Empty canvas pan
     state.dragging = true;
     state.userInteracted = true;
     state.dragStart = { x: e.clientX - state.panX, y: e.clientY - state.panY };
@@ -176,6 +294,32 @@ export function mountSvgCanvas(container, dotNetRef) {
   svg.addEventListener("pointermove", (e) => {
     if (Math.hypot(e.clientX - state.pointerDownPos.x, e.clientY - state.pointerDownPos.y) > 4) {
       state.pointerMoved = true;
+    }
+    if (state.connecting && state.lastScene) {
+      const wpt = clientToWorld(e.clientX, e.clientY);
+      state.connecting.curX = wpt.x;
+      state.connecting.curY = wpt.y;
+      if (Math.hypot(wpt.x - state.connecting.startX, wpt.y - state.connecting.startY) > 28) {
+        state.connecting.movedAway = true;
+      }
+
+      let bestTarget = null;
+      let bestDist = Infinity;
+      for (const n of state.lastScene.nodes || []) {
+        if (n.shape === "sentinel") continue;
+        if (n.id === state.connecting.fromId && (!state.connecting.movedAway || !state.options.isDirected)) continue;
+        const pos = state.nodePositions.get(n.id);
+        if (!pos) continue;
+        const hitR = Math.max(n.width, n.height) / 2 + 16;
+        const dist = Math.hypot(pos.x - wpt.x, pos.y - wpt.y);
+        if (dist <= hitR && dist < bestDist) {
+          bestDist = dist;
+          bestTarget = n.id;
+        }
+      }
+      state.connecting.targetId = bestTarget;
+      drawConnectPreview();
+      return;
     }
     if (state.draggingNodeId && state.lastScene) {
       const dx = (e.clientX - state.dragStart.x) / state.scale;
@@ -193,25 +337,92 @@ export function mountSvgCanvas(container, dotNetRef) {
   });
 
   const endDrag = (e) => {
+    if (state.connecting) {
+      const { fromId, targetId } = state.connecting;
+      state.connecting = null;
+      clearConnectPreview();
+      if (e && e.type === "pointerup" && targetId && state.dotNetRef) {
+        state.dotNetRef.invokeMethodAsync("HandleEdgeConnected", fromId, targetId).catch(() => {});
+      }
+      return;
+    }
+
     const wasClick = !state.pointerMoved;
     const clickedNode = state.downNodeId;
+    const clickedEdge = state.downEdgeId;
     state.dragging = false;
     state.draggingNodeId = null;
     state.downNodeId = null;
+    state.downEdgeId = null;
 
     if (wasClick && state.dotNetRef && e && e.type === "pointerup") {
       if (clickedNode) {
+        if (state.options.enableSelection) {
+          state.options.selectedNodeId = clickedNode;
+          state.options.selectedEdgeId = null;
+          if (state.lastScene) renderScene(container, state.lastScene, true);
+          state.dotNetRef.invokeMethodAsync("HandleSelectionChanged", "node", clickedNode).catch(() => {});
+        }
         state.dotNetRef.invokeMethodAsync("HandleNodeClick", clickedNode).catch(() => {});
+      } else if (clickedEdge) {
+        if (state.options.enableSelection) {
+          state.options.selectedNodeId = null;
+          state.options.selectedEdgeId = clickedEdge;
+          if (state.lastScene) renderScene(container, state.lastScene, true);
+          state.dotNetRef.invokeMethodAsync("HandleSelectionChanged", "edge", clickedEdge).catch(() => {});
+        }
       } else {
-        const rect = svg.getBoundingClientRect();
-        const wx = (e.clientX - rect.left - state.panX) / state.scale;
-        const wy = (e.clientY - rect.top - state.panY) / state.scale;
-        state.dotNetRef.invokeMethodAsync("HandleCanvasClick", wx, wy).catch(() => {});
+        if (state.options.enableSelection && (state.options.selectedNodeId || state.options.selectedEdgeId)) {
+          state.options.selectedNodeId = null;
+          state.options.selectedEdgeId = null;
+          if (state.lastScene) renderScene(container, state.lastScene, true);
+          state.dotNetRef.invokeMethodAsync("HandleSelectionChanged", "none", "").catch(() => {});
+        }
+        const wpt = clientToWorld(e.clientX, e.clientY);
+        state.dotNetRef.invokeMethodAsync("HandleCanvasClick", wpt.x, wpt.y).catch(() => {});
       }
     }
   };
   svg.addEventListener("pointerup", endDrag);
   svg.addEventListener("pointercancel", endDrag);
+
+  svg.addEventListener("dblclick", (e) => {
+    if (!state.options.enableDoubleClickAdd || !state.dotNetRef) return;
+    if (e.target.closest?.("[data-node-id]") || e.target.closest?.("[data-edge-hit]") || e.target.closest?.("[data-connect-port]")) {
+      return;
+    }
+    const wpt = clientToWorld(e.clientX, e.clientY);
+    state.dotNetRef.invokeMethodAsync("HandleCanvasDoubleClick", wpt.x, wpt.y).catch(() => {});
+  });
+
+  const onKeyDown = (e) => {
+    if (!state.options.enableSelection || !state.dotNetRef) return;
+    if (e.key !== "Backspace" && e.key !== "Delete") return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!container.isConnected || container.offsetParent === null) return;
+
+    const isEditable = (el) => {
+      if (!el || el.nodeType !== 1) return false;
+      const tag = el.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+    };
+    if (isEditable(e.target) || isEditable(document.activeElement)) return;
+    if (document.querySelector('[role="dialog"]')) return;
+
+    if (state.options.selectedNodeId) {
+      e.preventDefault();
+      const id = state.options.selectedNodeId;
+      state.options.selectedNodeId = null;
+      state.dotNetRef.invokeMethodAsync("HandleDeleteSelected", "node", id).catch(() => {});
+    } else if (state.options.selectedEdgeId) {
+      e.preventDefault();
+      const id = state.options.selectedEdgeId;
+      state.options.selectedEdgeId = null;
+      state.dotNetRef.invokeMethodAsync("HandleDeleteSelected", "edge", id).catch(() => {});
+    }
+  };
+  window.addEventListener("keydown", onKeyDown);
+  state.onKeyDown = onKeyDown;
 
   state.applyTransform = applyTransform;
   instances.set(container, state);
@@ -257,6 +468,48 @@ function markerForState(idPrefix, state, paletteIdx = null) {
   return `url(#${idPrefix}arrow-default)`;
 }
 
+export function configureCanvas(container, options = {}) {
+  const st = instances.get(container);
+  if (!st) return;
+  const next = {
+    enableConnectHandles: Boolean(options.enableConnectHandles),
+    enableSelection: Boolean(options.enableSelection),
+    enableDoubleClickAdd: Boolean(options.enableDoubleClickAdd),
+    selectedNodeId: options.selectedNodeId || null,
+    selectedEdgeId: options.selectedEdgeId || null,
+    isDirected: options.isDirected !== undefined ? Boolean(options.isDirected) : true
+  };
+  const changed =
+    st.options.enableConnectHandles !== next.enableConnectHandles ||
+    st.options.enableSelection !== next.enableSelection ||
+    st.options.enableDoubleClickAdd !== next.enableDoubleClickAdd ||
+    st.options.selectedNodeId !== next.selectedNodeId ||
+    st.options.selectedEdgeId !== next.selectedEdgeId ||
+    st.options.isDirected !== next.isDirected;
+  st.options = next;
+  if (changed && st.lastScene) {
+    renderScene(container, st.lastScene, true);
+  }
+}
+
+export function seedNodePosition(container, nodeId, x, y) {
+  const st = instances.get(container);
+  if (!st || !nodeId) return;
+  st.pendingDropPos.set(nodeId, { x, y });
+}
+
+export function disposeCanvas(container) {
+  const st = instances.get(container);
+  if (!st) return;
+  if (st.onKeyDown) {
+    window.removeEventListener("keydown", st.onKeyDown);
+  }
+  if (st.resizeObserver) {
+    st.resizeObserver.disconnect();
+  }
+  instances.delete(container);
+}
+
 export function renderScene(container, scene, snap = false) {
   const st = instances.get(container);
   if (!st || !scene) return;
@@ -279,9 +532,14 @@ export function renderScene(container, scene, snap = false) {
   const nodes = scene.nodes || [];
   const edges = scene.edges || [];
 
-  // Resolve current node coordinates (applying any user drag offsets)
+  // Resolve current node coordinates (applying any pending double-click drop or user drag offsets)
   const resolved = new Map();
   for (const n of nodes) {
+    const pending = st.pendingDropPos.get(n.id);
+    if (pending) {
+      st.customOffsets.set(n.id, { dx: pending.x - n.x, dy: pending.y - n.y });
+      st.pendingDropPos.delete(n.id);
+    }
     const off = st.customOffsets.get(n.id) || { dx: 0, dy: 0 };
     const x = n.x + off.dx;
     const y = n.y + off.dy;
@@ -294,6 +552,7 @@ export function renderScene(container, scene, snap = false) {
   st.edgesLayer.classList.remove("svg-edges-hovering");
   st.nodesLayer.innerHTML = "";
   st.effectsLayer.innerHTML = "";
+  st.connectPreviewGroup = null;
 
   const isTreeScene = scene.routingMode === "tree";
   const orthoRoutes = isTreeScene ? null : routeOrthogonalEdges(resolved, edges, { cornerRadius: 5 });
@@ -308,11 +567,13 @@ export function renderScene(container, scene, snap = false) {
     if (!src || !tgt) continue;
 
     const key = e.id ?? `${e.sourceId}->${e.targetId}#${idx}`;
+    const edgeId = e.id || key;
     const ortho = orthoRoutes ? orthoRoutes.get(key) : null;
     const { d, labelX, labelY } = ortho || computeEdgePath(src, tgt, e.curveOffset || 0, Boolean(e.isDirected));
     const paletteIdx = (!isTreeScene && ortho) ? ortho.colorIndex : null;
-    const stroke = edgeColor(e.semanticState, paletteIdx);
-    const isActive = e.semanticState === "active" || e.semanticState === "accepted" || e.semanticState === "frontier" || e.semanticState === "rejected" || e.semanticState === "violation";
+    const isSelectedEdge = st.options.enableSelection && st.options.selectedEdgeId === edgeId;
+    const stroke = isSelectedEdge ? "var(--accent)" : edgeColor(e.semanticState, paletteIdx);
+    const isActive = isSelectedEdge || e.semanticState === "active" || e.semanticState === "accepted" || e.semanticState === "frontier" || e.semanticState === "rejected" || e.semanticState === "violation";
     const isSteppingActive = e.semanticState === "active";
 
     const baseOpacity = e.isDimmed
@@ -321,7 +582,7 @@ export function renderScene(container, scene, snap = false) {
 
     const edgeGroup = createEl("g", {
       class: isTreeScene ? "svg-tree-edge" : "svg-edge-group",
-      "data-edge-id": e.id || key,
+      "data-edge-id": edgeId,
       opacity: baseOpacity
     });
 
@@ -331,9 +592,22 @@ export function renderScene(container, scene, snap = false) {
         d,
         fill: "none",
         stroke: "var(--canvas-well)",
-        "stroke-width": isSteppingActive ? "6" : "4.5",
+        "stroke-width": (isSteppingActive || isSelectedEdge) ? "6" : "4.5",
         "stroke-linecap": "round",
         "stroke-linejoin": "round",
+        "pointer-events": "none"
+      }));
+    }
+
+    if (isSelectedEdge) {
+      edgeGroup.appendChild(createEl("path", {
+        d,
+        fill: "none",
+        stroke: "var(--accent)",
+        "stroke-width": "7.5",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        opacity: "0.26",
         "pointer-events": "none"
       }));
     }
@@ -342,22 +616,25 @@ export function renderScene(container, scene, snap = false) {
       d,
       fill: "none",
       stroke,
-      "stroke-width": isSteppingActive ? "2.8" : (isActive ? "2.4" : (isTreeScene ? "1.5" : "1.95")),
+      "stroke-width": (isSteppingActive || isSelectedEdge) ? "2.8" : (isActive ? "2.4" : (isTreeScene ? "1.5" : "1.95")),
       "stroke-linecap": "round",
       "stroke-linejoin": "round",
       "stroke-dasharray": e.isDashed ? "5 4" : null,
-      "marker-end": e.isDirected ? markerForState(st.idPrefix, e.semanticState, paletteIdx) : null
+      "marker-end": e.isDirected
+        ? (isSelectedEdge ? `url(#${st.idPrefix}arrow-selected)` : markerForState(st.idPrefix, e.semanticState, paletteIdx))
+        : null
     });
     edgeGroup.appendChild(pathEl);
 
     if (!isTreeScene) {
-      // Wide invisible hit path for effortless wire hover isolation (and selection in Task 4)
+      // Wide invisible hit path for effortless wire hover isolation & click selection
       const hitEl = createEl("path", {
         d,
         fill: "none",
         stroke: "transparent",
-        "stroke-width": "12",
-        "data-edge-hit": e.id || key
+        "stroke-width": "13",
+        class: st.options.enableSelection ? "cursor-pointer" : null,
+        "data-edge-hit": edgeId
       });
       edgeGroup.appendChild(hitEl);
       edgeGroup.addEventListener("pointerenter", () => {
@@ -411,9 +688,11 @@ export function renderScene(container, scene, snap = false) {
   // Render nodes with smooth GSAP coordinate interpolation from previous positions
   for (const n of resolved.values()) {
     const colors = semanticColors(n.semanticState);
+    const isSelectedNode = st.options.enableSelection && st.options.selectedNodeId === n.id && n.shape !== "sentinel";
     const g = createEl("g", {
       "data-node-id": n.id,
-      class: "cursor-grab active:cursor-grabbing",
+      "data-node-shape": n.shape || "circle",
+      class: `cursor-grab active:cursor-grabbing${isSelectedNode ? " svg-node-selected" : ""}`,
       opacity: n.isDimmed ? "0.26" : "1"
     });
 
@@ -439,6 +718,67 @@ export function renderScene(container, scene, snap = false) {
     }
 
     drawNodeShape(g, n, colors, st.idPrefix);
+
+    // Selection ring around selected node
+    if (isSelectedNode) {
+      if (n.shape === "schema-node" || n.shape === "box" || n.shape === "pill" || n.shape === "multi-key") {
+        const selW = n.shape === "multi-key" && n.multiKeys?.length
+          ? Math.max(n.width, n.multiKeys.length * 34)
+          : n.width;
+        const selH = n.shape === "multi-key" ? 36 : n.height;
+        const rx = n.shape === "pill" ? selH / 2 + 4 : 12;
+        g.insertBefore(createEl("rect", {
+          x: -selW / 2 - 5,
+          y: -selH / 2 - 5,
+          width: selW + 10,
+          height: selH + 10,
+          rx,
+          fill: "none",
+          stroke: "var(--accent)",
+          "stroke-width": "2.4",
+          "pointer-events": "none"
+        }), g.firstChild);
+      } else {
+        const r = Math.min(n.width, n.height) / 2;
+        g.insertBefore(createEl("circle", {
+          cx: 0,
+          cy: 0,
+          r: r + 6,
+          fill: "none",
+          stroke: "var(--accent)",
+          "stroke-width": "2.4",
+          "pointer-events": "none"
+        }), g.firstChild);
+      }
+    }
+
+    // Draw.io perimeter connection handles (visible on hover / selection / active drag)
+    if (st.options.enableConnectHandles && n.shape !== "sentinel") {
+      const isBox = n.shape === "schema-node" || n.shape === "box" || n.shape === "pill";
+      const rx = isBox ? n.width / 2 : Math.min(n.width, n.height) / 2;
+      const ry = isBox ? n.height / 2 : Math.min(n.width, n.height) / 2;
+      const ports = [
+        [0, -ry],
+        [rx, 0],
+        [0, ry],
+        [-rx, 0]
+      ];
+      for (const [px, py] of ports) {
+        g.appendChild(createEl("circle", {
+          cx: px,
+          cy: py,
+          r: "5.2",
+          fill: "var(--surface)",
+          stroke: "var(--accent)",
+          "stroke-width": "1.9",
+          class: "svg-connect-port",
+          "data-connect-port": "true",
+          "data-from-node-id": n.id,
+          "data-port-dx": px,
+          "data-port-dy": py
+        }));
+      }
+    }
 
     // Optional corner badge (balance factor, height, (R)/(B), distance D[v])
     if (n.badge) {
@@ -912,6 +1252,7 @@ function buildResolvedSvgClone(st) {
     });
 
   const clone = st.svg.cloneNode(true);
+  clone.querySelectorAll("[data-connect-port], [data-role='connect-preview']").forEach((el) => el.remove());
   clone.setAttribute("xmlns", NS);
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));
