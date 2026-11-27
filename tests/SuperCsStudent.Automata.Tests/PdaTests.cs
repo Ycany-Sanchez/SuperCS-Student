@@ -108,4 +108,40 @@ public class PdaTests
         Assert.True(roundTripped.Accepts("aabb"));
         Assert.False(roundTripped.Accepts("abb"));
     }
+
+    [Fact]
+    public void PdaTracer_EmitsStructuredPushPopAndInputDeltasForStackVisualization()
+    {
+        var cfg = Cfg.ParseFromText("S -> aSb | aA\nA -> aA | e");
+        var pda = CfgToPdaConverter.Convert(cfg);
+
+        var trace = PdaTracer.Trace(pda, "aab");
+        Assert.True(trace.Accepted);
+
+        var steps = trace.Timeline.Steps;
+        Assert.Equal("INIT", steps[0].State.OperationKind);
+        Assert.Equal("aab", steps[0].State.FullInput);
+        Assert.Equal(0, steps[0].State.InputIndex);
+
+        // Step 1 pushes start symbol S
+        Assert.Equal("PUSH", steps[1].State.OperationKind);
+        Assert.Equal(new[] { "S" }, steps[1].State.PushedFrames);
+        Assert.Empty(steps[1].State.PoppedFrames!);
+
+        // Contains a REPLACE expansion (Pop S -> Push aSb) and MATCH steps (Read 'a', Pop 'a')
+        Assert.Contains(steps, s =>
+            s.State.OperationKind == "REPLACE" &&
+            s.State.PoppedFrames!.SequenceEqual(new[] { "S" }) &&
+            s.State.PushedFrames!.SequenceEqual(new[] { "a", "S", "b" }));
+
+        Assert.Contains(steps, s =>
+            s.State.OperationKind == "MATCH" &&
+            s.State.ReadSymbols == "a" &&
+            s.State.PoppedFrames!.SequenceEqual(new[] { "a" }));
+
+        // Final step reached end of input with empty stack
+        Assert.Equal(3, steps[^1].State.InputIndex);
+        Assert.Empty(steps[^1].State.StackFrames);
+        Assert.Equal(true, steps[^1].State.IsAccepted);
+    }
 }

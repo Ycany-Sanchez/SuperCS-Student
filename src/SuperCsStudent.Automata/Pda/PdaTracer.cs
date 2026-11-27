@@ -23,7 +23,14 @@ public sealed record PdaStepState(
     PdaTraceRow CurrentRow,
     IReadOnlyList<PdaTraceRow> RowsSoFar,
     bool? IsAccepted,
-    DiagramScene Scene);
+    DiagramScene Scene,
+    string FullInput = "",
+    int InputIndex = 0,
+    string ReadSymbols = "",
+    IReadOnlyList<string>? PoppedFrames = null,
+    IReadOnlyList<string>? PushedFrames = null,
+    string OperationKind = "INIT",
+    string? PreviousState = null);
 
 public sealed record PdaTraceResult(
     bool Accepted,
@@ -214,6 +221,11 @@ public static class PdaTracer
                 ? Array.Empty<string>()
                 : new[] { EdgeId(tr.FromState, tr.ToState) };
 
+            var readSyms = tr?.RawRead ?? string.Empty;
+            var poppedFrames = tr is not null ? ToStackFrames(tr.RawPop) : Array.Empty<string>();
+            var pushedFrames = tr is not null ? ToStackFrames(tr.RawPush) : Array.Empty<string>();
+            var opKind = ClassifyStackOperation(tr, stepVerdict);
+
             steps.Add(new TraceStep<PdaStepState>(
                 StepIndex: steps.Count,
                 Title: isLast && accepted ? $"Accepted in {cfg.State}" : title,
@@ -228,7 +240,14 @@ public static class PdaTracer
                     row,
                     rows.ToArray(),
                     stepVerdict,
-                    scene),
+                    scene,
+                    FullInput: word,
+                    InputIndex: cfg.InputIndex,
+                    ReadSymbols: readSyms,
+                    PoppedFrames: poppedFrames,
+                    PushedFrames: pushedFrames,
+                    OperationKind: opKind,
+                    PreviousState: tr?.FromState),
                 HighlightedNodeIds: new[] { cfg.State },
                 HighlightedEdgeIds: highlightedEdges,
                 OperationCode: opCode,
@@ -269,7 +288,14 @@ public static class PdaTracer
                     rejectRow,
                     rows.ToArray(),
                     false,
-                    rejectScene),
+                    rejectScene,
+                    FullInput: word,
+                    InputIndex: lastCfg.InputIndex,
+                    ReadSymbols: string.Empty,
+                    PoppedFrames: Array.Empty<string>(),
+                    PushedFrames: Array.Empty<string>(),
+                    OperationKind: "REJECT",
+                    PreviousState: lastCfg.State),
                 HighlightedNodeIds: new[] { lastCfg.State },
                 HighlightedEdgeIds: Array.Empty<string>(),
                 OperationCode: "REJECT",
@@ -345,6 +371,21 @@ public static class PdaTracer
             return Array.Empty<string>();
         }
         return stack.Select(c => c.ToString()).ToArray();
+    }
+
+    private static string ClassifyStackOperation(PdaTransition? tr, bool? stepVerdict)
+    {
+        if (tr is null) return stepVerdict == true ? "ACCEPT" : "INIT";
+        var hasRead = tr.RawRead.Length > 0;
+        var hasPop = tr.RawPop.Length > 0;
+        var hasPush = tr.RawPush.Length > 0;
+
+        if (hasPop && hasPush) return "REPLACE";
+        if (hasPush) return "PUSH";
+        if (hasRead && hasPop) return "MATCH";
+        if (hasPop) return "POP";
+        if (hasRead) return "READ";
+        return "EPSILON";
     }
 
     private static string DescribeTransition(PdaTransition tr)
