@@ -185,6 +185,10 @@ public sealed class BinaryAndBstTests
         {
             Assert.Contains($"#{i}", finalSubLabels);
         }
+
+        // Visit steps must not leave an unrelated parent->child edge marked Active (which would fire a second stray dot)
+        var visitF = walk.Steps.Single(s => s.Title == "Post-order Visit F");
+        Assert.DoesNotContain(visitF.State.Scene.Edges, e => e.SemanticState == SemanticStates.Active);
     }
 
     [Fact]

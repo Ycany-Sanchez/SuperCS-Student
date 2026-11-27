@@ -526,7 +526,9 @@ public static class TreeTraversalTracer
             {
                 return e with { SemanticState = isVisit ? SemanticStates.Active : SemanticStates.Frontier };
             }
-            return e;
+            return e.SemanticState == SemanticStates.Active
+                ? e with { SemanticState = SemanticStates.Default }
+                : e;
         }).ToList();
 
         var scene = rawState.Scene with

@@ -138,6 +138,7 @@ export function mountSvgCanvas(container, dotNetRef) {
     customOffsets: new Map(),
     pendingDropPos: new Map(),
     draggingNodeId: null,
+    motionTweens: [],
     options: {
       enableConnectHandles: false,
       enableSelection: false,
@@ -501,6 +502,7 @@ export function seedNodePosition(container, nodeId, x, y) {
 export function disposeCanvas(container) {
   const st = instances.get(container);
   if (!st) return;
+  killMotionTweens(st);
   if (st.onKeyDown) {
     window.removeEventListener("keydown", st.onKeyDown);
   }
@@ -508,6 +510,14 @@ export function disposeCanvas(container) {
     st.resizeObserver.disconnect();
   }
   instances.delete(container);
+}
+
+function killMotionTweens(st) {
+  if (!st.motionTweens || st.motionTweens.length === 0) return;
+  for (const tw of st.motionTweens) {
+    try { tw.kill(); } catch {}
+  }
+  st.motionTweens = [];
 }
 
 export function renderScene(container, scene, snap = false) {
@@ -555,6 +565,7 @@ export function renderScene(container, scene, snap = false) {
   }
 
   // Clear layers cleanly
+  killMotionTweens(st);
   st.edgesLayer.innerHTML = "";
   st.edgesLayer.classList.remove("svg-edges-hovering");
   st.nodesLayer.innerHTML = "";
@@ -836,26 +847,24 @@ export function renderScene(container, scene, snap = false) {
     st.nodesLayer.appendChild(g);
   }
 
-  // Animate active edge draw + traveling token pulse via DrawSVGPlugin & MotionPathPlugin
-  for (const { pathEl, stroke } of activeEdgePaths) {
-    try {
-      gsap.fromTo(pathEl, { drawSVG: "0%" }, { drawSVG: "100%", duration: 0.3, ease: "power1.out" });
-      const dot = createEl("circle", { r: "4", fill: stroke });
-      st.effectsLayer.appendChild(dot);
-      gsap.to(dot, {
-        duration: 0.36,
-        ease: "power1.inOut",
-        motionPath: { path: pathEl, align: pathEl, alignOrigin: [0.5, 0.5] },
-        onComplete: () => dot.remove()
-      });
-    } catch {
-      // Fallback safely if path length is 0
+  // Animate active edge draw + traveling token pulse (skip when explicit activeMotion drives traversal)
+  if (!scene.activeMotion) {
+    for (const { pathEl, stroke } of activeEdgePaths) {
+      try {
+        const drawTw = gsap.fromTo(pathEl, { drawSVG: "0%" }, { drawSVG: "100%", duration: 0.3, ease: "power1.out" });
+        st.motionTweens.push(drawTw);
+        const dot = createEl("circle", { r: "4", fill: stroke, "pointer-events": "none" });
+        st.effectsLayer.appendChild(dot);
+        animateDotAlongPath(st, pathEl, dot, 0.36, () => dot.remove());
+      } catch {
+        // Fallback safely if path length is 0
+      }
     }
   }
 
   // Render explicit node A -> node B traversal motion (recursive tree walk / BFS hop / visit beat)
   if (scene.activeMotion) {
-    renderActiveMotion(st.effectsLayer, resolved, scene.activeMotion, skipMotion);
+    renderActiveMotion(st, st.effectsLayer, resolved, scene.activeMotion, skipMotion);
   }
 
   if (isFirstRender || overlayChanged || (!st.userInteracted && viewBoxChanged)) {
@@ -863,7 +872,36 @@ export function renderScene(container, scene, snap = false) {
   }
 }
 
-function renderActiveMotion(effectsLayer, resolved, motion, skipMotion) {
+/**
+ * Animates an SVG <circle> along a <path> strictly in SVG user-space using native
+ * getPointAtLength(). Avoids GSAP MotionPathPlugin align()/getBoundingClientRect()
+ * matrix inversion bugs on zero-width vertical or zero-height horizontal paths.
+ */
+function animateDotAlongPath(st, pathEl, dotEl, duration, onComplete) {
+  const totalLen = typeof pathEl.getTotalLength === "function" ? pathEl.getTotalLength() : 0;
+  if (!totalLen || !Number.isFinite(totalLen)) {
+    if (onComplete) onComplete();
+    return;
+  }
+  const startPt = pathEl.getPointAtLength(0);
+  dotEl.setAttribute("cx", String(startPt.x));
+  dotEl.setAttribute("cy", String(startPt.y));
+  const prog = { t: 0 };
+  const tw = gsap.to(prog, {
+    t: 1,
+    duration,
+    ease: "power1.inOut",
+    onUpdate: () => {
+      const pt = pathEl.getPointAtLength(prog.t * totalLen);
+      dotEl.setAttribute("cx", String(pt.x));
+      dotEl.setAttribute("cy", String(pt.y));
+    },
+    onComplete
+  });
+  st.motionTweens.push(tw);
+}
+
+function renderActiveMotion(st, effectsLayer, resolved, motion, skipMotion) {
   const from = resolved.get(motion.fromNodeId);
   const to = resolved.get(motion.toNodeId);
   if (!from || !to) return;
@@ -895,12 +933,18 @@ function renderActiveMotion(effectsLayer, resolved, motion, skipMotion) {
     effectsLayer.appendChild(dot);
 
     if (!skipMotion) {
-      gsap.fromTo(
-        pulseRing,
-        { attr: { r: r + 1 }, opacity: 0.9 },
-        { attr: { r: r + 11 }, opacity: 0, duration: 0.48, ease: "power2.out" }
+      st.motionTweens.push(
+        gsap.fromTo(
+          pulseRing,
+          { attr: { r: r + 1 }, opacity: 0.9 },
+          { attr: { r: r + 11 }, opacity: 0, duration: 0.48, ease: "power2.out" }
+        ),
+        gsap.fromTo(
+          dot,
+          { attr: { r: 2.6 } },
+          { attr: { r: 5.2 }, duration: 0.24, ease: "back.out(2)" }
+        )
       );
-      gsap.fromTo(dot, { scale: 0.65, transformOrigin: `${to.x}px ${to.y - r - 3}px` }, { scale: 1, duration: 0.24, ease: "back.out(2)" });
     }
     return;
   }
@@ -958,12 +1002,10 @@ function renderActiveMotion(effectsLayer, resolved, motion, skipMotion) {
 
   if (!skipMotion) {
     try {
-      gsap.fromTo(trail, { drawSVG: "0%" }, { drawSVG: "100%", duration: 0.34, ease: "power1.out" });
-      gsap.to(dot, {
-        duration: 0.4,
-        ease: "power1.inOut",
-        motionPath: { path: trail, align: trail, alignOrigin: [0.5, 0.5] }
-      });
+      st.motionTweens.push(
+        gsap.fromTo(trail, { opacity: 0.25 }, { opacity: 0.92, duration: 0.28, ease: "power1.out" })
+      );
+      animateDotAlongPath(st, trail, dot, 0.38);
     } catch {
       // Static fallback already positioned at (endX, endY)
     }
