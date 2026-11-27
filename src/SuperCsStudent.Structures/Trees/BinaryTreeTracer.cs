@@ -218,6 +218,15 @@ public sealed class BinaryTreeTracer
         return new TraceTimeline<TreeStepState>(steps, pseudocode, ops, $"Removed '{target.Label}'.", isSuccess: true);
     }
 
+    public TraceTimeline<TreeStepState> TraceWalk(TreeTraversalMode mode) =>
+        TreeTraversalTracer.TraceWalk(
+            ToTraversalNode(_root),
+            mode,
+            (summary, overrides) => BuildSnapshot(summary, overrides));
+
+    private static BinaryTraversalNode? ToTraversalNode(BinaryNode? n) =>
+        n is null ? null : new BinaryTraversalNode(n.Id, n.Label, ToTraversalNode(n.Left), ToTraversalNode(n.Right));
+
     public TraceTimeline<TreeStepState> TracePreOrder()
     {
         var steps = new List<TraceStep<TreeStepState>>();

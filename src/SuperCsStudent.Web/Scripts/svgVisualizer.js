@@ -505,8 +505,120 @@ export function renderScene(container, scene, snap = false) {
     }
   }
 
+  // Render explicit node A -> node B traversal motion (recursive tree walk / BFS hop / visit beat)
+  if (scene.activeMotion) {
+    renderActiveMotion(st.effectsLayer, resolved, scene.activeMotion, skipMotion);
+  }
+
   if (isFirstRender || overlayChanged || (!st.userInteracted && viewBoxChanged)) {
     fitCanvas(container);
+  }
+}
+
+function renderActiveMotion(effectsLayer, resolved, motion, skipMotion) {
+  const from = resolved.get(motion.fromNodeId);
+  const to = resolved.get(motion.toNodeId);
+  if (!from || !to) return;
+
+  const color = motion.color || (motion.kind === "visit" ? "var(--warning)" : "var(--accent)");
+
+  if (from.id === to.id) {
+    const r = Math.min(to.width, to.height) / 2;
+    const pulseRing = createEl("circle", {
+      cx: to.x,
+      cy: to.y,
+      r: r + 5,
+      fill: "none",
+      stroke: color,
+      "stroke-width": "2.4",
+      opacity: "0.75",
+      "pointer-events": "none"
+    });
+    const dot = createEl("circle", {
+      cx: to.x,
+      cy: to.y - r - 3,
+      r: "5.2",
+      fill: color,
+      stroke: "var(--surface)",
+      "stroke-width": "1.8",
+      "pointer-events": "none"
+    });
+    effectsLayer.appendChild(pulseRing);
+    effectsLayer.appendChild(dot);
+
+    if (!skipMotion) {
+      gsap.fromTo(
+        pulseRing,
+        { attr: { r: r + 1 }, opacity: 0.9 },
+        { attr: { r: r + 11 }, opacity: 0, duration: 0.48, ease: "power2.out" }
+      );
+      gsap.fromTo(dot, { scale: 0.65, transformOrigin: `${to.x}px ${to.y - r - 3}px` }, { scale: 1, duration: 0.24, ease: "back.out(2)" });
+    }
+    return;
+  }
+
+  let d;
+  let endX;
+  let endY;
+
+  if (motion.kind === "hop") {
+    const mx = (from.x + to.x) / 2;
+    const my = Math.min(from.y, to.y) - 34;
+    d = `M ${from.x} ${from.y} Q ${mx} ${my} ${to.x} ${to.y}`;
+    endX = to.x;
+    endY = to.y;
+  } else if (to.y >= from.y) {
+    // Descending along real tree S-curve (parent -> child)
+    const sy = from.y + from.height / 2;
+    const ty = to.y - to.height / 2;
+    const midY = (sy + ty) / 2;
+    d = `M ${from.x} ${sy} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${ty}`;
+    endX = to.x;
+    endY = ty;
+  } else {
+    // Returning upward along exact same tree S-curve (child -> parent)
+    const sy = from.y - from.height / 2;
+    const ty = to.y + to.height / 2;
+    const midY = (sy + ty) / 2;
+    d = `M ${from.x} ${sy} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${ty}`;
+    endX = to.x;
+    endY = ty;
+  }
+
+  const trail = createEl("path", {
+    d,
+    fill: "none",
+    stroke: color,
+    "stroke-width": "2.6",
+    "stroke-linecap": "round",
+    "stroke-dasharray": "5 4",
+    opacity: "0.92",
+    "pointer-events": "none"
+  });
+  const dot = createEl("circle", {
+    cx: endX,
+    cy: endY,
+    r: "5.8",
+    fill: color,
+    stroke: "var(--surface)",
+    "stroke-width": "2",
+    "pointer-events": "none"
+  });
+
+  effectsLayer.appendChild(trail);
+  effectsLayer.appendChild(dot);
+
+  if (!skipMotion) {
+    try {
+      gsap.fromTo(trail, { drawSVG: "0%" }, { drawSVG: "100%", duration: 0.34, ease: "power1.out" });
+      gsap.to(dot, {
+        duration: 0.4,
+        ease: "power1.inOut",
+        motionPath: { path: trail, align: trail, alignOrigin: [0.5, 0.5] }
+      });
+    } catch {
+      // Static fallback already positioned at (endX, endY)
+    }
   }
 }
 

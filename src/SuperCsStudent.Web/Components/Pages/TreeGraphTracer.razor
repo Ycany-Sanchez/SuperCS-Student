@@ -214,12 +214,6 @@
             <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="BtAddLeft">Add Left</button>
             <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="BtAddRight">Add Right</button>
             <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="BtRemove">Remove</button>
-            <span class="w-px h-5" style="background: var(--border);"></span>
-            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick='() => RunBinaryTraversal("pre")'>Preorder</button>
-            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick='() => RunBinaryTraversal("in")'>Inorder</button>
-            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick='() => RunBinaryTraversal("post")'>Postorder</button>
-            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick='() => RunBinaryTraversal("bfs")'>BFS</button>
-            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick='() => RunBinaryTraversal("euler")'>Euler Tour</button>
         }
         else if (_category == StructureCategory.Graph)
         {
@@ -316,6 +310,61 @@
                                           OnNodeClicked="HandleGraphNodeClick"
                                           OnCanvasClicked="HandleGraphCanvasClick"
                                           ExportFileName="@($"{_category.ToString().ToLowerInvariant()}-trace.svg")" />
+
+                    @if (CanTraverseCurrentCategory)
+                    {
+                        <div class="structures-traverse-wrap">
+                            @if (_traverseMenuOpen)
+                            {
+                                <div class="structures-traverse-menu" role="menu" aria-label="Choose tree traversal">
+                                    <button type="button" class="structures-traverse-item" role="menuitem"
+                                            data-active="@(_activeTraversalMode == TreeTraversalMode.PreOrder ? "true" : "false")"
+                                            @onclick="() => RunTreeTraversal(TreeTraversalMode.PreOrder)">
+                                        <span>Pre-order</span><code>N · L · R</code>
+                                    </button>
+                                    <button type="button" class="structures-traverse-item" role="menuitem"
+                                            data-active="@(_activeTraversalMode == TreeTraversalMode.InOrder ? "true" : "false")"
+                                            @onclick="() => RunTreeTraversal(TreeTraversalMode.InOrder)">
+                                        <span>In-order</span><code>L · N · R</code>
+                                    </button>
+                                    <button type="button" class="structures-traverse-item" role="menuitem"
+                                            data-active="@(_activeTraversalMode == TreeTraversalMode.PostOrder ? "true" : "false")"
+                                            @onclick="() => RunTreeTraversal(TreeTraversalMode.PostOrder)">
+                                        <span>Post-order</span><code>L · R · N</code>
+                                    </button>
+                                    <button type="button" class="structures-traverse-item" role="menuitem"
+                                            data-active="@(_activeTraversalMode == TreeTraversalMode.LevelOrder ? "true" : "false")"
+                                            @onclick="() => RunTreeTraversal(TreeTraversalMode.LevelOrder)">
+                                        <span>Level-order (BFS)</span><code>Queue</code>
+                                    </button>
+                                    <button type="button" class="structures-traverse-item" role="menuitem"
+                                            data-active="@(_activeTraversalMode == TreeTraversalMode.EulerTour ? "true" : "false")"
+                                            @onclick="() => RunTreeTraversal(TreeTraversalMode.EulerTour)">
+                                        <span>Euler Tour</span><code>L · B · R</code>
+                                    </button>
+                                </div>
+                            }
+                            <button type="button"
+                                    class="daa-cost-fab structures-traverse-fab"
+                                    data-active="@(_traverseMenuOpen || _activeTraversalMode.HasValue ? "true" : "false")"
+                                    aria-haspopup="menu"
+                                    aria-expanded="@(_traverseMenuOpen ? "true" : "false")"
+                                    title="Animate a tree traversal"
+                                    @onclick="ToggleTraverseMenu">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <circle cx="8" cy="3" r="1.7" />
+                                    <circle cx="3.8" cy="12" r="1.7" />
+                                    <circle cx="12.2" cy="12" r="1.7" />
+                                    <path d="M7.1 4.5L4.6 10.4M8.9 4.5l2.5 5.9" stroke-linecap="round" />
+                                </svg>
+                                <span>Traverse</span>
+                                @if (_activeTraversalMode is { } mode)
+                                {
+                                    <span class="daa-cost-fab-badge">@TreeTraversalTracer.DisplayName(mode)</span>
+                                }
+                            </button>
+                        </div>
+                    }
                 </div>
 
                 @if (_showIsomorphicMirror && ActiveTreeStep?.State.IsomorphicScene is not null)
@@ -708,11 +757,15 @@
         if (preset.Category == StructureCategory.BinaryTree)
         {
             _binaryTree = StructurePresets.BuildBinaryTreeFromPreset(preset, _treeRuleset);
-            _treeTimeline = _binaryTree.TraceInOrder();
+            _activeTraversalMode = TreeTraversalMode.InOrder;
+            _traverseMenuOpen = false;
+            _treeTimeline = _binaryTree.TraceWalk(TreeTraversalMode.InOrder);
             _stepIndex = 0;
         }
         else if (preset.Category == StructureCategory.Graph)
         {
+            _activeTraversalMode = null;
+            _traverseMenuOpen = false;
             _graphEdgeText = preset.GraphEdgeList ?? "";
             _graphDirected = preset.GraphIsDirected;
             _graphWeighted = preset.GraphIsWeighted;
@@ -723,6 +776,8 @@
         }
         else
         {
+            _activeTraversalMode = null;
+            _traverseMenuOpen = false;
             _batchScript = preset.TreeScript ?? "";
             RunTreeBatchScript();
         }
@@ -764,11 +819,14 @@
 
         if (_category == StructureCategory.BinaryTree)
         {
-            _treeTimeline = _binaryTree.TraceInOrder();
+            var mode = _activeTraversalMode ?? TreeTraversalMode.InOrder;
+            _activeTraversalMode = mode;
+            _treeTimeline = _binaryTree.TraceWalk(mode);
             _stepIndex = 0;
         }
         else if (_category != StructureCategory.Graph && !string.IsNullOrWhiteSpace(_batchScript))
         {
+            _activeTraversalMode = null;
             RunTreeBatchScript();
         }
     }
@@ -781,6 +839,8 @@
 
     private void RunTreeBatchScript()
     {
+        _activeTraversalMode = null;
+        _traverseMenuOpen = false;
         _treeTimeline = _category switch
         {
             StructureCategory.Bst => (_bst = new BstTracer(_treeRuleset)).RunScript(_batchScript),
@@ -795,6 +855,8 @@
 
     private void RunSingleInsert()
     {
+        _activeTraversalMode = null;
+        _traverseMenuOpen = false;
         _treeTimeline = _category switch
         {
             StructureCategory.Bst => _bst.Insert(_singleKey),
@@ -809,6 +871,8 @@
 
     private void RunSingleDelete()
     {
+        _activeTraversalMode = null;
+        _traverseMenuOpen = false;
         _treeTimeline = _category switch
         {
             StructureCategory.Bst => _bst.Delete(_singleKey),
@@ -823,6 +887,8 @@
 
     private void RunSingleSearch()
     {
+        _activeTraversalMode = null;
+        _traverseMenuOpen = false;
         _treeTimeline = _category switch
         {
             StructureCategory.Bst => _bst.Search(_singleKey),
@@ -837,6 +903,8 @@
 
     private void ClearTree()
     {
+        _activeTraversalMode = null;
+        _traverseMenuOpen = false;
         _bst.Clear(); _avl.Clear(); _splay.Clear(); _twoFour.Clear(); _rb.Clear(); _binaryTree.Clear();
         _batchScript = string.Empty;
         _treeTimeline = new TraceTimeline<TreeStepState>(
@@ -844,20 +912,35 @@
         _stepIndex = 0;
     }
 
-    private void BtAddRoot() { _treeTimeline = _binaryTree.AddRoot(_btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
-    private void BtAddLeft() { _treeTimeline = _binaryTree.AddLeft(_btParent, _btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
-    private void BtAddRight() { _treeTimeline = _binaryTree.AddRight(_btParent, _btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
-    private void BtRemove() { _treeTimeline = _binaryTree.Remove(_btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
+    private void BtAddRoot() { _activeTraversalMode = null; _traverseMenuOpen = false; _treeTimeline = _binaryTree.AddRoot(_btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
+    private void BtAddLeft() { _activeTraversalMode = null; _traverseMenuOpen = false; _treeTimeline = _binaryTree.AddLeft(_btParent, _btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
+    private void BtAddRight() { _activeTraversalMode = null; _traverseMenuOpen = false; _treeTimeline = _binaryTree.AddRight(_btParent, _btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
+    private void BtRemove() { _activeTraversalMode = null; _traverseMenuOpen = false; _treeTimeline = _binaryTree.Remove(_btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
 
-    private void RunBinaryTraversal(string mode)
+    private bool _traverseMenuOpen;
+    private TreeTraversalMode? _activeTraversalMode;
+
+    private bool CanTraverseCurrentCategory =>
+        _category is StructureCategory.BinaryTree
+            or StructureCategory.Bst
+            or StructureCategory.Avl
+            or StructureCategory.RedBlack
+            or StructureCategory.Splay;
+
+    private void ToggleTraverseMenu() => _traverseMenuOpen = !_traverseMenuOpen;
+
+    private void RunTreeTraversal(TreeTraversalMode mode)
     {
-        _treeTimeline = mode switch
+        _traverseMenuOpen = false;
+        _activeTraversalMode = mode;
+        _treeTimeline = _category switch
         {
-            "pre" => _binaryTree.TracePreOrder(),
-            "in" => _binaryTree.TraceInOrder(),
-            "post" => _binaryTree.TracePostOrder(),
-            "bfs" => _binaryTree.TraceBreadthFirst(),
-            _ => _binaryTree.TraceEulerTour()
+            StructureCategory.BinaryTree => _binaryTree.TraceWalk(mode),
+            StructureCategory.Bst => _bst.TraceWalk(mode),
+            StructureCategory.Avl => _avl.TraceWalk(mode),
+            StructureCategory.RedBlack => _rb.TraceWalk(mode),
+            StructureCategory.Splay => _splay.TraceWalk(mode),
+            _ => _treeTimeline
         };
         _stepIndex = 0;
     }

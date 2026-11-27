@@ -738,6 +738,74 @@ select.bp-input optgroup {
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
+/* Tree Studio Bottom-Left Floating Traverse Chooser */
+.structures-traverse-wrap {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.structures-traverse-menu {
+  min-width: 204px;
+  padding: 5px;
+  border-radius: 11px;
+  background-color: var(--surface);
+  border: 1px solid var(--control);
+  box-shadow: var(--shadow-floating);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.structures-traverse-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.structures-traverse-item:hover {
+  background-color: var(--raised);
+}
+
+.structures-traverse-item[data-active="true"] {
+  background-color: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.structures-traverse-item code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.structures-traverse-item[data-active="true"] code {
+  color: var(--accent);
+}
+
+.structures-traverse-fab {
+  position: relative;
+  left: auto;
+  bottom: auto;
+}
+
 .daa-tab-close {
   display: inline-flex;
   align-items: center;

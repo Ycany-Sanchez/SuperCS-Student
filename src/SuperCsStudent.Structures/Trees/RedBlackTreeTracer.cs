@@ -264,6 +264,16 @@ public sealed class RedBlackTreeTracer
             IsomorphicScene: iso);
     }
 
+    public TraceTimeline<TreeStepState> TraceWalk(TreeTraversalMode mode) =>
+        TreeTraversalTracer.TraceWalk(
+            ToTraversalNode(_root),
+            mode,
+            (summary, overrides) => BuildSnapshot(summary, overrides),
+            preserveNodeColors: true);
+
+    private static BinaryTraversalNode? ToTraversalNode(RbNode? n) =>
+        n is null ? null : new BinaryTraversalNode(n.Id, n.Key.ToString(), ToTraversalNode(n.Left), ToTraversalNode(n.Right));
+
     public IReadOnlyList<string> GetPreOrder()
     {
         var list = new List<string>();

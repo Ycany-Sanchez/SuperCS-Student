@@ -143,4 +143,87 @@ public sealed class BinaryAndBstTests
         Assert.Equal(5, bst.TracePostOrder().Count);
         Assert.Equal(5, bst.TraceBreadthFirst().Count);
     }
+
+    [Fact]
+    public void TreeTraversalTracer_PostOrderWalk_StepsContinuouslyAlongTreeEdgesAndVisitsInPostOrder()
+    {
+        var preset = StructurePresets.GetByKey("binary-traversals")!;
+        var tree = StructurePresets.BuildBinaryTreeFromPreset(preset, TreeRuleset.CourseStandard);
+        var expectedPost = new[] { "A", "D", "F", "B", "J", "P", "M", "K", "S", "G" };
+
+        var walk = tree.TraceWalk(TreeTraversalMode.PostOrder);
+
+        Assert.True(walk.Count > expectedPost.Length, $"Expected recursive walk steps > {expectedPost.Length}, got {walk.Count}");
+
+        var visitedOps = walk.OperationLog
+            .Where(op => op.StartsWith("VISIT ", StringComparison.Ordinal))
+            .Select(op => op["VISIT ".Length..])
+            .ToArray();
+        Assert.Equal(expectedPost, visitedOps);
+
+        // Every inter-node motion step must travel along a real tree edge (no teleporting)
+        var moveSteps = walk.Steps
+            .Where(s => s.State.Scene.ActiveMotion is { } m && m.FromNodeId != m.ToNodeId)
+            .ToList();
+        Assert.NotEmpty(moveSteps);
+
+        foreach (var step in moveSteps)
+        {
+            var motion = step.State.Scene.ActiveMotion!;
+            var hasEdge = step.State.Scene.Edges.Any(e =>
+                (e.SourceId == motion.FromNodeId && e.TargetId == motion.ToNodeId) ||
+                (e.SourceId == motion.ToNodeId && e.TargetId == motion.FromNodeId));
+            Assert.True(hasEdge, $"Step '{step.Title}' teleported from {motion.FromNodeId} to {motion.ToNodeId} without a tree edge.");
+        }
+
+        // Final step marks all 10 nodes with #1..#10 visit order sub-labels
+        var finalSubLabels = walk.Steps[^1].State.Scene.Nodes
+            .Where(n => n.Shape != NodeShapes.Sentinel)
+            .Select(n => n.SubLabel)
+            .ToHashSet();
+        for (var i = 1; i <= 10; i++)
+        {
+            Assert.Contains($"#{i}", finalSubLabels);
+        }
+    }
+
+    [Fact]
+    public void TreeTraversalTracer_HandlesEmptySingleNodeAndAllBinaryTreeTypes()
+    {
+        // Empty binary tree
+        var emptyTree = new BinaryTreeTracer();
+        var emptyWalk = emptyTree.TraceWalk(TreeTraversalMode.PostOrder);
+        Assert.Equal(1, emptyWalk.Count);
+
+        // Single-node BST
+        var singleBst = new BstTracer();
+        singleBst.Insert(42);
+        foreach (var mode in Enum.GetValues<TreeTraversalMode>())
+        {
+            var w = singleBst.TraceWalk(mode);
+            Assert.True(w.Count >= 1);
+        }
+
+        // Populated AVL, Splay, and Red-Black (preserving RB node colors)
+        var avl = new AvlTracer();
+        avl.RunScript("insert 30, 20, 40, 10");
+        var avlPre = avl.TraceWalk(TreeTraversalMode.PreOrder);
+        Assert.Equal(
+            avl.GetPreOrder(),
+            avlPre.OperationLog.Where(o => o.StartsWith("VISIT ", StringComparison.Ordinal)).Select(o => o["VISIT ".Length..]).ToArray());
+
+        var splay = new SplayTracer();
+        splay.RunScript("insert 20, 10, 30");
+        var splayIn = splay.TraceWalk(TreeTraversalMode.InOrder);
+        Assert.Equal(
+            splay.GetInOrder(),
+            splayIn.OperationLog.Where(o => o.StartsWith("VISIT ", StringComparison.Ordinal)).Select(o => o["VISIT ".Length..]).ToArray());
+
+        var rb = new RedBlackTreeTracer();
+        rb.RunScript("insert 20, 10, 30, 5");
+        var rbPost = rb.TraceWalk(TreeTraversalMode.PostOrder);
+        Assert.True(rbPost.Count > 4);
+        var rbNodes = rbPost.Steps[^1].State.Scene.Nodes.Where(n => n.Shape != NodeShapes.Sentinel).ToList();
+        Assert.All(rbNodes, n => Assert.True(n.SemanticState is SemanticStates.RedNode or SemanticStates.BlackNode));
+    }
 }
