@@ -70,7 +70,7 @@
                                         class="bp-select-prominent"
                                         value="@_dfaExampleKey"
                                         @onchange="OnDfaExampleChanged">
-                                    <option value="@CustomKey" disabled hidden="@(_dfaExampleKey != CustomKey)">Custom constraint</option>
+                                    <option value="@CustomKey">Custom constraint</option>
                                     <option value="@CreateCustomKey">+ Create custom constraint…</option>
                                     @if (_dfaExampleKey == CustomKey || IsSavedKey(_dfaExampleKey))
                                     {
@@ -421,7 +421,7 @@
                                         class="bp-select-prominent"
                                         value="@_nfaExampleKey"
                                         @onchange="OnNfaExampleChanged">
-                                    <option value="@CustomKey" disabled hidden="@(_nfaExampleKey != CustomKey)">Custom constraint</option>
+                                    <option value="@CustomKey">Custom constraint</option>
                                     <option value="@CreateCustomKey">+ Create custom constraint…</option>
                                     @if (_nfaExampleKey == CustomKey || IsSavedKey(_nfaExampleKey))
                                     {
@@ -729,7 +729,7 @@
                                         class="bp-select-prominent"
                                         value="@_cfgExampleKey"
                                         @onchange="OnCfgExampleChanged">
-                                    <option value="@CustomKey" disabled hidden="@(_cfgExampleKey != CustomKey)">Custom grammar</option>
+                                    <option value="@CustomKey">Custom constraint</option>
                                     <option value="@CreateCustomKey">+ Create custom constraint…</option>
                                     @if (_cfgExampleKey == CustomKey || IsSavedKey(_cfgExampleKey))
                                     {
@@ -1027,7 +1027,7 @@
                                         class="bp-select-prominent"
                                         value="@_pdaExampleKey"
                                         @onchange="OnPdaExampleChanged">
-                                    <option value="@CustomKey" disabled hidden="@(_pdaExampleKey != CustomKey)">Custom constraint</option>
+                                    <option value="@CustomKey">Custom constraint</option>
                                     <option value="@CreateCustomKey">+ Create custom constraint…</option>
                                     @if (_pdaExampleKey == CustomKey || IsSavedKey(_pdaExampleKey))
                                     {
@@ -1268,7 +1268,7 @@
                                         class="bp-select-prominent"
                                         value="@_tmExampleKey"
                                         @onchange="OnTmExampleChanged">
-                                    <option value="@CustomKey" disabled hidden="@(_tmExampleKey != CustomKey)">Custom constraint</option>
+                                    <option value="@CustomKey">Custom constraint</option>
                                     <option value="@CreateCustomKey">+ Create custom constraint…</option>
                                     @if (_tmExampleKey == CustomKey || IsSavedKey(_tmExampleKey))
                                     {
@@ -1785,8 +1785,8 @@
     private CancellationTokenSource? _tmDebounceCts;
 
     // --- DFA Tab State ---
-    private string _dfaExampleKey = "dfa-contains-aba";
-    private bool _dfaDrawerOpen;
+    private string _dfaExampleKey = CustomKey;
+    private bool _dfaDrawerOpen = true;
     private string _faSourceKind = "auto";
     private string _faSpecText = "contains aba";
     private string _faAlphabetText = string.Empty;
@@ -1806,8 +1806,8 @@
     private FaDecisionResult? _faCompareSub21;
 
     // --- NFA Tab State ---
-    private string _nfaExampleKey = "nfa-starts-aba";
-    private bool _nfaDrawerOpen;
+    private string _nfaExampleKey = CustomKey;
+    private bool _nfaDrawerOpen = true;
     private string _nfaSourceKind = "auto";
     private string _nfaSpecText = "starts with aba";
     private string _nfaAlphabetText = string.Empty;
@@ -1824,24 +1824,24 @@
     private int _nfaStepIndex;
 
     // --- CFG Tab State ---
-    private string _cfgExampleKey = "cfg-arith";
-    private bool _cfgDrawerOpen;
+    private string _cfgExampleKey = CustomKey;
+    private bool _cfgDrawerOpen = true;
     private bool _cfgShowParseTree;
-    private string _cfgSynthSpec = string.Empty;
+    private string _cfgSynthSpec = "a^n b^n";
     private string _cfgSynthAlphabet = string.Empty;
     private string? _cfgSynthError;
-    private string _cfgText = "E -> E+T | T\nT -> T*F | F\nF -> (E) | x | y";
-    private string _cfgInput = "(x+y)+x";
-    private IReadOnlyList<string> _cfgSampleInputs = ["(x+y)+x", "x+y*x", "(x*y)+(y*x)", "x+", "((x)"];
+    private string _cfgText = "S -> aSb | e";
+    private string _cfgInput = "aabb";
+    private IReadOnlyList<string> _cfgSampleInputs = ["aabb", "ab", "e", "aab", "abb"];
     private string? _cfgError;
     private Cfg? _currentCfg;
     private CfgParseResult? _cfgParseResult;
     private int _cfgStepIndex;
 
     // --- PDA Tab State ---
-    private string _pdaExampleKey = "pda-anbn";
-    private bool _pdaDrawerOpen;
-    private string _pdaSynthSpec = string.Empty;
+    private string _pdaExampleKey = CustomKey;
+    private bool _pdaDrawerOpen = true;
+    private string _pdaSynthSpec = "a^n b^n";
     private string _pdaSynthAlphabet = string.Empty;
     private string? _pdaSynthError;
     private string _pdaTransitionsText = "start: s\naccept: f\n((s, a, e), (s, a))\n((s, e, e), (f, e))\n((f, b, a), (f, e))";
@@ -1854,14 +1854,14 @@
     private int _pdaStepIndex;
 
     // --- TM Tab State ---
-    private string _tmExampleKey = "tm-palindrome";
-    private bool _tmDrawerOpen;
-    private string _tmSynthSpec = string.Empty;
+    private string _tmExampleKey = CustomKey;
+    private bool _tmDrawerOpen = true;
+    private string _tmSynthSpec = "a^n b^n";
     private string _tmSynthAlphabet = string.Empty;
     private string? _tmSynthError;
     private string _tmDslText = string.Empty;
-    private string _tmInput = "abba";
-    private IReadOnlyList<string> _tmSampleInputs = ["e", "a", "aba", "abba", "abaa", "ab"];
+    private string _tmInput = "aabb";
+    private IReadOnlyList<string> _tmSampleInputs = ["aabb", "ab", "e", "aab", "abb"];
     private HeadStartMode _tmHeadStart = HeadStartMode.RightBlank;
     private bool _tmMicroMode;
     private string _tmRightTab = "trace";
@@ -1873,18 +1873,24 @@
 
     protected override void OnInitialized()
     {
-        // Pre-initialize all 5 workbenches silently so tab switching is instant
-        SelectNfaExample("nfa-starts-aba", recordRecent: false);
-        SelectCfgExample("cfg-arith", recordRecent: false);
-        SelectPdaExample("pda-anbn", recordRecent: false);
-        SelectTmExample("tm-palindrome", recordRecent: false);
-        SelectDfaExample("dfa-contains-aba", recordRecent: false);
+        // Pre-initialize all 5 workbenches in custom constraint mode with starter specs
+        BuildFaFromSpec(updateSamples: false);
+        BuildNfaFromSpec(updateSamples: false);
+        SynthesizeCustomCfg();
+        SynthesizeCustomPda();
+        SynthesizeCustomTm();
         _activeMode = StudioMode.Dfa;
 
-        // Consume any navigation target from Home or Command Palette; otherwise default to DFA
+        // Consume any navigation target from Home or Command Palette; otherwise record starter DFA
         if (!ConsumePendingNavigationState())
         {
-            RecordExampleRecent("dfa-contains-aba", "DFA: Contains Substring 'aba'", "Minimal 4-state DFA accepting strings over {a, b} containing 'aba'.");
+            AppState.RecordRecent(new WorkspaceDocument(
+                "auto-custom-starter",
+                "DFA: Custom constraint (contains aba)",
+                StudioKind.Automata,
+                "Minimal 4-state DFA accepting strings over {a, b} containing 'aba'.",
+                DateTimeOffset.UtcNow,
+                JsonSerializer.SerializeToElement(new { customSpec = _faSpecText })));
         }
 
         AppState.OnChange += OnAppStateChanged;
@@ -1988,6 +1994,7 @@
         {
             case AutomataPresetKind.FiniteAutomaton:
                 _dfaExampleKey = CustomKey;
+                _dfaDrawerOpen = false;
                 _faInput = preset.DefaultInput;
                 _faSampleInputs = preset.SampleInputs;
                 if (!string.IsNullOrWhiteSpace(preset.ConstraintSpec))
@@ -2007,6 +2014,7 @@
 
             case AutomataPresetKind.ContextFreeGrammar:
                 _cfgExampleKey = CustomKey;
+                _cfgDrawerOpen = false;
                 _cfgText = preset.GrammarText ?? _cfgText;
                 _cfgInput = preset.DefaultInput;
                 _cfgSampleInputs = preset.SampleInputs;
@@ -2016,6 +2024,7 @@
 
             case AutomataPresetKind.PushdownAutomaton:
                 _pdaExampleKey = CustomKey;
+                _pdaDrawerOpen = false;
                 _pdaTransitionsText = preset.PdaTransitionsText ?? _pdaTransitionsText;
                 _pdaInput = preset.DefaultInput;
                 _pdaSampleInputs = preset.SampleInputs;
@@ -2025,6 +2034,7 @@
 
             case AutomataPresetKind.TuringMachine:
                 _tmExampleKey = CustomKey;
+                _tmDrawerOpen = false;
                 _tmDslText = preset.TmSchemaText ?? _tmDslText;
                 _tmInput = preset.DefaultInput;
                 _tmSampleInputs = preset.SampleInputs;
@@ -2056,6 +2066,7 @@
                 _faAlphabetText = alphaRaw ?? string.Empty;
                 _faSourceKind = "auto";
                 _dfaExampleKey = CustomKey;
+                _dfaDrawerOpen = true;
                 if (samples is not null) _faSampleInputs = samples;
                 if (preferredInput is not null) _faInput = preferredInput;
                 _faError = null;
@@ -2068,6 +2079,7 @@
                 _pdaSynthSpec = spec;
                 _pdaSynthAlphabet = alphaRaw ?? string.Empty;
                 _pdaExampleKey = CustomKey;
+                _pdaDrawerOpen = true;
                 if (samples is not null) _pdaSampleInputs = samples;
                 if (preferredInput is not null) _pdaInput = preferredInput;
                 _pdaSynthError = null;
@@ -2081,6 +2093,7 @@
                 _tmSynthAlphabet = alphaRaw ?? string.Empty;
                 _tmHeadStart = compiled.TmSchema.HeadStart;
                 _tmExampleKey = CustomKey;
+                _tmDrawerOpen = true;
                 if (samples is not null) _tmSampleInputs = samples;
                 if (preferredInput is not null) _tmInput = preferredInput;
                 _tmSynthError = null;
@@ -2091,6 +2104,7 @@
         catch (Exception ex)
         {
             _faError = ex.Message;
+            _dfaDrawerOpen = true;
             _activeMode = StudioMode.Dfa;
         }
     }
@@ -2329,8 +2343,26 @@
     private void OnDfaExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
-        if (key == CreateCustomKey || key == EditCustomKey)
+        if (string.IsNullOrWhiteSpace(key)) return;
+        if (key == CustomKey)
+        {
+            _dfaExampleKey = CustomKey;
+            _faSourceKind = "auto";
+            _dfaDrawerOpen = true;
+            return;
+        }
+        if (key == CreateCustomKey)
+        {
+            _examplePickerGen++;
+            _dfaExampleKey = CustomKey;
+            _faSourceKind = "auto";
+            _faSpecText = string.Empty;
+            _faAlphabetText = string.Empty;
+            _faError = null;
+            _dfaDrawerOpen = true;
+            return;
+        }
+        if (key == EditCustomKey)
         {
             _examplePickerGen++;
             _faSourceKind = "auto";
@@ -2350,6 +2382,7 @@
         var saved = AppState.SavedConstraints.FirstOrDefault(c => c.Id == id);
         if (saved is null) return;
         _dfaExampleKey = $"{SavedPrefix}{saved.Id}";
+        _dfaDrawerOpen = false;
         _faSourceKind = "auto";
         _faSpecText = saved.Spec;
         _faAlphabetText = saved.Alphabet ?? string.Empty;
@@ -2364,6 +2397,7 @@
         if (ex is null) return;
 
         _dfaExampleKey = ex.Key;
+        _dfaDrawerOpen = false;
         _faSourceKind = ex.SourceKind;
         _faSpecText = ex.Spec;
         _faAlphabetText = ex.Alphabet ?? string.Empty;
@@ -2506,8 +2540,26 @@
     private void OnNfaExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
-        if (key == CreateCustomKey || key == EditCustomKey)
+        if (string.IsNullOrWhiteSpace(key)) return;
+        if (key == CustomKey)
+        {
+            _nfaExampleKey = CustomKey;
+            _nfaSourceKind = "auto";
+            _nfaDrawerOpen = true;
+            return;
+        }
+        if (key == CreateCustomKey)
+        {
+            _examplePickerGen++;
+            _nfaExampleKey = CustomKey;
+            _nfaSourceKind = "auto";
+            _nfaSpecText = string.Empty;
+            _nfaAlphabetText = string.Empty;
+            _nfaError = null;
+            _nfaDrawerOpen = true;
+            return;
+        }
+        if (key == EditCustomKey)
         {
             _examplePickerGen++;
             _nfaSourceKind = "auto";
@@ -2527,6 +2579,7 @@
         var saved = AppState.SavedConstraints.FirstOrDefault(c => c.Id == id);
         if (saved is null) return;
         _nfaExampleKey = $"{SavedPrefix}{saved.Id}";
+        _nfaDrawerOpen = false;
         _nfaSourceKind = "auto";
         _nfaSpecText = saved.Spec;
         _nfaAlphabetText = saved.Alphabet ?? string.Empty;
@@ -2541,6 +2594,7 @@
         if (ex is null) return;
 
         _nfaExampleKey = ex.Key;
+        _nfaDrawerOpen = false;
         _nfaSourceKind = "constraint";
         _nfaSpecText = ex.Spec;
         _nfaAlphabetText = ex.Alphabet ?? string.Empty;
@@ -2774,8 +2828,24 @@
     private void OnCfgExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
-        if (key == CreateCustomKey || key == EditCustomKey)
+        if (string.IsNullOrWhiteSpace(key)) return;
+        if (key == CustomKey)
+        {
+            _cfgExampleKey = CustomKey;
+            _cfgDrawerOpen = true;
+            return;
+        }
+        if (key == CreateCustomKey)
+        {
+            _examplePickerGen++;
+            _cfgExampleKey = CustomKey;
+            _cfgSynthSpec = string.Empty;
+            _cfgSynthAlphabet = string.Empty;
+            _cfgSynthError = null;
+            _cfgDrawerOpen = true;
+            return;
+        }
+        if (key == EditCustomKey)
         {
             _examplePickerGen++;
             _cfgDrawerOpen = true;
@@ -2799,6 +2869,7 @@
         if (string.IsNullOrEmpty(_cfgSynthError))
         {
             _cfgExampleKey = $"{SavedPrefix}{saved.Id}";
+            _cfgDrawerOpen = false;
             if (!string.IsNullOrEmpty(saved.DefaultInput)) _cfgInput = saved.DefaultInput;
             if (saved.Samples.Count > 0) _cfgSampleInputs = saved.Samples;
             TraceCfgInput();
@@ -2812,6 +2883,7 @@
 
         CancelDebounce(ref _cfgDebounceCts);
         _cfgExampleKey = ex.Key;
+        _cfgDrawerOpen = false;
         _cfgSynthError = null;
         _cfgInput = ex.DefaultInput;
         _cfgSampleInputs = ex.Samples;
@@ -2980,8 +3052,24 @@
     private void OnPdaExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
-        if (key == CreateCustomKey || key == EditCustomKey)
+        if (string.IsNullOrWhiteSpace(key)) return;
+        if (key == CustomKey)
+        {
+            _pdaExampleKey = CustomKey;
+            _pdaDrawerOpen = true;
+            return;
+        }
+        if (key == CreateCustomKey)
+        {
+            _examplePickerGen++;
+            _pdaExampleKey = CustomKey;
+            _pdaSynthSpec = string.Empty;
+            _pdaSynthAlphabet = string.Empty;
+            _pdaSynthError = null;
+            _pdaDrawerOpen = true;
+            return;
+        }
+        if (key == EditCustomKey)
         {
             _examplePickerGen++;
             _pdaDrawerOpen = true;
@@ -3005,6 +3093,7 @@
         if (string.IsNullOrEmpty(_pdaSynthError))
         {
             _pdaExampleKey = $"{SavedPrefix}{saved.Id}";
+            _pdaDrawerOpen = false;
             if (!string.IsNullOrEmpty(saved.DefaultInput)) _pdaInput = saved.DefaultInput;
             if (saved.Samples.Count > 0) _pdaSampleInputs = saved.Samples;
             TracePda();
@@ -3018,6 +3107,7 @@
 
         CancelDebounce(ref _pdaDebounceCts);
         _pdaExampleKey = ex.Key;
+        _pdaDrawerOpen = false;
         _pdaSynthError = null;
         _pdaInput = ex.DefaultInput;
         _pdaSampleInputs = ex.Samples;
@@ -3202,8 +3292,24 @@
     private void OnTmExampleChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(key) || key == CustomKey) return;
-        if (key == CreateCustomKey || key == EditCustomKey)
+        if (string.IsNullOrWhiteSpace(key)) return;
+        if (key == CustomKey)
+        {
+            _tmExampleKey = CustomKey;
+            _tmDrawerOpen = true;
+            return;
+        }
+        if (key == CreateCustomKey)
+        {
+            _examplePickerGen++;
+            _tmExampleKey = CustomKey;
+            _tmSynthSpec = string.Empty;
+            _tmSynthAlphabet = string.Empty;
+            _tmSynthError = null;
+            _tmDrawerOpen = true;
+            return;
+        }
+        if (key == EditCustomKey)
         {
             _examplePickerGen++;
             _tmDrawerOpen = true;
@@ -3227,6 +3333,7 @@
         if (string.IsNullOrEmpty(_tmSynthError))
         {
             _tmExampleKey = $"{SavedPrefix}{saved.Id}";
+            _tmDrawerOpen = false;
             if (!string.IsNullOrEmpty(saved.DefaultInput)) _tmInput = saved.DefaultInput;
             if (saved.Samples.Count > 0) _tmSampleInputs = saved.Samples;
             RunTmTrace();
@@ -3240,6 +3347,7 @@
 
         CancelDebounce(ref _tmDebounceCts);
         _tmExampleKey = ex.Key;
+        _tmDrawerOpen = false;
         _tmSynthError = null;
         _tmHeadStart = HeadStartMode.RightBlank;
 
