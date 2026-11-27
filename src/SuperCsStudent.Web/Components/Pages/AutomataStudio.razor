@@ -64,7 +64,7 @@
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
             @* Left: Spec Input + Compiled Diagram Preview *@
-            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+            <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
                 <div class="bp-card p-3 space-y-2.5 shrink-0">
                     <div class="flex flex-wrap items-center gap-2">
                         <select class="bp-input !h-8 text-xs"
@@ -236,16 +236,21 @@
                                 {
                                     <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
                                             style="@(_compilerPreviewKind == "nfa" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                            @onclick='() => _compilerPreviewKind = "nfa"'>NFA (@_compiledSpec.Nfa.States.Count)</button>
+                                            @onclick='() => _compilerPreviewKind = "nfa"'>
+                                        @(_compiledSpec.NfaRequiredDeterminization ? $"NFA → DFA ({_compiledSpec.Nfa.States.Count})" : $"NFA ({_compiledSpec.Nfa.States.Count})")
+                                    </button>
+                                }
+                                @if (_compiledSpec.Grammar is not null)
+                                {
+                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                            style="@(_compilerPreviewKind == "cfg-queue" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                            @onclick='() => _compilerPreviewKind = "cfg-queue"'>CFG Queue</button>
                                 }
                                 @if (_compiledSpec.Pda is not null)
                                 {
                                     <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
                                             style="@(_compilerPreviewKind == "pda-stack" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
                                             @onclick='() => _compilerPreviewKind = "pda-stack"'>PDA Stack</button>
-                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                            style="@(_compilerPreviewKind == "pda" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                            @onclick='() => _compilerPreviewKind = "pda"'>PDA Graph</button>
                                 }
                                 <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
                                         style="@(_compilerPreviewKind == "tm" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
@@ -255,23 +260,42 @@
                     </div>
                 }
 
-                <div class="flex-1 min-h-[280px] min-w-0 overflow-hidden">
+                <div class="flex-1 min-h-[280px] min-w-0 flex flex-col gap-2 overflow-hidden">
+                    @if (_compilerPreviewKind == "nfa" && _compiledSpec?.NfaRequiredDeterminization == true)
+                    {
+                        <div class="px-3 py-2 rounded-lg text-xs shrink-0 flex flex-wrap items-center justify-between gap-2"
+                             style="background: var(--pill-warning-bg); color: var(--pill-warning-ink); border: 1px solid var(--warning);">
+                            <span><strong>Determinized to DFA:</strong> @_compiledSpec.NfaDeterminizationReason</span>
+                            <button type="button" class="bp-btn-secondary !h-6 text-[11px]" @onclick="OpenCompiledInDfa">Open in DFA Studio →</button>
+                        </div>
+                    }
+
                     @if (_compilerPreviewKind == "pda-stack" && _compilerPdaTrace is not null)
                     {
-                        <div class="h-full bp-card p-3 overflow-hidden">
+                        <div class="flex-1 min-h-0 bp-card p-3 overflow-hidden">
                             <PdaStackVisualizer Trace="@_compilerPdaTrace"
                                                 @bind-CurrentStepIndex="_compilerPdaStepIndex"
-                                                ShowEvolutionStrip="true"
+                                                ShowCompactStepControls="true"
+                                                SnapMotion="@AppState.SnapMotion" />
+                        </div>
+                    }
+                    else if (_compilerPreviewKind == "cfg-queue" && _compilerCfgResult is not null)
+                    {
+                        <div class="flex-1 min-h-0 bp-card p-3 overflow-hidden">
+                            <CfgQueueVisualizer Result="@_compilerCfgResult"
+                                                @bind-CurrentStepIndex="_compilerCfgStepIndex"
                                                 ShowCompactStepControls="true"
                                                 SnapMotion="@AppState.SnapMotion" />
                         </div>
                     }
                     else
                     {
-                        <InteractiveSvgCanvas Scene="@GetCompilerPreviewScene()"
-                                              SnapMotion="@AppState.SnapMotion"
-                                              ErrorBanner="@_compilerError"
-                                              ExportFileName="compiled-automaton.svg" />
+                        <div class="flex-1 min-h-0">
+                            <InteractiveSvgCanvas Scene="@GetCompilerPreviewScene()"
+                                                  SnapMotion="@AppState.SnapMotion"
+                                                  ErrorBanner="@_compilerError"
+                                                  ExportFileName="compiled-automaton.svg" />
+                        </div>
                     }
                 </div>
             </div>
@@ -295,7 +319,13 @@
                             @if (_compiledSpec.MinimalDfa is not null)
                             {
                                 <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="OpenCompiledInDfa">
-                                    Open in DFA / NFA →
+                                    Open in DFA Studio →
+                                </button>
+                            }
+                            @if (_compiledSpec.Nfa is not null)
+                            {
+                                <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="OpenCompiledInNfa">
+                                    Open in NFA Studio →
                                 </button>
                             }
                             @if (_compiledSpec.Grammar is not null)
@@ -356,9 +386,9 @@
                                         @foreach (var row in _compilerTestRows)
                                         {
                                             var rowInput = row.Input;
-                                            var isSelectedPda = _compilerPreviewKind == "pda-stack" && string.Equals(_compilerTestInput, rowInput, StringComparison.Ordinal);
+                                            var isSelectedPreview = (_compilerPreviewKind is "pda-stack" or "cfg-queue") && string.Equals(_compilerTestInput, rowInput, StringComparison.Ordinal);
                                             <tr class="cursor-pointer transition-colors"
-                                                style="@(isSelectedPda ? "background: var(--accent-soft);" : "") border-bottom: 1px solid var(--rule);"
+                                                style="@(isSelectedPreview ? "background: var(--accent-soft);" : "") border-bottom: 1px solid var(--rule);"
                                                 title="Click to inspect this input in the preview"
                                                 @onclick="() => InspectCompilerRow(rowInput)">
                                                 <td class="px-2.5 py-1.5 font-mono">@row.Input</td>
@@ -429,44 +459,37 @@
     }
 
     @* ===================================================================== *@
-    @* MODE 2: DFA / NFA STUDIO + CLOSURES + EQUIVALENCE & DECISIONS         *@
+    @* MODE 2: DFA STUDIO (TOTAL DETERMINISTIC + CLOSURES + DECISIONS)       *@
     @* ===================================================================== *@
-    else if (_activeMode == StudioMode.DfaNfa)
+    else if (_activeMode == StudioMode.Dfa)
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-            @* Left: Source Bar + Interactive SVG + Playback *@
-            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+            @* Left: Source Bar + Interactive DFA SVG + Playback *@
+            <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
                 <div class="flex flex-wrap items-center justify-between gap-2 shrink-0">
                     <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-[260px]">
                         <select class="bp-input !h-8 text-xs"
                                 value="@_faSourceKind"
                                 @onchange="e => _faSourceKind = e.Value!.ToString()!">
-                            <option value="regex">Regex</option>
                             <option value="constraint">Constraint</option>
+                            <option value="regex">Regex</option>
                         </select>
                         <input type="text"
                                class="bp-input !h-8 font-mono text-xs flex-1 min-w-[160px]"
-                               placeholder="e.g. (a|b)*aba(a|b)*"
+                               placeholder="e.g. starts with aba | does not contain aba | (a|b)*aba(a|b)*"
                                @bind="_faSpecText" />
                         <input type="text"
                                class="bp-input !h-8 font-mono text-xs w-32"
                                placeholder="Σ auto (x,y,z)"
                                title="Custom alphabet symbols (e.g. x,y,z or 0,1 — leave blank to auto-detect)"
                                @bind="_faAlphabetText" />
-                        <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildFaFromSpec">Build</button>
+                        <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildFaFromSpec">Build DFA</button>
                     </div>
 
                     <div class="flex items-center gap-1.5 flex-wrap">
-                        <div class="flex items-center rounded-md p-0.5" style="background: var(--raised); border: 1px solid var(--border);">
-                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                    style="@(_faViewKind == "min" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                    @onclick='() => SwitchFaView("min")'>Min DFA</button>
-                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                    style="@(_faViewKind == "dfa" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                    @onclick='() => SwitchFaView("dfa")'>Subset DFA</button>
-                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                    style="@(_faViewKind == "nfa" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                    @onclick='() => SwitchFaView("nfa")'>NFA</button>
+                        <div class="bp-seg">
+                            <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "min" ? "true" : "false")" @onclick='() => SwitchFaView("min")'>Min DFA</button>
+                            <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "dfa" ? "true" : "false")" @onclick='() => SwitchFaView("dfa")'>Subset DFA</button>
                         </div>
                         <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Complement current minimal DFA" @onclick="ApplyFaComplement">Complement</button>
                         <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Kleene Star of current minimal DFA" @onclick="ApplyFaStar">Star (*)</button>
@@ -566,7 +589,7 @@
                             </div>
                         }
 
-                        @if (_faViewKind != "nfa" && ActiveDfa is not null)
+                        @if (ActiveDfa is not null)
                         {
                             <div class="space-y-1.5">
                                 <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Transition Matrix δ(q, σ)</div>
@@ -603,13 +626,6 @@
                             <div class="bp-card p-2.5 space-y-1">
                                 <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Formal Quintuple</div>
                                 <pre class="text-[11px] font-mono whitespace-pre-wrap" style="color: var(--muted);">@ActiveDfa.ToFormalString()</pre>
-                            </div>
-                        }
-                        else if (_faNfa is not null)
-                        {
-                            <div class="bp-card p-2.5 space-y-1">
-                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">NFA Formal Quintuple</div>
-                                <pre class="text-[11px] font-mono whitespace-pre-wrap max-h-64 overflow-y-auto" style="color: var(--muted);">@_faNfa.ToFormalString()</pre>
                             </div>
                         }
                     }
@@ -709,13 +725,246 @@
     }
 
     @* ===================================================================== *@
-    @* MODE 3: CONTEXT-FREE GRAMMAR + EARLEY PARSER + PARSE TREE             *@
+    @* MODE 3: DEDICATED NFA STUDIO (COMPACT STRING-EDGE NFAs + SUBSET MAP)  *@
+    @* ===================================================================== *@
+    else if (_activeMode == StudioMode.Nfa)
+    {
+        <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+            @* Left: NFA Source Bar + Negation Banner + Compact NFA Canvas + Playback *@
+            <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
+                <div class="bp-card p-2.5 space-y-2 shrink-0">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-[260px]">
+                            <select class="bp-input !h-8 text-xs"
+                                    value="@_nfaSourceKind"
+                                    @onchange="e => _nfaSourceKind = e.Value!.ToString()!">
+                                <option value="constraint">Constraint</option>
+                                <option value="regex">Regex</option>
+                            </select>
+                            <input type="text"
+                                   class="bp-input !h-8 font-mono text-xs flex-1 min-w-[160px]"
+                                   placeholder="e.g. starts with aba | ends with aba | contains aba | starts with aba OR ends with bab"
+                                   @bind="_nfaSpecText" />
+                            <input type="text"
+                                   class="bp-input !h-8 font-mono text-xs w-32"
+                                   placeholder="Σ auto (x,y,z)"
+                                   title="Custom alphabet symbols (leave blank to auto-detect)"
+                                   @bind="_nfaAlphabetText" />
+                            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildNfaFromSpec">Build NFA</button>
+                        </div>
+
+                        <button type="button"
+                                class="bp-btn-secondary !h-8 text-xs"
+                                title="Convert this NFA into a complete minimized DFA via Subset Construction"
+                                @onclick="ConvertCurrentNfaToDfa">
+                            Convert to DFA →
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="text-[11px] font-medium" style="color: var(--faint);">Try NFA vs Negated DFA:</span>
+                        @foreach (var ex in NfaExamples)
+                        {
+                            <button type="button"
+                                    class="bp-chip font-mono"
+                                    @onclick="() => RunNfaExample(ex.Spec, ex.SampleInput)">
+                                @ex.Label
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                @if (_nfaRequiredDeterminization)
+                {
+                    <div class="px-3 py-2 rounded-lg text-xs shrink-0 flex flex-wrap items-center justify-between gap-2"
+                         style="background: var(--pill-warning-bg); color: var(--pill-warning-ink); border: 1px solid var(--warning);">
+                        <span>
+                            <strong>Determinized to DFA (Negation Rule):</strong>
+                            @(_nfaDeterminizationReason ?? "Negation requires converting the NFA into a complete DFA before complementing accept states.")
+                        </span>
+                        <button type="button" class="bp-btn-secondary !h-6 text-[11px]" @onclick="ConvertCurrentNfaToDfa">
+                            Open in DFA Studio →
+                        </button>
+                    </div>
+                }
+
+                @* Input Strip & Active Set Verdict *@
+                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
+                        <input type="text"
+                               class="bp-input !h-7 font-mono text-xs w-36"
+                               @bind="_nfaInput"
+                               @bind:event="oninput" />
+                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="TraceNfa">Trace</button>
+
+                        @foreach (var sample in _nfaSampleInputs)
+                        {
+                            <button type="button"
+                                    class="bp-chip font-mono"
+                                    @onclick="() => { _nfaInput = sample; TraceNfa(); }">
+                                @sample
+                            </button>
+                        }
+                    </div>
+
+                    @if (_nfaTimeline is not null)
+                    {
+                        var curStep = CurrentNfaStep;
+                        <div class="flex items-center gap-2">
+                            @if (curStep is not null)
+                            {
+                                <span class="font-mono text-xs px-2 py-0.5 rounded" style="background: var(--raised); border: 1px solid var(--border);">
+                                    @curStep.State.Configuration
+                                </span>
+                            }
+                            <span class="bp-pill @(_nfaTimeline.IsSuccess ? "bp-pill-positive" : "bp-pill-negative")">
+                                @(_nfaTimeline.IsSuccess ? "Accepted" : "Rejected")
+                            </span>
+                        </div>
+                    }
+                </div>
+
+                <div class="flex-1 min-h-[260px]">
+                    <InteractiveSvgCanvas Scene="@CurrentNfaScene"
+                                          SnapMotion="@AppState.SnapMotion"
+                                          ErrorBanner="@_nfaError"
+                                          ExportFileName="nfa-diagram.svg" />
+                </div>
+
+                <PlaybackBar CurrentStep="@_nfaStepIndex"
+                             TotalSteps="@(_nfaTimeline?.Steps.Count ?? 0)"
+                             CurrentStepChanged="i => _nfaStepIndex = i"
+                             SnapMotion="@AppState.SnapMotion"
+                             SnapMotionChanged="v => { AppState.SnapMotion = v; AppState.Notify(); }" />
+            </div>
+
+            @* Right Inspector: NFA Trace & Transitions + Subset Construction Map *@
+            <div class="@(_inspectorCollapsed ? "hidden" : "w-full lg:w-[400px] xl:w-[430px] min-w-0 shrink-0 flex flex-col min-h-0")" style="border-left: 1px solid var(--border);">
+                <div class="flex items-center px-3 shrink-0" style="border-bottom: 1px solid var(--border);">
+                    <button type="button" class="bp-tab" data-active="@(_nfaRightTab == "trace" ? "true" : "false")" @onclick='() => _nfaRightTab = "trace"'>Trace &amp; Transitions</button>
+                    <button type="button" class="bp-tab" data-active="@(_nfaRightTab == "subset" ? "true" : "false")" @onclick='() => _nfaRightTab = "subset"'>Subset → DFA</button>
+                </div>
+
+                <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+                    @if (_nfaRightTab == "trace")
+                    {
+                        @if (CurrentNfaStep is not null)
+                        {
+                            <div class="bp-card p-2.5 space-y-1">
+                                <div class="text-xs font-semibold">@CurrentNfaStep.Title</div>
+                                <div class="text-xs" style="color: var(--muted);">@CurrentNfaStep.Explanation</div>
+                            </div>
+                        }
+
+                        @if (_nfaTimeline is not null)
+                        {
+                            <div class="space-y-1">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Nondeterministic Steps</div>
+                                <div class="rounded-md overflow-hidden" style="border: 1px solid var(--border);">
+                                    @for (var i = 0; i < _nfaTimeline.Steps.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var st = _nfaTimeline.Steps[idx];
+                                        var isCur = idx == _nfaStepIndex;
+                                        <button type="button"
+                                                class="w-full text-left px-2.5 py-1.5 text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                                                style="@(isCur ? "background: var(--accent-soft); color: var(--text);" : "background: var(--surface); color: var(--muted);") border-bottom: 1px solid var(--rule);"
+                                                @onclick="() => _nfaStepIndex = idx">
+                                            <span class="font-mono tnum truncate">@idx. @st.Title</span>
+                                            <span class="font-mono text-[11px] shrink-0">@st.BadgeLabel</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        @if (_currentNfa is not null)
+                        {
+                            <div class="space-y-1.5">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Transition Relation Δ</span>
+                                    <span class="text-[11px] font-mono tnum" style="color: var(--muted);">
+                                        @_currentNfa.States.Count states · @_currentNfa.Transitions.Count edges
+                                    </span>
+                                </div>
+                                <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
+                                    <table class="w-full text-xs text-left font-mono">
+                                        <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
+                                            <tr>
+                                                <th class="px-2.5 py-1.5">From</th>
+                                                <th class="px-2.5 py-1.5">Read</th>
+                                                <th class="px-2.5 py-1.5">To</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var tr in _currentNfa.Transitions)
+                                            {
+                                                <tr style="border-bottom: 1px solid var(--rule);">
+                                                    <td class="px-2.5 py-1">@(tr.FromState == _currentNfa.StartState ? "→ " : "")@tr.FromState</td>
+                                                    <td class="px-2.5 py-1 font-semibold" style="color: @(tr.Symbol.Length > 1 ? "var(--accent)" : tr.IsEpsilon ? "var(--warning)" : "var(--text)");">@tr.Symbol</td>
+                                                    <td class="px-2.5 py-1">@tr.ToState@(_currentNfa.AcceptStates.Contains(tr.ToState) ? " *" : "")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="bp-card p-2.5 space-y-1">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">NFA Formal Quintuple</div>
+                                <pre class="text-[11px] font-mono whitespace-pre-wrap max-h-52 overflow-y-auto" style="color: var(--muted);">@_currentNfa.ToFormalString()</pre>
+                            </div>
+                        }
+                    }
+                    else if (_currentNfa is not null && _nfaSubsetMap is not null)
+                    {
+                        <div class="bp-card p-3 space-y-2.5">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-xs font-semibold">Subset Construction (NFA → DFA)</span>
+                                <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ConvertCurrentNfaToDfa">
+                                    Open DFA →
+                                </button>
+                            </div>
+                            <div class="text-xs" style="color: var(--muted);">
+                                Compact NFA has <strong>@_currentNfa.States.Count states</strong>; subset construction yields <strong>@_nfaSubsetMap.Count DFA states</strong> (including total transitions and any dead trap state).
+                            </div>
+                            <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
+                                <table class="w-full text-xs text-left font-mono">
+                                    <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
+                                        <tr>
+                                            <th class="px-2.5 py-1.5">DFA State</th>
+                                            <th class="px-2.5 py-1.5">Active NFA Subset</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var kv in _nfaSubsetMap)
+                                        {
+                                            <tr style="border-bottom: 1px solid var(--rule);">
+                                                <td class="px-2.5 py-1.5 font-semibold">@kv.Key</td>
+                                                <td class="px-2.5 py-1.5" style="color: var(--muted);">
+                                                    @(kv.Value.Count == 0 ? "∅ (dead trap)" : "{" + string.Join(", ", kv.Value) + "}")
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ===================================================================== *@
+    @* MODE 4: CONTEXT-FREE GRAMMAR + FIFO DERIVATION QUEUE                  *@
     @* ===================================================================== *@
     else if (_activeMode == StudioMode.Cfg)
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-            @* Left: Input Tester + Parse Tree Canvas *@
-            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+            @* Left: Input Tester + Horizontal FIFO Derivation Queue + Playback *@
+            <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
                 <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-xs font-medium" style="color: var(--muted);">String w:</span>
@@ -723,7 +972,7 @@
                                class="bp-input !h-7 font-mono text-xs w-44"
                                @bind="_cfgInput"
                                @bind:event="oninput" />
-                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ParseCfgAndInput">Parse Tree</button>
+                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ParseCfgAndInput">Derive</button>
 
                         @foreach (var sample in _cfgSampleInputs)
                         {
@@ -738,7 +987,7 @@
                     @if (_cfgParseResult is not null)
                     {
                         <div class="flex items-center gap-2">
-                            <span class="text-xs" style="color: var(--muted);">@_cfgParseResult.Summary</span>
+                            <span class="text-xs hidden xl:inline" style="color: var(--muted);">@_cfgParseResult.Summary</span>
                             <span class="bp-pill @(_cfgParseResult.Accepted ? "bp-pill-positive" : "bp-pill-negative")">
                                 @(_cfgParseResult.Accepted ? "Accepted" : "Rejected")
                             </span>
@@ -746,15 +995,26 @@
                     }
                 </div>
 
-                <div class="flex-1 min-h-[280px]">
-                    <InteractiveSvgCanvas Scene="@_lastValidCfgScene"
-                                          SnapMotion="@AppState.SnapMotion"
-                                          ErrorBanner="@_cfgError"
-                                          ExportFileName="parse-tree.svg" />
+                <div class="flex-1 min-h-[280px] bp-card p-3 overflow-hidden">
+                    @if (!string.IsNullOrEmpty(_cfgError))
+                    {
+                        <div class="mb-2 px-3 py-2 rounded-md text-xs font-mono" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink); border: 1px solid var(--negative);">
+                            @_cfgError
+                        </div>
+                    }
+                    <CfgQueueVisualizer Result="@_cfgParseResult"
+                                        @bind-CurrentStepIndex="_cfgStepIndex"
+                                        SnapMotion="@AppState.SnapMotion" />
                 </div>
+
+                <PlaybackBar CurrentStep="@_cfgStepIndex"
+                             TotalSteps="@(_cfgParseResult?.QueueSteps?.Count ?? 0)"
+                             CurrentStepChanged="i => _cfgStepIndex = i"
+                             SnapMotion="@AppState.SnapMotion"
+                             SnapMotionChanged="v => { AppState.SnapMotion = v; AppState.Notify(); }" />
             </div>
 
-            @* Right: Grammar Editor + Conversions + Leftmost Derivation *@
+            @* Right: Grammar Editor + Conversions + Clickable Leftmost Derivation *@
             <div class="@(_inspectorCollapsed ? "hidden" : "w-full lg:w-[400px] xl:w-[430px] min-w-0 shrink-0 flex flex-col min-h-0 overflow-y-auto p-3 space-y-3")"
                  style="border-left: 1px solid var(--border);">
                 <div class="bp-card p-3 space-y-2">
@@ -780,31 +1040,40 @@
                             @if (_currentCfg.IsRegularGrammar())
                             {
                                 <button type="button" class="bp-btn-secondary !h-7 text-xs" @onclick="ConvertCurrentCfgToNfa">
-                                    Convert to NFA/DFA →
+                                    Convert to NFA →
                                 </button>
                             }
                         }
                     </div>
                 </div>
 
-                @if (_cfgParseResult is { Accepted: true } && _cfgParseResult.DerivationSteps.Count > 0)
+                @if (_cfgParseResult is { Accepted: true } && _cfgParseResult.QueueSteps is { Count: > 0 } qSteps)
                 {
                     <div class="bp-card p-3 space-y-2">
                         <div class="flex items-center justify-between">
                             <span class="text-xs font-semibold">Leftmost Derivation</span>
-                            <span class="font-mono text-[11px] tnum" style="color: var(--muted);">@(_cfgParseResult.DerivationSteps.Count - 1) steps</span>
+                            <span class="font-mono text-[11px] tnum" style="color: var(--muted);">@(qSteps.Count - 1) steps · click to jump</span>
                         </div>
                         <div class="rounded-md overflow-hidden" style="border: 1px solid var(--border);">
-                            @for (var i = 0; i < _cfgParseResult.DerivationSteps.Count; i++)
+                            @for (var i = 0; i < qSteps.Count; i++)
                             {
                                 var idx = i;
-                                var stepText = _cfgParseResult.DerivationSteps[idx];
-                                <div class="px-2.5 py-1.5 text-xs font-mono flex items-center gap-2"
-                                     style="border-bottom: 1px solid var(--rule); @(idx == _cfgParseResult.DerivationSteps.Count - 1 ? "background: var(--pill-positive-bg); color: var(--pill-positive-ink);" : "")">
-                                    <span class="tnum text-[11px] w-6 shrink-0" style="color: var(--faint);">@idx</span>
-                                    <span style="color: var(--faint);">@(idx == 0 ? " " : "⇒")</span>
-                                    <span class="break-all">@stepText</span>
-                                </div>
+                                var qStep = qSteps[idx];
+                                var isCur = idx == _cfgStepIndex;
+                                <button type="button"
+                                        class="w-full text-left px-2.5 py-1.5 text-xs font-mono flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                                        style="border-bottom: 1px solid var(--rule); @(isCur ? "background: var(--accent-soft); color: var(--text);" : qStep.IsComplete ? "background: var(--pill-positive-bg); color: var(--pill-positive-ink);" : "background: var(--surface); color: var(--muted);")"
+                                        @onclick="() => _cfgStepIndex = idx">
+                                    <span class="flex items-center gap-2 min-w-0">
+                                        <span class="tnum text-[11px] w-5 shrink-0 opacity-70">@idx</span>
+                                        <span class="opacity-60">@(idx == 0 ? " " : "⇒")</span>
+                                        <span class="break-all font-semibold">@qStep.SententialForm</span>
+                                    </span>
+                                    @if (!string.IsNullOrEmpty(qStep.AppliedRule))
+                                    {
+                                        <span class="text-[10.5px] shrink-0 opacity-80">@qStep.AppliedRule</span>
+                                    }
+                                </button>
                             }
                         </div>
                     </div>
@@ -833,7 +1102,7 @@
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
             @* Left: Input Strip + Canvas + Live LIFO Stack + Playback *@
-            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+            <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
                 <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
@@ -856,12 +1125,7 @@
                     @if (_pdaResult is not null)
                     {
                         <div class="flex items-center gap-2 flex-wrap">
-                            <div class="bp-seg">
-                                <button type="button" class="bp-seg-btn" data-active="@(_pdaViewMode == "stack" ? "true" : "false")" @onclick='() => _pdaViewMode = "stack"'>Stack</button>
-                                <button type="button" class="bp-seg-btn" data-active="@(_pdaViewMode == "split" ? "true" : "false")" @onclick='() => _pdaViewMode = "split"'>Split</button>
-                                <button type="button" class="bp-seg-btn" data-active="@(_pdaViewMode == "graph" ? "true" : "false")" @onclick='() => _pdaViewMode = "graph"'>Graph</button>
-                            </div>
-                            <span class="text-[11px] font-mono tnum hidden xl:inline" style="color: var(--muted);">@_pdaResult.ExploredConfigurations configs</span>
+                            <span class="text-[11px] font-mono tnum" style="color: var(--muted);">@_pdaResult.ExploredConfigurations configs</span>
                             <span class="bp-pill @(_pdaResult.Accepted ? "bp-pill-positive" : "bp-pill-negative")">
                                 @(_pdaResult.Accepted ? "Accepted (q ∈ F, e, e)" : "Rejected")
                             </span>
@@ -869,48 +1133,17 @@
                     }
                 </div>
 
-                @* Center: Interactive LIFO Stack Machine + State Diagram *@
-                <div class="flex-1 min-h-[260px] flex gap-2.5 overflow-hidden">
-                    @if (_pdaViewMode == "stack")
+                @* Center: Spacious LIFO Stack Machine (Stack-Only) *@
+                <div class="flex-1 min-h-[280px] bp-card p-3 overflow-hidden">
+                    @if (!string.IsNullOrEmpty(_pdaError))
                     {
-                        <div class="flex-1 min-w-0 bp-card p-3 overflow-hidden">
-                            @if (!string.IsNullOrEmpty(_pdaError))
-                            {
-                                <div class="mb-2 px-3 py-2 rounded-md text-xs font-mono" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink); border: 1px solid var(--negative);">
-                                    @_pdaError
-                                </div>
-                            }
-                            <PdaStackVisualizer Trace="@_pdaResult"
-                                                @bind-CurrentStepIndex="_pdaStepIndex"
-                                                ShowEvolutionStrip="true"
-                                                SnapMotion="@AppState.SnapMotion" />
+                        <div class="mb-2 px-3 py-2 rounded-md text-xs font-mono" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink); border: 1px solid var(--negative);">
+                            @_pdaError
                         </div>
                     }
-                    else if (_pdaViewMode == "split")
-                    {
-                        <div class="flex-1 min-w-0">
-                            <InteractiveSvgCanvas Scene="@CurrentPdaScene"
-                                                  SnapMotion="@AppState.SnapMotion"
-                                                  ErrorBanner="@_pdaError"
-                                                  ExportFileName="pda-diagram.svg" />
-                        </div>
-
-                        <div class="w-[300px] xl:w-[340px] shrink-0 bp-card p-3 overflow-hidden">
-                            <PdaStackVisualizer Trace="@_pdaResult"
-                                                @bind-CurrentStepIndex="_pdaStepIndex"
-                                                ShowEvolutionStrip="false"
-                                                SnapMotion="@AppState.SnapMotion" />
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="flex-1 min-w-0">
-                            <InteractiveSvgCanvas Scene="@CurrentPdaScene"
-                                                  SnapMotion="@AppState.SnapMotion"
-                                                  ErrorBanner="@_pdaError"
-                                                  ExportFileName="pda-diagram.svg" />
-                        </div>
-                    }
+                    <PdaStackVisualizer Trace="@_pdaResult"
+                                        @bind-CurrentStepIndex="_pdaStepIndex"
+                                        SnapMotion="@AppState.SnapMotion" />
                 </div>
 
                 <PlaybackBar CurrentStep="@_pdaStepIndex"
@@ -997,7 +1230,7 @@
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
             @* Left: Input/Head/Granularity Bar + Horizontal Tape Strip + Schema Canvas + Playback *@
-            <div class="flex-1 min-w-0 min-h-0 flex flex-col p-3 gap-2.5 overflow-hidden">
+            <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
                 <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
@@ -1248,7 +1481,8 @@
     private enum StudioMode
     {
         Compiler,
-        DfaNfa,
+        Dfa,
+        Nfa,
         Cfg,
         Pda,
         TuringMachine
@@ -1276,10 +1510,22 @@
     private static readonly TabItem[] StudioTabs =
     [
         new(StudioMode.Compiler, "Language Compiler"),
-        new(StudioMode.DfaNfa, "DFA / NFA"),
-        new(StudioMode.Cfg, "CFG & Parse Tree"),
+        new(StudioMode.Dfa, "DFA"),
+        new(StudioMode.Nfa, "NFA"),
+        new(StudioMode.Cfg, "CFG & Derivation"),
         new(StudioMode.Pda, "PDA"),
         new(StudioMode.TuringMachine, "Turing Machine")
+    ];
+
+    private static readonly CompilerExample[] NfaExamples =
+    [
+        new("starts with aba", "starts with aba", "ababa"),
+        new("ends with aba", "ends with aba", "bbaba"),
+        new("contains aba", "contains aba", "bbabaa"),
+        new("starts aba OR ends bab", "starts with aba OR ends with bab", "abbab"),
+        new("does not start with aba (→ DFA)", "does not start with aba", "bba"),
+        new("does not contain aba (→ DFA)", "does not contain aba", "aabb"),
+        new("does not end with aba (→ DFA)", "does not end with aba", "abaa")
     ];
 
     private static readonly CompilerExample[] CompilerExamples =
@@ -1323,19 +1569,20 @@
     private bool _savedProblemNotice;
     private PdaTraceResult? _compilerPdaTrace;
     private int _compilerPdaStepIndex;
+    private CfgParseResult? _compilerCfgResult;
+    private int _compilerCfgStepIndex;
 
-    // --- DFA/NFA Tab State ---
-    private string _faSourceKind = "regex";
-    private string _faSpecText = "(a|b)*aba(a|b)*";
+    // --- DFA Tab State ---
+    private string _faSourceKind = "constraint";
+    private string _faSpecText = "starts with aba";
     private string _faAlphabetText = string.Empty;
     private string _faViewKind = "min";
     private string _faRightTab = "trace";
-    private string _faInput = "bbabaa";
-    private IReadOnlyList<string> _faSampleInputs = ["aba", "bbabaa", "aabb", "bbb", "e"];
+    private string _faInput = "ababa";
+    private IReadOnlyList<string> _faSampleInputs = ["aba", "ababa", "ab", "bbaba", "e"];
     private string? _faError;
     private Dfa? _faMinDfa;
     private Dfa? _faRawDfa;
-    private Nfa? _faNfa;
     private TraceTimeline<FaStepState>? _faTimeline;
     private DiagramScene? _lastValidFaScene;
     private int _faStepIndex;
@@ -1346,6 +1593,22 @@
     private FaDecisionResult? _faCompareSub12;
     private FaDecisionResult? _faCompareSub21;
 
+    // --- NFA Tab State ---
+    private string _nfaSourceKind = "constraint";
+    private string _nfaSpecText = "starts with aba";
+    private string _nfaAlphabetText = string.Empty;
+    private string _nfaRightTab = "trace";
+    private string _nfaInput = "ababa";
+    private IReadOnlyList<string> _nfaSampleInputs = ["aba", "ababa", "ab", "bbaba", "e"];
+    private string? _nfaError;
+    private Nfa? _currentNfa;
+    private bool _nfaRequiredDeterminization;
+    private string? _nfaDeterminizationReason;
+    private IReadOnlyDictionary<string, IReadOnlyList<string>>? _nfaSubsetMap;
+    private TraceTimeline<FaStepState>? _nfaTimeline;
+    private DiagramScene? _lastValidNfaScene;
+    private int _nfaStepIndex;
+
     // --- CFG Tab State ---
     private string _cfgText = "E -> E+T | T\nT -> T*F | F\nF -> (E) | x | y";
     private string _cfgInput = "(x+y)+x";
@@ -1353,18 +1616,16 @@
     private string? _cfgError;
     private Cfg? _currentCfg;
     private CfgParseResult? _cfgParseResult;
-    private DiagramScene? _lastValidCfgScene;
+    private int _cfgStepIndex;
 
     // --- PDA Tab State ---
     private string _pdaTransitionsText = "start: s\naccept: f\n((s, a, e), (s, a))\n((s, e, e), (f, e))\n((f, b, a), (f, e))";
     private string _pdaInput = "aabb";
     private IReadOnlyList<string> _pdaSampleInputs = ["aabb", "e", "ab", "abb", "aab"];
     private string _pdaRightTab = "table";
-    private string _pdaViewMode = "stack";
     private string? _pdaError;
     private PushdownAutomaton? _currentPda;
     private PdaTraceResult? _pdaResult;
-    private DiagramScene? _lastValidPdaScene;
     private int _pdaStepIndex;
 
     // --- TM Tab State ---
@@ -1382,9 +1643,10 @@
 
     protected override void OnInitialized()
     {
-        // Pre-initialize all 5 workbenches so tab switching is instant
+        // Pre-initialize all 6 workbenches so tab switching is instant
         CompileSpec();
         BuildFaFromSpec();
+        BuildNfaFromSpec();
         ParseCfgAndInput();
         ParseAndTracePda();
 
@@ -1414,7 +1676,7 @@
         _activeMode = mode;
         var syncedKey = mode switch
         {
-            StudioMode.DfaNfa => "dfa-contains-aba",
+            StudioMode.Dfa or StudioMode.Nfa => "dfa-contains-aba",
             StudioMode.Cfg => "cfg-arith",
             StudioMode.Pda => "pda-anbn",
             StudioMode.TuringMachine => "tm-palindrome",
@@ -1452,7 +1714,7 @@
         switch (preset.Kind)
         {
             case AutomataPresetKind.FiniteAutomaton:
-                _activeMode = StudioMode.DfaNfa;
+                _activeMode = StudioMode.Dfa;
                 _faInput = preset.DefaultInput;
                 _faSampleInputs = preset.SampleInputs;
                 if (!string.IsNullOrWhiteSpace(preset.ConstraintSpec))
@@ -1644,30 +1906,42 @@
 
     private void RefreshCompilerPdaTrace()
     {
+        var input = string.IsNullOrEmpty(_compilerTestInput) ? "e" : _compilerTestInput;
+
         if (_compiledSpec?.Pda is null)
         {
             _compilerPdaTrace = null;
             _compilerPdaStepIndex = 0;
-            return;
+        }
+        else
+        {
+            _compilerPdaTrace = PdaTracer.Trace(_compiledSpec.Pda, input);
+            var firstStackIdx = -1;
+            for (var i = 0; i < _compilerPdaTrace.Timeline.Steps.Count; i++)
+            {
+                if (_compilerPdaTrace.Timeline.Steps[i].State.StackFrames.Count >= 2)
+                {
+                    firstStackIdx = i;
+                    break;
+                }
+            }
+            if (firstStackIdx < 0)
+            {
+                firstStackIdx = _compilerPdaTrace.Timeline.Steps.Count > 1 ? 1 : 0;
+            }
+            _compilerPdaStepIndex = firstStackIdx;
         }
 
-        var input = string.IsNullOrEmpty(_compilerTestInput) ? "e" : _compilerTestInput;
-        _compilerPdaTrace = PdaTracer.Trace(_compiledSpec.Pda, input);
-        // Start on a non-empty stack frame when available so the stack is visibly populated right away
-        var firstStackIdx = -1;
-        for (var i = 0; i < _compilerPdaTrace.Timeline.Steps.Count; i++)
+        if (_compiledSpec?.Grammar is null)
         {
-            if (_compilerPdaTrace.Timeline.Steps[i].State.StackFrames.Count >= 2)
-            {
-                firstStackIdx = i;
-                break;
-            }
+            _compilerCfgResult = null;
+            _compilerCfgStepIndex = 0;
         }
-        if (firstStackIdx < 0)
+        else
         {
-            firstStackIdx = _compilerPdaTrace.Timeline.Steps.Count > 1 ? 1 : 0;
+            _compilerCfgResult = CfgParser.Parse(_compiledSpec.Grammar, input);
+            _compilerCfgStepIndex = _compilerCfgResult.QueueSteps is { Count: > 1 } ? 1 : 0;
         }
-        _compilerPdaStepIndex = firstStackIdx;
     }
 
     private void InspectCompilerRow(string input)
@@ -1746,7 +2020,6 @@
         if (_compiledSpec?.MinimalDfa is null) return;
         _faMinDfa = _compiledSpec.MinimalDfa;
         _faRawDfa = _compiledSpec.MinimalDfa;
-        _faNfa = _compiledSpec.Nfa ?? _compiledSpec.MinimalDfa.ToNfa();
         _faSpecText = _compiledSpec.Specification;
         _faAlphabetText = _specAlphabetText;
         _faSourceKind = _compiledSpec.ResolvedMode == LanguageSpecMode.Constraint ? "constraint" : "regex";
@@ -1755,7 +2028,23 @@
         _faInput = _compilerTestInput;
         _faError = null;
         TraceFa();
-        _activeMode = StudioMode.DfaNfa;
+        _activeMode = StudioMode.Dfa;
+    }
+
+    private void OpenCompiledInNfa()
+    {
+        if (_compiledSpec?.Nfa is null) return;
+        _currentNfa = _compiledSpec.Nfa;
+        _nfaRequiredDeterminization = _compiledSpec.NfaRequiredDeterminization;
+        _nfaDeterminizationReason = _compiledSpec.NfaDeterminizationReason;
+        _nfaSpecText = _compiledSpec.Specification;
+        _nfaAlphabetText = _specAlphabetText;
+        _nfaSourceKind = _compiledSpec.ResolvedMode == LanguageSpecMode.Constraint ? "constraint" : "regex";
+        _nfaSampleInputs = BuildCompiledSampleInputs(_nfaSampleInputs);
+        _nfaInput = _compilerTestInput;
+        _nfaError = null;
+        RefreshNfaSubsetAndTrace();
+        _activeMode = StudioMode.Nfa;
     }
 
     private void OpenCompiledInCfg()
@@ -1789,7 +2078,7 @@
         _activeMode = StudioMode.TuringMachine;
     }
 
-    // ==================== DFA / NFA MODE ====================
+    // ==================== DFA MODE ====================
 
     private Dfa? ActiveDfa => _faViewKind == "dfa" ? _faRawDfa : _faMinDfa;
 
@@ -1811,14 +2100,12 @@
                 var dfa = LanguageSpecCompiler.CompileConstraintToDfa(_faSpecText, alpha);
                 _faMinDfa = dfa;
                 _faRawDfa = dfa;
-                _faNfa = dfa.ToNfa();
             }
             else
             {
                 var compiled = RegexCompiler.Compile(_faSpecText, alpha);
                 _faMinDfa = compiled.MinimalDfa;
                 _faRawDfa = compiled.Dfa;
-                _faNfa = compiled.Nfa;
             }
             TraceFa();
         }
@@ -1836,11 +2123,7 @@
 
     private void TraceFa()
     {
-        if (_faViewKind == "nfa" && _faNfa is not null)
-        {
-            _faTimeline = FaTracer.Trace(_faNfa, _faInput);
-        }
-        else if (ActiveDfa is not null)
+        if (ActiveDfa is not null)
         {
             _faTimeline = FaTracer.Trace(ActiveDfa, _faInput);
         }
@@ -1856,7 +2139,6 @@
         if (_faMinDfa is null) return;
         _faMinDfa = FaOperations.Complement(_faMinDfa);
         _faRawDfa = _faMinDfa;
-        _faNfa = _faMinDfa.ToNfa();
         _faViewKind = "min";
         TraceFa();
     }
@@ -1866,9 +2148,90 @@
         if (_faMinDfa is null) return;
         _faMinDfa = FaOperations.KleeneStar(_faMinDfa);
         _faRawDfa = _faMinDfa;
-        _faNfa = _faMinDfa.ToNfa();
         _faViewKind = "min";
         TraceFa();
+    }
+
+    // ==================== NFA MODE ====================
+
+    private TraceStep<FaStepState>? CurrentNfaStep =>
+        _nfaTimeline is { Steps.Count: > 0 }
+            ? _nfaTimeline.Steps[System.Math.Clamp(_nfaStepIndex, 0, _nfaTimeline.Steps.Count - 1)]
+            : null;
+
+    private DiagramScene? CurrentNfaScene => CurrentNfaStep?.State.Scene ?? _lastValidNfaScene;
+
+    private void BuildNfaFromSpec()
+    {
+        try
+        {
+            _nfaError = null;
+            var alpha = ParseAlphabetInput(_nfaAlphabetText);
+            if (_nfaSourceKind == "constraint")
+            {
+                var compiled = LanguageSpecCompiler.CompileConstraintToNfa(_nfaSpecText, alpha);
+                _currentNfa = compiled.Nfa;
+                _nfaRequiredDeterminization = compiled.RequiredDeterminization;
+                _nfaDeterminizationReason = compiled.DeterminizationReason;
+            }
+            else
+            {
+                var compiled = RegexCompiler.Compile(_nfaSpecText, alpha);
+                _currentNfa = compiled.Nfa.CompactLiteralChains();
+                _nfaRequiredDeterminization = false;
+                _nfaDeterminizationReason = null;
+            }
+            RefreshNfaSubsetAndTrace();
+        }
+        catch (Exception ex)
+        {
+            _nfaError = ex.Message;
+        }
+    }
+
+    private void RunNfaExample(string spec, string sampleInput)
+    {
+        _nfaSourceKind = "constraint";
+        _nfaSpecText = spec;
+        _nfaAlphabetText = string.Empty;
+        _nfaInput = sampleInput;
+        BuildNfaFromSpec();
+    }
+
+    private void RefreshNfaSubsetAndTrace()
+    {
+        if (_currentNfa is null) return;
+        _currentNfa.ToDfaWithSubsetMap(out var subsetMap, renameStates: true);
+        _nfaSubsetMap = subsetMap;
+        TraceNfa();
+    }
+
+    private void TraceNfa()
+    {
+        if (_currentNfa is null) return;
+        _nfaTimeline = FaTracer.Trace(_currentNfa, _nfaInput);
+        _nfaStepIndex = 0;
+        if (CurrentNfaStep is not null)
+        {
+            _lastValidNfaScene = CurrentNfaStep.State.Scene;
+        }
+    }
+
+    private void ConvertCurrentNfaToDfa()
+    {
+        if (_currentNfa is null) return;
+        var raw = _currentNfa.ToDfa(renameStates: true);
+        _faRawDfa = raw;
+        _faMinDfa = raw.Minimize();
+        _faSpecText = _nfaSpecText;
+        _faAlphabetText = _nfaAlphabetText;
+        _faSourceKind = _nfaSourceKind;
+        _faViewKind = "min";
+        _faInput = _nfaInput;
+        _faSampleInputs = _nfaSampleInputs;
+        _faError = null;
+        TraceFa();
+        _activeMode = StudioMode.Dfa;
     }
 
     private void SendDfaToTm()
@@ -1925,7 +2288,6 @@
             _ => _faMinDfa
         };
         _faRawDfa = _faMinDfa;
-        _faNfa = _faMinDfa.ToNfa();
         _faViewKind = "min";
         TraceFa();
     }
@@ -1939,7 +2301,7 @@
             _cfgError = null;
             _currentCfg = Cfg.ParseFromText(_cfgText);
             _cfgParseResult = CfgParser.Parse(_currentCfg, _cfgInput);
-            _lastValidCfgScene = _cfgParseResult.ParseTreeScene;
+            _cfgStepIndex = 0;
         }
         catch (Exception ex)
         {
@@ -1960,25 +2322,16 @@
     private void ConvertCurrentCfgToNfa()
     {
         if (_currentCfg is null || !_currentCfg.IsRegularGrammar()) return;
-        var nfa = RegularGrammarConverter.RegularGrammarToNfa(_currentCfg);
-        _faNfa = nfa;
-        _faRawDfa = nfa.ToDfa();
-        _faMinDfa = _faRawDfa.Minimize();
-        _faViewKind = "nfa";
-        _faInput = _cfgInput;
-        _faError = null;
-        TraceFa();
-        _activeMode = StudioMode.DfaNfa;
+        _currentNfa = RegularGrammarConverter.RegularGrammarToNfa(_currentCfg);
+        _nfaRequiredDeterminization = false;
+        _nfaDeterminizationReason = null;
+        _nfaInput = _cfgInput;
+        _nfaError = null;
+        RefreshNfaSubsetAndTrace();
+        _activeMode = StudioMode.Nfa;
     }
 
     // ==================== PDA MODE ====================
-
-    private TraceStep<PdaStepState>? CurrentPdaStep =>
-        _pdaResult is { Timeline.Steps.Count: > 0 }
-            ? _pdaResult.Timeline.Steps[System.Math.Clamp(_pdaStepIndex, 0, _pdaResult.Timeline.Steps.Count - 1)]
-            : null;
-
-    private DiagramScene? CurrentPdaScene => CurrentPdaStep?.State.Scene ?? _lastValidPdaScene;
 
     private void ParseAndTracePda()
     {
@@ -1999,10 +2352,6 @@
         if (_currentPda is null) return;
         _pdaResult = PdaTracer.Trace(_currentPda, _pdaInput);
         _pdaStepIndex = 0;
-        if (CurrentPdaStep is not null)
-        {
-            _lastValidPdaScene = CurrentPdaStep.State.Scene;
-        }
     }
 
     // ==================== TURING MACHINE MODE ====================

@@ -9,11 +9,12 @@
     var pushed = st.PushedFrames ?? Array.Empty<string>();
     var frames = st.StackFrames;
     var totalSteps = Trace?.Timeline.Steps.Count ?? 0;
+    var peakDepth = Trace?.Timeline.Steps.Max(s => s.State.StackFrames.Count) ?? frames.Count;
 
-    <div class="h-full min-h-0 flex flex-col gap-2.5">
-        @* 1. Top Control Strip: State + Operation Badge + Compact Stepper *@
+    <div class="h-full min-h-0 flex flex-col gap-3">
+        @* 1. Top Control Strip: State + Operation Badge + Depth Metrics + Optional Compact Stepper *@
         <div class="flex flex-wrap items-center justify-between gap-2 shrink-0">
-            <div class="flex items-center gap-1.5 flex-wrap">
+            <div class="flex items-center gap-2 flex-wrap">
                 <span class="bp-pill font-mono text-[11px] @StatePillClass(st.IsAccepted)">
                     @if (!string.IsNullOrEmpty(st.PreviousState) && st.PreviousState != st.CurrentState)
                     {
@@ -30,7 +31,7 @@
                 </span>
 
                 <span class="text-[11px] font-mono tnum" style="color: var(--muted);">
-                    depth @frames.Count
+                    depth @frames.Count · peak @peakDepth
                 </span>
             </div>
 
@@ -38,17 +39,17 @@
             {
                 <div class="flex items-center gap-1">
                     <button type="button"
-                            class="bp-btn-ghost !h-6 !px-1.5 font-mono text-[11px]"
+                            class="bp-btn-ghost !h-7 !px-2 font-mono text-xs"
                             disabled="@(CurrentStepIndex <= 0)"
                             title="Previous stack step"
                             @onclick="StepPrev">
                         ‹
                     </button>
-                    <span class="text-[11px] font-mono tnum px-1" style="color: var(--muted);">
+                    <span class="text-xs font-mono tnum px-1" style="color: var(--muted);">
                         @(CurrentStepIndex + 1)/@totalSteps
                     </span>
                     <button type="button"
-                            class="bp-btn-ghost !h-6 !px-1.5 font-mono text-[11px]"
+                            class="bp-btn-ghost !h-7 !px-2 font-mono text-xs"
                             disabled="@(CurrentStepIndex >= totalSteps - 1)"
                             title="Next stack step"
                             @onclick="StepNext">
@@ -58,13 +59,13 @@
             }
         </div>
 
-        @* 2. Input Tape Ribbon with Read Head *@
-        <div class="rounded-lg px-2.5 py-2 shrink-0" style="background: var(--raised); border: 1px solid var(--border);">
-            <div class="flex items-center justify-between gap-2 mb-1.5">
-                <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--faint);">
-                    Input Tape
+        @* 2. Spacious Scrollable Input Tape Ribbon with Read Head *@
+        <div class="rounded-lg px-3 py-2.5 shrink-0" style="background: var(--raised); border: 1px solid var(--border);">
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <span class="text-[10.5px] font-semibold uppercase tracking-wider" style="color: var(--faint);">
+                    Input Tape (@st.InputIndex/@st.FullInput.Length read)
                 </span>
-                <span class="text-[10.5px] font-mono" style="color: var(--muted);">
+                <span class="text-[11px] font-mono" style="color: var(--muted);">
                     @if (!string.IsNullOrEmpty(st.ReadSymbols))
                     {
                         <span>read <strong style="color: var(--accent);">'@st.ReadSymbols'</strong> · rem @st.RemainingInput</span>
@@ -76,10 +77,10 @@
                 </span>
             </div>
 
-            <div class="flex items-center gap-1 overflow-x-auto pb-0.5">
+            <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
                 @if (st.FullInput.Length == 0)
                 {
-                    <div class="px-2.5 py-1 rounded-md font-mono text-xs font-medium"
+                    <div class="px-3 h-[34px] rounded-md flex items-center font-mono text-xs font-semibold shrink-0"
                          style="background: var(--surface); border: 1.5px solid @(st.IsAccepted == true ? "var(--positive)" : "var(--accent)"); color: var(--text);">
                         e (empty)
                     </div>
@@ -95,11 +96,11 @@
                         var isHead = idx == st.InputIndex;
 
                         <div class="flex flex-col items-center shrink-0">
-                            <div class="w-7 h-7 rounded-md flex items-center justify-center font-mono text-xs font-semibold transition-colors"
+                            <div class="pda-tape-cell transition-colors"
                                  style="@TapeCellStyle(isConsumed, isJustRead, isHead)">
                                 @ch
                             </div>
-                            <span class="text-[9px] leading-none mt-0.5 font-mono"
+                            <span class="text-[10px] leading-none mt-1 font-mono"
                                   style="color: @(isHead ? "var(--accent)" : isJustRead ? "var(--positive)" : "transparent");">
                                 @(isHead ? "▲" : isJustRead ? "✓" : "·")
                             </span>
@@ -107,12 +108,11 @@
                     }
                 }
 
-                @* End-of-input marker ⊣ *@
                 @{
                     var atEnd = st.InputIndex >= st.FullInput.Length;
                 }
                 <div class="flex flex-col items-center shrink-0">
-                    <div class="w-7 h-7 rounded-md flex items-center justify-center font-mono text-xs font-semibold"
+                    <div class="pda-tape-cell"
                          style="@(atEnd
                              ? (st.IsAccepted == true
                                  ? "background: var(--pill-positive-bg); color: var(--pill-positive-ink); border: 1.5px solid var(--positive);"
@@ -120,7 +120,7 @@
                              : "background: var(--surface); color: var(--faint); border: 1px dashed var(--control);")">
                         ⊣
                     </div>
-                    <span class="text-[9px] leading-none mt-0.5 font-mono"
+                    <span class="text-[10px] leading-none mt-1 font-mono"
                           style="color: @(atEnd ? (st.IsAccepted == true ? "var(--positive)" : "var(--accent)") : "transparent");">
                         @(atEnd ? "▲" : "·")
                     </span>
@@ -128,49 +128,48 @@
             </div>
         </div>
 
-        @* 3. Architectural LIFO Stack Stage *@
-        <div class="flex-1 min-h-[190px] bp-well-grid p-3 flex flex-col items-center justify-between gap-2 overflow-y-auto">
+        @* 3. Full-Height Architectural LIFO Stack Stage *@
+        <div class="flex-1 min-h-[240px] bp-well-grid p-4 flex flex-col items-center justify-between gap-3 overflow-y-auto">
             @* Active Transition Delta Banner *@
-            <div class="w-full flex flex-wrap items-center justify-between gap-1.5 text-[11px] shrink-0">
+            <div class="w-full flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
                 <div class="flex items-center gap-1.5 flex-wrap">
                     @if (popped.Count > 0)
                     {
-                        <span class="bp-pill bp-pill-warning font-mono text-[10.5px]">
+                        <span class="bp-pill bp-pill-warning font-mono text-[11px]">
                             ↑ Pop @string.Concat(popped)
                         </span>
                     }
                     @if (pushed.Count > 0)
                     {
-                        <span class="bp-pill bp-pill-positive font-mono text-[10.5px]">
+                        <span class="bp-pill bp-pill-positive font-mono text-[11px]">
                             ↓ Push @string.Concat(pushed)
                         </span>
                     }
                     @if (popped.Count == 0 && pushed.Count == 0)
                     {
-                        <span class="text-[11px]" style="color: var(--muted);">@st.CurrentRow.Remarks</span>
+                        <span class="text-xs" style="color: var(--muted);">@st.CurrentRow.Remarks</span>
                     }
                 </div>
                 @if (st.CurrentRow.TransitionUsed != "—")
                 {
-                    <span class="font-mono text-[10.5px] px-1.5 py-0.5 rounded"
+                    <span class="font-mono text-[11px] px-2 py-0.5 rounded-md"
                           style="background: var(--surface); border: 1px solid var(--border); color: var(--muted);">
                         @st.CurrentRow.TransitionUsed
                     </span>
                 }
             </div>
 
-            @* Popped Ghost Zone + U-Shaped LIFO Vessel *@
-            <div class="w-full max-w-[230px] flex-1 flex flex-col justify-end items-center py-1">
-                @* Floating Ghost Zone showing symbols just popped off the top *@
-                <div class="w-full min-h-[28px] flex items-end justify-center gap-1 pb-1.5">
+            @* Spacious Popped Ghost Zone + Tall U-Shaped LIFO Vessel *@
+            <div class="w-full max-w-[268px] flex-1 flex flex-col justify-center items-center py-2">
+                <div class="w-full min-h-[34px] flex items-end justify-center gap-1.5 pb-2">
                     @if (popped.Count > 0)
                     {
                         <div @key="@($"pop-{CurrentStepIndex}-{string.Concat(popped)}")"
-                             class="flex items-center gap-1 @(SnapMotion ? "" : "pda-anim-pop")">
-                            <span class="text-[9.5px] font-mono uppercase font-semibold" style="color: var(--warning);">↑ pop</span>
+                             class="flex items-center gap-1.5 @(SnapMotion ? "" : "pda-anim-pop")">
+                            <span class="text-[10px] font-mono uppercase font-semibold" style="color: var(--warning);">↑ popped</span>
                             @foreach (var pSym in popped)
                             {
-                                <span class="px-2 py-0.5 rounded font-mono text-xs font-semibold line-through"
+                                <span class="px-2.5 py-0.5 rounded-md font-mono text-xs font-semibold line-through"
                                       style="background: var(--pill-warning-bg); color: var(--pill-warning-ink); border: 1px dashed var(--warning);">
                                     @pSym
                                 </span>
@@ -179,15 +178,13 @@
                     }
                 </div>
 
-                @* Open Rim Label *@
-                <div class="w-full flex items-center justify-between px-1 mb-0.5 text-[9.5px] font-mono uppercase tracking-wider"
+                <div class="w-full flex items-center justify-between px-1.5 mb-1 text-[10px] font-mono uppercase tracking-wider"
                      style="color: var(--faint);">
                     <span>open top</span>
-                    <span>LIFO</span>
+                    <span>LIFO stack</span>
                 </div>
 
-                @* U-Shaped Vessel Container *@
-                <div class="pda-vessel w-full @(ShowCompactStepControls ? "min-h-[88px] max-h-[168px] p-1.5 gap-1" : "min-h-[120px] max-h-[240px] p-2 gap-1.5") flex flex-col justify-end overflow-y-auto">
+                <div class="pda-vessel max-h-[340px] p-2.5 flex flex-col justify-end gap-1.5 overflow-y-auto">
                     @if (frames.Count > 0)
                     {
                         @for (var f = 0; f < frames.Count; f++)
@@ -198,11 +195,11 @@
                             var frameSym = frames[f];
 
                             <div @key="@(isNewPush ? $"push-{CurrentStepIndex}-{f}-{frameSym}" : $"keep-{stackIdx}-{frameSym}")"
-                                 class="w-full px-2.5 @(ShowCompactStepControls ? "py-1" : "py-1.5") rounded-md flex items-center justify-between gap-2 font-mono text-xs font-semibold @(isNewPush && !SnapMotion ? "pda-anim-push" : "")"
+                                 class="w-full px-3 py-2 rounded-md flex items-center justify-between gap-2 font-mono text-xs font-semibold shrink-0 @(isNewPush && !SnapMotion ? "pda-anim-push" : "")"
                                  style="@StackFrameStyle(isTop, isNewPush)">
-                                <span class="text-[9.5px] tnum opacity-65 w-4">@stackIdx</span>
+                                <span class="text-[10px] tnum opacity-65 w-5">@stackIdx</span>
                                 <span class="text-sm font-bold tracking-wide">@frameSym</span>
-                                <span class="text-[9px] font-sans uppercase tracking-wider w-10 text-right">
+                                <span class="text-[9.5px] font-sans uppercase tracking-wider w-12 text-right">
                                     @if (isNewPush)
                                     {
                                         <span>+ push</span>
@@ -217,9 +214,9 @@
                     }
                     else
                     {
-                        <div class="w-full py-5 px-2 rounded-md text-center font-mono text-xs"
+                        <div class="w-full py-6 px-3 rounded-md text-center font-mono text-xs font-medium"
                              style="@(st.IsAccepted == true
-                                 ? "background: var(--pill-positive-bg); color: var(--pill-positive-ink); border: 1px solid var(--positive);"
+                                 ? "background: var(--pill-positive-bg); color: var(--pill-positive-ink); border: 1.5px solid var(--positive);"
                                  : st.IsAccepted == false
                                      ? "background: var(--pill-negative-bg); color: var(--pill-negative-ink); border: 1px dashed var(--negative);"
                                      : "background: var(--raised); color: var(--faint); border: 1px dashed var(--control);")">
@@ -228,85 +225,11 @@
                     }
                 </div>
 
-                @* Vessel Base Floor *@
-                <div class="w-full text-center pt-1 text-[10px] font-mono tracking-wider" style="color: var(--faint);">
+                <div class="w-full text-center pt-1.5 text-[10.5px] font-mono tracking-wider" style="color: var(--faint);">
                     ⊥ bottom
                 </div>
             </div>
         </div>
-
-        @* 4. Step-by-Step Stack Evolution Strip (every step's stack tower side-by-side) *@
-        @if (ShowEvolutionStrip && Trace is not null && Trace.Timeline.Steps.Count > 0)
-        {
-            <div class="bp-card p-2.5 shrink-0">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-[11px] font-semibold">Stack Evolution Across Steps</span>
-                    <span class="text-[10.5px] font-mono" style="color: var(--faint);">Click any stack column to jump</span>
-                </div>
-                <div class="flex items-end gap-2 overflow-x-auto pb-1">
-                    @for (var sIdx = 0; sIdx < Trace.Timeline.Steps.Count; sIdx++)
-                    {
-                        var idx = sIdx;
-                        var step = Trace.Timeline.Steps[idx];
-                        var sst = step.State;
-                        var isCur = idx == CurrentStepIndex;
-                        var sPushCount = sst.PushedFrames?.Count ?? 0;
-
-                        <button type="button"
-                                class="shrink-0 w-[66px] rounded-lg p-1.5 flex flex-col items-center gap-1 transition-all cursor-pointer"
-                                style="@(isCur
-                                    ? "background: var(--accent-soft); border: 1.5px solid var(--accent);"
-                                    : "background: var(--raised); border: 1px solid var(--border);")"
-                                title="Step @idx: @sst.CurrentRow.Remarks"
-                                @onclick="() => JumpToStep(idx)">
-                            <span class="text-[9.5px] font-mono font-semibold truncate w-full text-center"
-                                  style="color: @MiniBadgeColor(sst.OperationKind, sst.IsAccepted);">
-                                @MiniStepBadge(sst)
-                            </span>
-
-                            @* Mini stack tower growing upward from shared baseline *@
-                            <div class="w-full h-[84px] flex flex-col justify-end gap-0.5 px-1 py-1 rounded"
-                                 style="background: var(--surface); border-left: 1.5px solid var(--control); border-right: 1.5px solid var(--control); border-bottom: 2px solid var(--control);">
-                                @if (sst.StackFrames.Count == 0)
-                                {
-                                    <div class="text-center font-mono text-[10px] py-1"
-                                         style="color: @(sst.IsAccepted == true ? "var(--positive)" : "var(--faint)");">
-                                        e
-                                    </div>
-                                }
-                                else
-                                {
-                                    var visibleCount = System.Math.Min(sst.StackFrames.Count, 5);
-                                    @for (var f = 0; f < visibleCount; f++)
-                                    {
-                                        var isPushedCell = sPushCount > 0 && f < sPushCount;
-                                        <div class="w-full text-center font-mono text-[10px] leading-tight py-0.5 rounded-[3px] font-semibold"
-                                             style="@(isPushedCell
-                                                 ? "background: var(--pill-positive-bg); color: var(--pill-positive-ink);"
-                                                 : f == 0
-                                                     ? "background: var(--accent-soft); color: var(--accent);"
-                                                     : "background: var(--raised); color: var(--text);")">
-                                            @sst.StackFrames[f]
-                                        </div>
-                                    }
-                                    @if (sst.StackFrames.Count > visibleCount)
-                                    {
-                                        <div class="text-center font-mono text-[8.5px]" style="color: var(--faint);">
-                                            +@(sst.StackFrames.Count - visibleCount)
-                                        </div>
-                                    }
-                                }
-                            </div>
-
-                            <div class="w-full flex items-center justify-between text-[9.5px] font-mono tnum" style="color: var(--muted);">
-                                <span>#@idx</span>
-                                <span class="font-semibold">@sst.CurrentState</span>
-                            </div>
-                        </button>
-                    }
-                </div>
-            </div>
-        }
     </div>
 }
 else
@@ -320,7 +243,6 @@ else
     [Parameter] public PdaTraceResult? Trace { get; set; }
     [Parameter] public int CurrentStepIndex { get; set; }
     [Parameter] public EventCallback<int> CurrentStepIndexChanged { get; set; }
-    [Parameter] public bool ShowEvolutionStrip { get; set; }
     [Parameter] public bool ShowCompactStepControls { get; set; }
     [Parameter] public bool SnapMotion { get; set; }
 
@@ -329,15 +251,13 @@ else
             ? steps[System.Math.Clamp(CurrentStepIndex, 0, steps.Count - 1)]
             : null;
 
-    private Task StepPrev() => JumpToStep(System.Math.Max(0, CurrentStepIndex - 1));
+    private Task StepPrev() => CurrentStepIndexChanged.InvokeAsync(System.Math.Max(0, CurrentStepIndex - 1));
 
     private Task StepNext()
     {
         var max = (Trace?.Timeline.Steps.Count ?? 1) - 1;
-        return JumpToStep(System.Math.Min(max, CurrentStepIndex + 1));
+        return CurrentStepIndexChanged.InvokeAsync(System.Math.Min(max, CurrentStepIndex + 1));
     }
-
-    private Task JumpToStep(int index) => CurrentStepIndexChanged.InvokeAsync(index);
 
     private static string StatePillClass(bool? verdict) => verdict switch
     {
@@ -383,31 +303,5 @@ else
         if (isTop)
             return "background: var(--accent-soft); color: var(--accent); border: 1.5px solid var(--accent);";
         return "background: var(--raised); color: var(--text); border: 1px solid var(--border);";
-    }
-
-    private static string MiniStepBadge(PdaStepState s)
-    {
-        if (s.IsAccepted == true) return "✓ acc";
-        if (s.IsAccepted == false) return "✗ rej";
-        var pop = s.PoppedFrames is { Count: > 0 } ? string.Concat(s.PoppedFrames) : "";
-        var push = s.PushedFrames is { Count: > 0 } ? string.Concat(s.PushedFrames) : "";
-        if (pop.Length > 0 && push.Length > 0) return $"{pop}→{push}";
-        if (push.Length > 0) return $"+{push}";
-        if (pop.Length > 0) return $"−{pop}";
-        if (s.OperationKind == "INIT") return "init";
-        return "ε";
-    }
-
-    private static string MiniBadgeColor(string opKind, bool? verdict)
-    {
-        if (verdict == true) return "var(--positive)";
-        if (verdict == false) return "var(--negative)";
-        return opKind switch
-        {
-            "PUSH" => "var(--positive)",
-            "POP" or "MATCH" => "var(--warning)",
-            "REPLACE" => "var(--accent)",
-            _ => "var(--muted)"
-        };
     }
 }

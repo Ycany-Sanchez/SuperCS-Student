@@ -1,4 +1,6 @@
-﻿<!DOCTYPE html>
+﻿@using Microsoft.AspNetCore.Hosting
+@inject IWebHostEnvironment Env
+<!DOCTYPE html>
 <html lang="en" data-theme="light">
 
 <head>
@@ -10,7 +12,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="vendor/katex/katex.min.css" />
-    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="@AssetHref("css/app.css")" />
     <HeadOutlet @rendermode="InteractiveServer" />
     <script>
         (function () {
@@ -30,8 +32,28 @@
         An unexpected error occurred.
         <a href="" class="underline font-medium ml-2">Reload</a>
     </div>
-    <script type="module" src="js/main.js"></script>
+    <script type="module" src="@AssetHref("js/main.js")"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
 
 </html>
+
+@code {
+    private string AssetHref(string relativePath)
+    {
+        try
+        {
+            var fullPath = System.IO.Path.Combine(Env.WebRootPath, relativePath);
+            if (System.IO.File.Exists(fullPath))
+            {
+                var ticks = System.IO.File.GetLastWriteTimeUtc(fullPath).Ticks;
+                return $"{relativePath}?v={ticks}";
+            }
+        }
+        catch
+        {
+            // Fallback to unversioned relative path if filesystem inspection fails
+        }
+        return relativePath;
+    }
+}
