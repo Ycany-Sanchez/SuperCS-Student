@@ -223,7 +223,7 @@ export function mountSvgCanvas(container, dotNetRef) {
     const rect = svg.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    const nextScale = Math.min(2.8, Math.max(0.35, state.scale * factor));
+    const nextScale = Math.min(2.8, Math.max(0.15, state.scale * factor));
     const ratio = nextScale / state.scale;
     state.panX = mx - (mx - state.panX) * ratio;
     state.panY = my - (my - state.panY) * ratio;
@@ -534,6 +534,13 @@ export function renderScene(container, scene, snap = false) {
 
   // Resolve current node coordinates (applying any pending double-click drop or user drag offsets)
   const resolved = new Map();
+  const activeNodeIds = new Set(nodes.map((n) => n.id));
+  for (const oldId of Array.from(st.nodePositions.keys())) {
+    if (!activeNodeIds.has(oldId)) {
+      st.nodePositions.delete(oldId);
+      st.customOffsets.delete(oldId);
+    }
+  }
   for (const n of nodes) {
     const pending = st.pendingDropPos.get(n.id);
     if (pending) {
@@ -581,8 +588,9 @@ export function renderScene(container, scene, snap = false) {
       : (isActive ? "1" : (isTreeScene ? "0.72" : (hasAnyActiveEdge ? "0.52" : "0.90")));
 
     const edgeGroup = createEl("g", {
-      class: isTreeScene ? "svg-tree-edge" : "svg-edge-group",
+      class: `${isTreeScene ? "svg-tree-edge" : "svg-edge-group"}${!isTreeScene && st.options.enableSelection ? " cursor-pointer" : ""}`,
       "data-edge-id": edgeId,
+      "data-edge-hit": !isTreeScene ? edgeId : null,
       opacity: baseOpacity
     });
 
@@ -1188,7 +1196,7 @@ export function zoomCanvas(container, factor) {
   const rect = st.svg.getBoundingClientRect();
   const cx = rect.width / 2;
   const cy = rect.height / 2;
-  const nextScale = Math.min(2.8, Math.max(0.35, st.scale * factor));
+  const nextScale = Math.min(2.8, Math.max(0.15, st.scale * factor));
   const ratio = nextScale / st.scale;
   st.panX = cx - (cx - st.panX) * ratio;
   st.panY = cy - (cy - st.panY) * ratio;
@@ -1223,7 +1231,7 @@ export function fitCanvas(container) {
   }
 
   const scale = Math.min(1.25, Math.min((rect.width - 28) / vw, (rect.height - 28) / vh));
-  st.scale = Math.max(0.28, scale);
+  st.scale = Math.max(0.15, scale);
   st.panX = (rect.width - vw * st.scale) / 2 - minX * st.scale;
   st.panY = (rect.height - vh * st.scale) / 2 - minY * st.scale;
   st.applyTransform();

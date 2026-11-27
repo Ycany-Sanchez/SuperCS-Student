@@ -867,6 +867,7 @@
     {
         _activeTraversalMode = null;
         _traverseMenuOpen = false;
+        ClearSelectionState();
         _treeTimeline = _category switch
         {
             StructureCategory.Bst => _bst.Delete(_singleKey),
@@ -910,7 +911,7 @@
     private void BtAddRoot() { _activeTraversalMode = null; _traverseMenuOpen = false; _treeTimeline = _binaryTree.AddRoot(_btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
     private void BtAddLeft() { _activeTraversalMode = null; _traverseMenuOpen = false; _treeTimeline = _binaryTree.AddLeft(_btParent, _btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
     private void BtAddRight() { _activeTraversalMode = null; _traverseMenuOpen = false; _treeTimeline = _binaryTree.AddRight(_btParent, _btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
-    private void BtRemove() { _activeTraversalMode = null; _traverseMenuOpen = false; _treeTimeline = _binaryTree.Remove(_btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
+    private void BtRemove() { _activeTraversalMode = null; _traverseMenuOpen = false; ClearSelectionState(); _treeTimeline = _binaryTree.Remove(_btLabel); _stepIndex = System.Math.Max(0, TotalSteps - 1); }
 
     private bool _traverseMenuOpen;
     private TreeTraversalMode? _activeTraversalMode;
@@ -951,6 +952,7 @@
 
     private void ApplyGraphEdgesAndRun()
     {
+        ClearSelectionState();
         RebuildGraphFromEditor();
         RunGraphAlgorithm();
     }
@@ -1051,7 +1053,7 @@
             {
                 if (_graph.RemoveVertex(target.Id))
                 {
-                    if (string.Equals(_graphStartVertex, target.Id, StringComparison.Ordinal))
+                    if (string.Equals(_graphStartVertex.Trim(), target.Id, StringComparison.Ordinal))
                     {
                         _graphStartVertex = _graph.Vertices.FirstOrDefault()?.Id ?? string.Empty;
                     }
