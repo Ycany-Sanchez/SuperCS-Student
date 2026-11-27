@@ -52,10 +52,18 @@ public sealed record DiagramEdge(
     bool IsDimmed = false,
     double CurveOffset = 0);
 
+public sealed record DiagramMotion(
+    string FromNodeId,
+    string ToNodeId,
+    string Kind = "traverse",
+    string? Color = null);
+
 public sealed record DiagramScene(
     double ViewBoxWidth,
     double ViewBoxHeight,
     IReadOnlyList<DiagramNode> Nodes,
     IReadOnlyList<DiagramEdge> Edges,
     string? Caption = null,
-    string? OverlayTag = null);
+    string? OverlayTag = null,
+    string RoutingMode = "orthogonal",
+    DiagramMotion? ActiveMotion = null);

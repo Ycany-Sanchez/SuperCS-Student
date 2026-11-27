@@ -2,11 +2,13 @@ import gsap from "gsap";
 import { Flip } from "gsap/Flip";
 import { MotionPathPlugin } from "gsap/MotionPathPlugin";
 import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
+import { EDGE_PALETTE_SIZE, routeOrthogonalEdges } from "./orthoRouter.js";
 
 gsap.registerPlugin(Flip, MotionPathPlugin, DrawSVGPlugin);
 
 const instances = new WeakMap();
 const NS = "http://www.w3.org/2000/svg";
+let nextCanvasId = 1;
 
 function prefersReducedMotion() {
   return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -43,7 +45,7 @@ function semanticColors(state) {
   }
 }
 
-function edgeColor(state) {
+function edgeColor(state, paletteIdx = null) {
   switch (state) {
     case "active": return "var(--warning)";
     case "accepted":
@@ -51,7 +53,7 @@ function edgeColor(state) {
     case "rejected":
     case "violation": return "var(--negative)";
     case "frontier": return "var(--accent)";
-    default: return "var(--muted)";
+    default: return paletteIdx !== null ? `var(--edge-c${paletteIdx % EDGE_PALETTE_SIZE})` : "var(--muted)";
   }
 }
 
@@ -64,6 +66,7 @@ export function mountSvgCanvas(container, dotNetRef) {
   if (instances.has(container)) return;
 
   container.innerHTML = "";
+  const idPrefix = `sc-${nextCanvasId++}-`;
   const svg = createEl("svg", {
     class: "w-full h-full block select-none touch-none",
     width: "100%",
@@ -72,7 +75,7 @@ export function mountSvgCanvas(container, dotNetRef) {
 
   const defs = createEl("defs");
   const shadow = createEl("filter", {
-    id: "node-elev",
+    id: `${idPrefix}node-elev`,
     x: "-25%",
     y: "-25%",
     width: "150%",
@@ -86,11 +89,15 @@ export function mountSvgCanvas(container, dotNetRef) {
     "flood-opacity": "0.10"
   }));
   defs.appendChild(shadow);
-  defs.appendChild(buildArrowMarker("arrow-default", "var(--muted)"));
-  defs.appendChild(buildArrowMarker("arrow-active", "var(--warning)"));
-  defs.appendChild(buildArrowMarker("arrow-accepted", "var(--positive)"));
-  defs.appendChild(buildArrowMarker("arrow-rejected", "var(--negative)"));
-  defs.appendChild(buildArrowMarker("arrow-frontier", "var(--accent)"));
+  defs.appendChild(buildArrowMarker(`${idPrefix}arrow-default`, "var(--muted)"));
+  defs.appendChild(buildArrowMarker(`${idPrefix}arrow-active`, "var(--warning)"));
+  defs.appendChild(buildArrowMarker(`${idPrefix}arrow-accepted`, "var(--positive)"));
+  defs.appendChild(buildArrowMarker(`${idPrefix}arrow-rejected`, "var(--negative)"));
+  defs.appendChild(buildArrowMarker(`${idPrefix}arrow-frontier`, "var(--accent)"));
+  defs.appendChild(buildArrowMarker(`${idPrefix}arrow-selected`, "var(--accent)"));
+  for (let c = 0; c < EDGE_PALETTE_SIZE; c++) {
+    defs.appendChild(buildArrowMarker(`${idPrefix}arrow-c${c}`, `var(--edge-c${c})`));
+  }
   svg.appendChild(defs);
 
   const viewport = createEl("g", { "data-role": "viewport" });
@@ -105,6 +112,7 @@ export function mountSvgCanvas(container, dotNetRef) {
 
   const state = {
     svg,
+    idPrefix,
     viewport,
     edgesLayer,
     nodesLayer,
@@ -240,12 +248,13 @@ function buildArrowMarker(id, color) {
   return marker;
 }
 
-function markerForState(state) {
-  if (state === "active") return "url(#arrow-active)";
-  if (state === "accepted" || state === "visited") return "url(#arrow-accepted)";
-  if (state === "rejected" || state === "violation") return "url(#arrow-rejected)";
-  if (state === "frontier") return "url(#arrow-frontier)";
-  return "url(#arrow-default)";
+function markerForState(idPrefix, state, paletteIdx = null) {
+  if (state === "active") return `url(#${idPrefix}arrow-active)`;
+  if (state === "accepted" || state === "visited") return `url(#${idPrefix}arrow-accepted)`;
+  if (state === "rejected" || state === "violation") return `url(#${idPrefix}arrow-rejected)`;
+  if (state === "frontier") return `url(#${idPrefix}arrow-frontier)`;
+  if (paletteIdx !== null) return `url(#${idPrefix}arrow-c${paletteIdx % EDGE_PALETTE_SIZE})`;
+  return `url(#${idPrefix}arrow-default)`;
 }
 
 export function renderScene(container, scene, snap = false) {
@@ -282,62 +291,121 @@ export function renderScene(container, scene, snap = false) {
 
   // Clear layers cleanly
   st.edgesLayer.innerHTML = "";
+  st.edgesLayer.classList.remove("svg-edges-hovering");
   st.nodesLayer.innerHTML = "";
   st.effectsLayer.innerHTML = "";
 
+  const isTreeScene = scene.routingMode === "tree";
+  const orthoRoutes = isTreeScene ? null : routeOrthogonalEdges(resolved, edges, { cornerRadius: 5 });
+  const hasAnyActiveEdge = edges.some((e) => e.semanticState === "active");
+
   // Render edges
   const activeEdgePaths = [];
-  for (const e of edges) {
+  for (let idx = 0; idx < edges.length; idx++) {
+    const e = edges[idx];
     const src = resolved.get(e.sourceId);
     const tgt = resolved.get(e.targetId);
     if (!src || !tgt) continue;
 
-    const { d, labelX, labelY } = computeEdgePath(src, tgt, e.curveOffset || 0, Boolean(e.isDirected));
-    const stroke = edgeColor(e.semanticState);
-    const isActive = e.semanticState === "active" || e.semanticState === "accepted" || e.semanticState === "frontier";
+    const key = e.id ?? `${e.sourceId}->${e.targetId}#${idx}`;
+    const ortho = orthoRoutes ? orthoRoutes.get(key) : null;
+    const { d, labelX, labelY } = ortho || computeEdgePath(src, tgt, e.curveOffset || 0, Boolean(e.isDirected));
+    const paletteIdx = (!isTreeScene && ortho) ? ortho.colorIndex : null;
+    const stroke = edgeColor(e.semanticState, paletteIdx);
+    const isActive = e.semanticState === "active" || e.semanticState === "accepted" || e.semanticState === "frontier" || e.semanticState === "rejected" || e.semanticState === "violation";
+    const isSteppingActive = e.semanticState === "active";
+
+    const baseOpacity = e.isDimmed
+      ? "0.22"
+      : (isActive ? "1" : (isTreeScene ? "0.72" : (hasAnyActiveEdge ? "0.52" : "0.90")));
+
+    const edgeGroup = createEl("g", {
+      class: isTreeScene ? "svg-tree-edge" : "svg-edge-group",
+      "data-edge-id": e.id || key,
+      opacity: baseOpacity
+    });
+
+    // Subtle background gap-casing beneath multi-segment orthogonal wires so crossings read clearly
+    if (!isTreeScene && ortho && ortho.isMultiSegment && !e.isDimmed) {
+      edgeGroup.appendChild(createEl("path", {
+        d,
+        fill: "none",
+        stroke: "var(--canvas-well)",
+        "stroke-width": isSteppingActive ? "6" : "4.5",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "pointer-events": "none"
+      }));
+    }
+
     const pathEl = createEl("path", {
       d,
       fill: "none",
       stroke,
-      "stroke-width": isActive ? "2.4" : "1.5",
+      "stroke-width": isSteppingActive ? "2.8" : (isActive ? "2.4" : (isTreeScene ? "1.5" : "1.95")),
       "stroke-linecap": "round",
+      "stroke-linejoin": "round",
       "stroke-dasharray": e.isDashed ? "5 4" : null,
-      "marker-end": e.isDirected ? markerForState(e.semanticState) : null,
-      opacity: e.isDimmed ? "0.22" : (isActive ? "1" : "0.72")
+      "marker-end": e.isDirected ? markerForState(st.idPrefix, e.semanticState, paletteIdx) : null
     });
-    st.edgesLayer.appendChild(pathEl);
+    edgeGroup.appendChild(pathEl);
 
-    if (e.semanticState === "active" && !skipMotion) {
+    if (!isTreeScene) {
+      // Wide invisible hit path for effortless wire hover isolation (and selection in Task 4)
+      const hitEl = createEl("path", {
+        d,
+        fill: "none",
+        stroke: "transparent",
+        "stroke-width": "12",
+        "data-edge-hit": e.id || key
+      });
+      edgeGroup.appendChild(hitEl);
+      edgeGroup.addEventListener("pointerenter", () => {
+        st.edgesLayer.classList.add("svg-edges-hovering");
+        edgeGroup.classList.add("svg-edge-hovered");
+      });
+      edgeGroup.addEventListener("pointerleave", () => {
+        edgeGroup.classList.remove("svg-edge-hovered");
+        if (!st.edgesLayer.querySelector(".svg-edge-hovered")) {
+          st.edgesLayer.classList.remove("svg-edges-hovering");
+        }
+      });
+    }
+
+    if (isSteppingActive && !skipMotion) {
       activeEdgePaths.push({ pathEl, stroke });
     }
 
     if (e.label) {
-      const pillW = Math.max(24, e.label.length * 7.5 + 14);
+      const pillW = Math.max(24, e.label.length * 7.2 + 14);
+      const useColoredPill = !isTreeScene || isActive;
       const labelBg = createEl("rect", {
         x: labelX - pillW / 2,
         y: labelY - 10,
         width: pillW,
         height: 19,
-        rx: 6,
+        rx: 5,
         fill: "var(--surface)",
-        stroke: isActive ? stroke : "var(--border)",
-        "stroke-width": isActive ? "1.2" : "1",
-        opacity: e.isDimmed ? "0.35" : "0.96"
+        stroke: useColoredPill ? stroke : "var(--border)",
+        "stroke-width": isActive ? "1.4" : (useColoredPill ? "1.15" : "1"),
+        opacity: e.isDimmed ? "0.35" : "0.97"
       });
       const labelTxt = createEl("text", {
         x: labelX,
-        y: labelY + 3,
+        y: labelY + 3.2,
         "text-anchor": "middle",
-        fill: isActive ? stroke : "var(--text)",
+        fill: useColoredPill ? stroke : "var(--text)",
         "font-family": "var(--font-mono)",
         "font-size": "11",
-        "font-weight": isActive ? "600" : "500",
+        "font-weight": "600",
         opacity: e.isDimmed ? "0.3" : "1"
       });
       labelTxt.textContent = e.label;
-      st.edgesLayer.appendChild(labelBg);
-      st.edgesLayer.appendChild(labelTxt);
+      edgeGroup.appendChild(labelBg);
+      edgeGroup.appendChild(labelTxt);
     }
+
+    st.edgesLayer.appendChild(edgeGroup);
   }
 
   // Render nodes with smooth GSAP coordinate interpolation from previous positions
@@ -370,7 +438,7 @@ export function renderScene(container, scene, snap = false) {
       }));
     }
 
-    drawNodeShape(g, n, colors);
+    drawNodeShape(g, n, colors, st.idPrefix);
 
     // Optional corner badge (balance factor, height, (R)/(B), distance D[v])
     if (n.badge) {
@@ -442,7 +510,7 @@ export function renderScene(container, scene, snap = false) {
   }
 }
 
-function drawNodeShape(g, n, colors) {
+function drawNodeShape(g, n, colors, idPrefix = "") {
   const showHalo = n.semanticState === "active" || n.semanticState === "violation" || n.semanticState === "frontier" || n.semanticState === "accepted";
 
   if (n.shape === "sentinel") {
@@ -486,7 +554,7 @@ function drawNodeShape(g, n, colors) {
       fill: colors.fill,
       stroke: colors.stroke,
       "stroke-width": colors.strokeWidth,
-      filter: "url(#node-elev)"
+      filter: `url(#${idPrefix}node-elev)`
     }));
     keys.forEach((k, idx) => {
       const cx = -totalW / 2 + (idx + 0.5) * (totalW / keys.length);
@@ -540,7 +608,7 @@ function drawNodeShape(g, n, colors) {
       fill: colors.fill,
       stroke: colors.stroke,
       "stroke-width": colors.strokeWidth,
-      filter: "url(#node-elev)"
+      filter: `url(#${idPrefix}node-elev)`
     }));
   } else {
     const r = Math.min(n.width, n.height) / 2;
@@ -562,7 +630,7 @@ function drawNodeShape(g, n, colors) {
       fill: colors.fill,
       stroke: colors.stroke,
       "stroke-width": colors.strokeWidth,
-      filter: "url(#node-elev)"
+      filter: `url(#${idPrefix}node-elev)`
     }));
     if (n.isAccepting || n.shape === "double-circle") {
       g.appendChild(createEl("circle", {
@@ -683,12 +751,29 @@ export function fitCanvas(container) {
   if (rect.width === 0 || rect.height === 0) return;
   st.userInteracted = false;
   st.lastRect = { w: rect.width, h: rect.height };
-  const vw = st.lastScene.viewBoxWidth || 680;
-  const vh = st.lastScene.viewBoxHeight || 360;
-  const scale = Math.min(1.25, Math.min((rect.width - 32) / vw, (rect.height - 32) / vh));
-  st.scale = Math.max(0.32, scale);
-  st.panX = (rect.width - vw * st.scale) / 2;
-  st.panY = (rect.height - vh * st.scale) / 2;
+
+  let minX = 0;
+  let minY = 0;
+  let vw = st.lastScene.viewBoxWidth || 680;
+  let vh = st.lastScene.viewBoxHeight || 360;
+
+  try {
+    const bbox = st.viewport.getBBox();
+    if (bbox && bbox.width > 1 && bbox.height > 1) {
+      const pad = 28;
+      minX = bbox.x - pad;
+      minY = bbox.y - pad;
+      vw = bbox.width + pad * 2;
+      vh = bbox.height + pad * 2;
+    }
+  } catch {
+    // Fallback to scene viewBox when detached or hidden
+  }
+
+  const scale = Math.min(1.25, Math.min((rect.width - 28) / vw, (rect.height - 28) / vh));
+  st.scale = Math.max(0.28, scale);
+  st.panX = (rect.width - vw * st.scale) / 2 - minX * st.scale;
+  st.panY = (rect.height - vh * st.scale) / 2 - minY * st.scale;
   st.applyTransform();
 }
 

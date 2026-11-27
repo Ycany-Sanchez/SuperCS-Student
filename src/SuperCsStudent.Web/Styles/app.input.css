@@ -45,6 +45,16 @@
   --rb-black-bg: #181b22;
   --rb-black-ink: #ffffff;
 
+  /* Distinct orthogonal arrow palette (light mode — WCAG contrast on porcelain well) */
+  --edge-c0: #0284c7;
+  --edge-c1: #059669;
+  --edge-c2: #b45309;
+  --edge-c3: #e11d48;
+  --edge-c4: #7c3aed;
+  --edge-c5: #c2410c;
+  --edge-c6: #4d7c0f;
+  --edge-c7: #0d9488;
+
   --shadow-sheet: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.03);
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-floating: 0 4px 16px rgba(15, 23, 42, 0.09), 0 1px 3px rgba(15, 23, 42, 0.06);
@@ -99,6 +109,16 @@
   --rb-red-ink: #ffffff;
   --rb-black-bg: #262b36;
   --rb-black-ink: #ffffff;
+
+  /* Distinct orthogonal arrow palette (dark mode — crisp readability on obsidian well) */
+  --edge-c0: #38bdf8;
+  --edge-c1: #34d399;
+  --edge-c2: #fbbf24;
+  --edge-c3: #fb7185;
+  --edge-c4: #c084fc;
+  --edge-c5: #fb923c;
+  --edge-c6: #a3e635;
+  --edge-c7: #2dd4bf;
 
   --shadow-sheet: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 28px rgba(0, 0, 0, 0.45);
   --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.035);
@@ -493,6 +513,17 @@ select.bp-input optgroup {
 /* Preserve native KaTeX metrics */
 .katex-host .katex {
   font-size: 1.04em;
+}
+
+/* Interactive SVG diagram edge hover isolation */
+.svg-edge-group {
+  transition: opacity 120ms ease;
+}
+.svg-edges-hovering .svg-edge-group {
+  opacity: 0.24 !important;
+}
+.svg-edges-hovering .svg-edge-group.svg-edge-hovered {
+  opacity: 1 !important;
 }
 
 /* Modernized Blockly overrides */

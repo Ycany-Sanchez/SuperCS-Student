@@ -1,3 +1,5 @@
+using SuperCsStudent.Core.Diagram;
+using SuperCsStudent.Core.Layout;
 using SuperCsStudent.Structures.Config;
 using SuperCsStudent.Structures.Graphs;
 using SuperCsStudent.Structures.Presets;
@@ -227,5 +229,23 @@ public sealed class GraphAndPresetTests
         var dfs = iterDfs.TraceDfs(graph, "A");
         Assert.Equal(4, dfs.Steps[^1].State.VisitOrder.Count);
         Assert.Contains("Back", dfs.Steps[^1].State.EdgeClassifications!.Values);
+    }
+
+    [Fact]
+    public void DiagramLayout_StampsExplicitRoutingModeForGraphsAndTrees()
+    {
+        var graphScene = DiagramLayout.LayoutStateGraph(
+            new[] { new GraphNodeInput("A", "A"), new GraphNodeInput("B", "B") },
+            new[] { new GraphEdgeInput("e1", "A", "B") });
+        Assert.Equal("orthogonal", graphScene.RoutingMode);
+
+        var emptyGraph = DiagramLayout.LayoutStateGraph(Array.Empty<GraphNodeInput>(), Array.Empty<GraphEdgeInput>());
+        Assert.Equal("orthogonal", emptyGraph.RoutingMode);
+
+        var treeScene = DiagramLayout.LayoutTidyTree(new LayoutTreeNode { Id = "r", Label = "10" });
+        Assert.Equal("tree", treeScene.RoutingMode);
+
+        var emptyTree = DiagramLayout.LayoutTidyTree(null);
+        Assert.Equal("tree", emptyTree.RoutingMode);
     }
 }

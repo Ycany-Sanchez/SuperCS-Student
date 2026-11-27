@@ -57,7 +57,7 @@ public static class DiagramLayout
     {
         if (nodes.Count == 0)
         {
-            return new DiagramScene(640, 360, Array.Empty<DiagramNode>(), Array.Empty<DiagramEdge>(), caption, overlayTag);
+            return new DiagramScene(640, 360, Array.Empty<DiagramNode>(), Array.Empty<DiagramEdge>(), caption, overlayTag, RoutingMode: "orthogonal");
         }
 
         var positions = new Dictionary<string, (double X, double Y)>();
@@ -227,7 +227,7 @@ public static class DiagramLayout
                 curve));
         }
 
-        return new DiagramScene(width, height, diagramNodes, diagramEdges, caption, overlayTag);
+        return new DiagramScene(width, height, diagramNodes, diagramEdges, caption, overlayTag, RoutingMode: "orthogonal");
     }
 
     /// <summary>
@@ -242,7 +242,7 @@ public static class DiagramLayout
     {
         if (root is null)
         {
-            return new DiagramScene(640, 320, Array.Empty<DiagramNode>(), Array.Empty<DiagramEdge>(), caption, overlayTag);
+            return new DiagramScene(640, 320, Array.Empty<DiagramNode>(), Array.Empty<DiagramEdge>(), caption, overlayTag, RoutingMode: "tree");
         }
 
         var widths = new Dictionary<string, double>();
@@ -334,6 +334,6 @@ public static class DiagramLayout
 
         var totalWidth = System.Math.Max(640, rootSpan + padX * 2);
         var totalHeight = System.Math.Max(320, maxY + padY);
-        return new DiagramScene(totalWidth, totalHeight, diagramNodes, diagramEdges, caption, overlayTag);
+        return new DiagramScene(totalWidth, totalHeight, diagramNodes, diagramEdges, caption, overlayTag, RoutingMode: "tree");
     }
 }
