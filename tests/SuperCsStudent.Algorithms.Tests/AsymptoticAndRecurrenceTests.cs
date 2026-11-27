@@ -183,6 +183,35 @@ public sealed class AsymptoticAndRecurrenceTests
         }
     }
 
+    [Fact]
+    public void BlankPreset_ResolvesCleanly_Preserves24Presets_AndAnalyzesAsConstantZero()
+    {
+        Assert.Equal(24, AlgorithmPresets.All.Count);
+        Assert.DoesNotContain(AlgorithmPresets.All, p => string.Equals(p.Key, "blank-custom", StringComparison.OrdinalIgnoreCase));
+
+        var blank = AlgorithmPresets.Blank;
+        Assert.Equal("blank-custom", blank.Key);
+        Assert.False(string.IsNullOrWhiteSpace(blank.BlocklyStateJson));
+
+        using (var doc = JsonDocument.Parse(blank.BlocklyStateJson))
+        {
+            var blocksObj = doc.RootElement.GetProperty("blocks");
+            Assert.Equal(0, blocksObj.GetProperty("languageVersion").GetInt32());
+            var rootBlock = blocksObj.GetProperty("blocks")[0];
+            Assert.Equal("daa_function", rootBlock.GetProperty("type").GetString());
+        }
+
+        Assert.True(AlgorithmPresets.TryGet("blank-custom", out var resolved));
+        Assert.Same(blank, resolved);
+        Assert.Same(blank, AlgorithmPresets.Get("blank-custom"));
+
+        var analysis = IterativeAnalyzer.Analyze(blank.Ast);
+        Assert.Equal("0", analysis.WorstCase.Plain);
+        Assert.Equal("O(1)", analysis.Asymptotic.BigO);
+        Assert.Equal("Θ(1)", analysis.Asymptotic.BigTheta);
+        Assert.NotEmpty(analysis.GrowthChartSeries);
+    }
+
     private static void VerifyWitnessHolds(
         SymbolicExpr expr,
         BasisTerm dominant,

@@ -28,14 +28,44 @@ public static class AlgorithmPresets
 
     public static IReadOnlyList<AlgorithmPreset> All => _all;
 
+    public static AlgorithmPreset Blank { get; } = BuildIterative(
+        key: "blank-custom",
+        title: "Blank Function (Custom)",
+        category: "Custom",
+        description: "Empty function ready to drag loop, branch, and statement blocks.",
+        ast: new AlgorithmFunction("algorithm", new[] { "n" }, Array.Empty<AlgorithmStatement>()));
+
+    public static IReadOnlyList<string> OrderedCategories { get; } = new[]
+    {
+        "Linear Loops",
+        "Step Loops",
+        "Logarithmic Loops",
+        "Conditional Loops",
+        "Modified Bounds",
+        "Nested Loops",
+        "Recurrences"
+    };
+
     public static AlgorithmPreset Get(string key)
     {
-        if (_byKey.TryGetValue(key, out var preset)) return preset;
+        if (TryGet(key, out var preset) && preset is not null) return preset;
         throw new KeyNotFoundException($"Unknown algorithm preset key '{key}'.");
     }
 
-    public static bool TryGet(string key, out AlgorithmPreset? preset) =>
-        _byKey.TryGetValue(key, out preset);
+    public static bool TryGet(string key, out AlgorithmPreset? preset)
+    {
+        if (!string.IsNullOrEmpty(key))
+        {
+            if (_byKey.TryGetValue(key, out preset)) return true;
+            if (string.Equals(key, Blank.Key, StringComparison.OrdinalIgnoreCase))
+            {
+                preset = Blank;
+                return true;
+            }
+        }
+        preset = null;
+        return false;
+    }
 
     private static IReadOnlyList<AlgorithmPreset> BuildAll()
     {
