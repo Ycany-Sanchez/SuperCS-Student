@@ -499,6 +499,11 @@ select.bp-input optgroup {
 .blocklyMainBackground {
   stroke: none !important;
 }
+/* Blockly hides scrollbars via the SVG display="none" attribute (overridden by Tailwind preflight) and leaves unopened flyout scrollbars without display="none" */
+.injectionDiv svg[display="none"],
+.injectionDiv .blocklyFlyout[style*="display: none"] + .blocklyFlyoutScrollbar {
+  display: none !important;
+}
 .blocklyToolboxDiv,
 .blocklyToolbox {
   background-color: var(--surface) !important;
