@@ -1,8 +1,10 @@
 @page "/automata"
+@implements IDisposable
 @inject AppStateService AppState
 @inject IJSRuntime JS
 
 @using System.Text.Json
+@using System.Threading
 @using SuperCsStudent.Automata
 @using SuperCsStudent.Automata.FiniteAutomata
 @using SuperCsStudent.Automata.Grammars
@@ -12,7 +14,7 @@
 @using SuperCsStudent.Automata.Turing
 
 <div class="flex flex-col h-full min-h-0 min-w-0 w-full overflow-hidden">
-    @* Studio Header Bar *@
+    @* Studio Header Bar (5 Tabs Only) *@
     <div class="px-4 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
         <div class="flex items-center gap-2.5 flex-wrap">
             <h1 class="text-[15px] font-semibold tracking-tight whitespace-nowrap">Automata &amp; Formal Languages</h1>
@@ -23,6 +25,8 @@
                     var active = _activeMode == tab.Mode;
                     <button type="button"
                             class="bp-seg-btn"
+                            role="tab"
+                            aria-selected="@(active ? "true" : "false")"
                             data-active="@(active ? "true" : "false")"
                             @onclick="() => SwitchMode(tab.Mode)">
                         @tab.Label
@@ -32,21 +36,6 @@
         </div>
 
         <div class="flex items-center gap-2">
-            <select class="bp-input !h-8 text-xs max-w-[240px]"
-                    aria-label="Select automata preset"
-                    value="@_selectedPresetKey"
-                    @onchange="OnPresetChanged">
-                @foreach (var grp in AutomataPresets.All.GroupBy(p => p.Kind))
-                {
-                    <optgroup label="@FormatPresetGroup(grp.Key)">
-                        @foreach (var p in grp)
-                        {
-                            <option value="@p.Key">@p.Title</option>
-                        }
-                    </optgroup>
-                }
-            </select>
-
             <button type="button"
                     class="bp-btn-ghost !h-8 !px-2 text-xs hidden lg:inline-flex"
                     title="@(_inspectorCollapsed ? "Show inspector panel" : "Hide inspector for full-bleed canvas")"
@@ -58,478 +47,178 @@
     </div>
 
     @* ===================================================================== *@
-    @* MODE 1: DETERMINISTIC FORMAL LANGUAGE SPECIFICATION COMPILER          *@
+    @* MODE 1: DFA STUDIO (TOTAL DETERMINISTIC + CLOSURES + DECISIONS)       *@
     @* ===================================================================== *@
-    @if (_activeMode == StudioMode.Compiler)
+    @if (_activeMode == StudioMode.Dfa)
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-            @* Left: Spec Input + Compiled Diagram Preview *@
+            @* Left: Unified Command Strip + Interactive DFA SVG + Playback *@
             <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
-                <div class="bp-card p-3 space-y-2.5 shrink-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <select class="bp-input !h-8 text-xs"
-                                value="@_specMode"
-                                @onchange="e => _specMode = Enum.Parse<LanguageSpecMode>(e.Value!.ToString()!)">
-                            <option value="@LanguageSpecMode.Auto">Auto-Detect</option>
-                            <option value="@LanguageSpecMode.Regex">Regex</option>
-                            <option value="@LanguageSpecMode.Constraint">Boolean Constraint</option>
-                            <option value="@LanguageSpecMode.Parametric">Parametric CFL / TM</option>
-                        </select>
+                <div class="bp-cmd-strip shrink-0">
+                    <div class="bp-cmd-row">
+                        @* Zone A: Prominent Example Dropdown *@
+                        <div class="bp-cmd-preset">
+                            <label for="dfa-example-select" class="bp-field-label">Example</label>
+                            <div class="bp-select-wrap">
+                                <svg class="bp-select-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M8 2.2L14 5.5L8 8.8L2 5.5L8 2.2Z" stroke-linejoin="round" />
+                                    <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                                    <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <select id="dfa-example-select"
+                                        class="bp-select-prominent"
+                                        value="@_dfaExampleKey"
+                                        @onchange="OnDfaExampleChanged">
+                                    <option value="@CustomKey" disabled hidden="@(_dfaExampleKey != CustomKey)">Custom rule</option>
+                                    @foreach (var grp in DfaExamples.GroupBy(e => e.Group))
+                                    {
+                                        <optgroup label="@grp.Key">
+                                            @foreach (var ex in grp)
+                                            {
+                                                <option value="@ex.Key">@ex.Label</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                                <svg class="bp-select-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </div>
+                        </div>
 
-                        <input type="text"
-                               class="bp-input !h-8 font-mono text-xs flex-1 min-w-[220px]"
-                               placeholder="e.g. a^n b^m where n > m | a^n b^m c^k where n + m = k | does not contain abc | (x|y)*z+"
-                               @bind="_specText"
-                               @bind:event="oninput"
-                               @onkeydown="OnSpecKeyDown" />
+                        <div class="bp-cmd-divider hidden xl:block" aria-hidden="true"></div>
 
-                        <input type="text"
-                               class="bp-input !h-8 font-mono text-xs w-36"
-                               placeholder="Σ auto (e.g. x,y,z)"
-                               title="Custom alphabet symbols (e.g. x,y,z or 0,1 — leave blank to auto-detect)"
-                               @bind="_specAlphabetText" />
-
-                        <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="CompileSpec">
-                            Compile
-                        </button>
-
-                        <button type="button"
-                                class="bp-btn-secondary !h-8 text-xs"
-                                aria-expanded="@_showCustomBuilder"
-                                @onclick="() => _showCustomBuilder = !_showCustomBuilder">
-                            @(_showCustomBuilder ? "Hide Builder" : "+ Custom Builder")
-                        </button>
-                    </div>
-
-                    @if (_showCustomBuilder)
-                    {
-                        <div class="p-2.5 rounded-lg space-y-2" style="background: var(--raised); border: 1px solid var(--border);">
-                            <div class="flex flex-wrap items-center justify-between gap-2">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="text-[11px] font-semibold" style="color: var(--muted);">Pattern</span>
-                                    <div class="bp-seg">
-                                        <button type="button" class="bp-seg-btn" data-active="@(_builderTemplate == "2block" ? "true" : "false")" @onclick='() => SetBuilderTemplate("2block")'>s₁ⁿ s₂ᵐ</button>
-                                        <button type="button" class="bp-seg-btn" data-active="@(_builderTemplate == "3block" ? "true" : "false")" @onclick='() => SetBuilderTemplate("3block")'>s₁ⁿ s₂ᵐ s₃ᵏ</button>
-                                        <button type="button" class="bp-seg-btn" data-active="@(_builderTemplate == "count" ? "true" : "false")" @onclick='() => SetBuilderTemplate("count")'>#s₁ vs #s₂</button>
-                                    </div>
-
-                                    <label class="flex items-center gap-1 text-[11px]" style="color: var(--muted);">
-                                        <span>Symbols</span>
-                                        <input type="text"
-                                               class="bp-input !h-7 font-mono text-xs w-24"
-                                               placeholder="a,b"
-                                               @bind="_builderSymbols"
-                                               @bind:event="oninput" />
-                                    </label>
-                                </div>
-
-                                <div class="flex items-center gap-1.5">
-                                    <code class="px-2 py-1 rounded text-[11px] font-mono" style="background: var(--surface); border: 1px solid var(--border); color: var(--accent);">
-                                        @BuildCustomSpecPreview()
-                                    </code>
-                                    <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ApplyCustomBuilder">
-                                        Build &amp; Compile
-                                    </button>
+                        @* Zone B: Central Input Checker + Instant Verdict *@
+                        <div class="bp-cmd-tester">
+                            <div class="flex items-center justify-between gap-2">
+                                <label for="dfa-input-w" class="bp-field-label">Check input w</label>
+                                <div class="bp-sample-wrap">
+                                    <select @key="@($"dfa-smp-{_samplePickerGen}")"
+                                            class="bp-select-sample"
+                                            aria-label="Pick DFA sample input"
+                                            value=""
+                                            @onchange="OnDfaSamplePicked">
+                                        <option value="">Samples</option>
+                                        @foreach (var sample in _faSampleInputs)
+                                        {
+                                            <option value="@sample">@(sample == "e" ? "e (empty)" : sample)</option>
+                                        }
+                                    </select>
+                                    <svg class="bp-sample-chevron" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                        <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
                                 </div>
                             </div>
 
-                            @if (_builderTemplate == "3block")
-                            {
-                                <div class="flex flex-wrap items-center gap-1.5">
-                                    <span class="text-[11px] font-medium" style="color: var(--faint);">Condition:</span>
-                                    @foreach (var rel in ThreeBlockBuilderRelations)
+                            <div class="bp-tester-row">
+                                <div class="bp-tester-field">
+                                    <span class="bp-tester-prefix" aria-hidden="true">w =</span>
+                                    <input id="dfa-input-w"
+                                           type="text"
+                                           class="bp-tester-input"
+                                           placeholder="Type string (e = empty)"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           value="@_faInput"
+                                           @oninput="OnDfaInputChanged"
+                                           @onkeydown="OnDfaInputKeyDown" />
+                                    @if (!string.IsNullOrEmpty(_faInput))
                                     {
                                         <button type="button"
-                                                class="bp-chip font-mono"
-                                                style="@(_builderThreeRel == rel.Expr ? "background: var(--accent-soft); color: var(--accent); border-color: var(--accent);" : "")"
-                                                @onclick="() => _builderThreeRel = rel.Expr">
-                                            @rel.Label
+                                                class="bp-tester-clear"
+                                                title="Clear input (empty string e)"
+                                                aria-label="Clear input to empty string"
+                                                @onclick="ClearDfaInput">
+                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                                <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke-linecap="round" />
+                                            </svg>
                                         </button>
                                     }
-                                    <div class="bp-seg ml-1">
-                                        <button type="button" class="bp-seg-btn" data-active="@(_builderMinBound == 0 ? "true" : "false")" @onclick="() => _builderMinBound = 0">≥ 0</button>
-                                        <button type="button" class="bp-seg-btn" data-active="@(_builderMinBound == 1 ? "true" : "false")" @onclick="() => _builderMinBound = 1">≥ 1</button>
-                                    </div>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="text-[11px] font-medium" style="color: var(--faint);">Relation:</span>
-                                    <div class="bp-seg">
-                                        @foreach (var op in BuilderOps)
-                                        {
-                                            <button type="button"
-                                                    class="bp-seg-btn font-mono"
-                                                    data-active="@(_builderOp == op ? "true" : "false")"
-                                                    @onclick="() => _builderOp = op">@op</button>
-                                        }
-                                    </div>
-
-                                    <span class="text-[11px] font-medium" style="color: var(--faint);">Scale:</span>
-                                    <div class="bp-seg">
-                                        @foreach (var mult in new[] { 1, 2, 3 })
-                                        {
-                                            <button type="button"
-                                                    class="bp-seg-btn font-mono"
-                                                    data-active="@(_builderMultiplier == mult ? "true" : "false")"
-                                                    @onclick="() => _builderMultiplier = mult">@($"{mult}×")</button>
-                                        }
-                                    </div>
-
-                                    <span class="text-[11px] font-medium" style="color: var(--faint);">Offset:</span>
-                                    <div class="bp-seg">
-                                        @foreach (var off in new[] { -1, 0, 1 })
-                                        {
-                                            <button type="button"
-                                                    class="bp-seg-btn font-mono"
-                                                    data-active="@(_builderOffset == off ? "true" : "false")"
-                                                    @onclick="() => _builderOffset = off">@(off > 0 ? $"+{off}" : off.ToString())</button>
-                                        }
-                                    </div>
-
-                                    @if (_builderTemplate == "2block")
-                                    {
-                                        <span class="text-[11px] font-medium" style="color: var(--faint);">Min:</span>
-                                        <div class="bp-seg">
-                                            <button type="button" class="bp-seg-btn" data-active="@(_builderMinBound == 0 ? "true" : "false")" @onclick="() => _builderMinBound = 0">≥ 0</button>
-                                            <button type="button" class="bp-seg-btn" data-active="@(_builderMinBound == 1 ? "true" : "false")" @onclick="() => _builderMinBound = 1">≥ 1</button>
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    }
-
-                    <div class="flex flex-wrap items-center gap-1.5">
-                        <span class="text-[11px] font-medium" style="color: var(--faint);">Examples:</span>
-                        @foreach (var ex in CompilerExamples)
-                        {
-                            <button type="button"
-                                    class="px-2 h-6 rounded text-[11px] font-mono cursor-pointer transition-colors"
-                                    style="background: var(--raised); color: var(--muted); border: 1px solid var(--border);"
-                                    @onclick="() => RunCompilerExample(ex.Spec, ex.SampleInput)">
-                                @ex.Label
-                            </button>
-                        }
-                    </div>
-                </div>
-
-                @if (_compiledSpec is not null)
-                {
-                    <div class="flex flex-wrap items-center justify-between gap-2 shrink-0 px-1">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <span class="bp-pill bp-pill-accent text-[11px]">@_compiledSpec.LanguageClass</span>
-                            <span class="text-xs font-semibold">@_compiledSpec.Title</span>
-                            <span class="text-xs hidden xl:inline" style="color: var(--muted);">— @_compiledSpec.Description</span>
-                        </div>
-
-                        <div class="flex items-center gap-1.5 flex-wrap">
-                            <div class="flex items-center rounded-md p-0.5" style="background: var(--raised); border: 1px solid var(--border);">
-                                @if (_compiledSpec.MinimalDfa is not null)
-                                {
-                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                            style="@(_compilerPreviewKind == "dfa" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                            @onclick='() => _compilerPreviewKind = "dfa"'>Min DFA (@_compiledSpec.MinimalDfa.States.Count)</button>
-                                }
-                                @if (_compiledSpec.Nfa is not null)
-                                {
-                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                            style="@(_compilerPreviewKind == "nfa" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                            @onclick='() => _compilerPreviewKind = "nfa"'>
-                                        @(_compiledSpec.NfaRequiredDeterminization ? $"NFA → DFA ({_compiledSpec.Nfa.States.Count})" : $"NFA ({_compiledSpec.Nfa.States.Count})")
+                                    <button type="button"
+                                            class="bp-tester-submit"
+                                            title="Trace input from start (Enter)"
+                                            aria-label="Check DFA input string"
+                                            @onclick="TraceFa">
+                                        ↵
                                     </button>
-                                }
-                                @if (_compiledSpec.Grammar is not null)
+                                </div>
+
+                                @if (_faTimeline is not null)
                                 {
-                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                            style="@(_compilerPreviewKind == "cfg-queue" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                            @onclick='() => _compilerPreviewKind = "cfg-queue"'>CFG Queue</button>
+                                    <div class="bp-verdict @(_faTimeline.IsSuccess ? "bp-verdict-accept" : "bp-verdict-reject")" aria-live="polite">
+                                        <span aria-hidden="true">@(_faTimeline.IsSuccess ? "✓" : "✕")</span>
+                                        <span>@(_faTimeline.IsSuccess ? "Accepted" : "Rejected")</span>
+                                    </div>
                                 }
-                                @if (_compiledSpec.Pda is not null)
+                            </div>
+                        </div>
+
+                        @* Zone C: Custom Rule Toggle *@
+                        <div class="bp-cmd-actions">
+                            <button type="button"
+                                    class="bp-btn-toggle"
+                                    data-open="@(_dfaDrawerOpen ? "true" : "false")"
+                                    aria-expanded="@(_dfaDrawerOpen ? "true" : "false")"
+                                    @onclick="() => _dfaDrawerOpen = !_dfaDrawerOpen">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M2.5 4.5H13.5M2.5 8H13.5M2.5 11.5H13.5" stroke-linecap="round" />
+                                    <circle cx="5.5" cy="4.5" r="1.4" fill="var(--surface)" />
+                                    <circle cx="10.5" cy="8" r="1.4" fill="var(--surface)" />
+                                    <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
+                                </svg>
+                                <span>Custom Rule</span>
+                                @if (_dfaExampleKey == CustomKey)
                                 {
-                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                            style="@(_compilerPreviewKind == "pda-stack" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                            @onclick='() => _compilerPreviewKind = "pda-stack"'>PDA Stack</button>
+                                    <span class="bp-custom-dot" title="Custom rule active" aria-hidden="true"></span>
                                 }
-                                <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                        style="@(_compilerPreviewKind == "tm" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                        @onclick='() => _compilerPreviewKind = "tm"'>TM Schema (@_compiledSpec.TmSchema.Nodes.Count)</button>
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                                     style="@(_dfaDrawerOpen ? "transform: rotate(180deg);" : "") transition: transform 140ms ease;"
+                                     aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    @if (_dfaDrawerOpen)
+                    {
+                        <div class="bp-rule-drawer">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="bp-seg" role="group" aria-label="DFA specification mode">
+                                    <button type="button" class="bp-seg-btn" data-active="@(_faSourceKind == "auto" ? "true" : "false")" @onclick='() => _faSourceKind = "auto"'>Auto</button>
+                                    <button type="button" class="bp-seg-btn" data-active="@(_faSourceKind == "constraint" ? "true" : "false")" @onclick='() => _faSourceKind = "constraint"'>Constraint</button>
+                                    <button type="button" class="bp-seg-btn" data-active="@(_faSourceKind == "regex" ? "true" : "false")" @onclick='() => _faSourceKind = "regex"'>Regex</button>
+                                </div>
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
+                                       placeholder="e.g. starts with aba | does not contain aba | (a|b)*aba(a|b)*"
+                                       aria-label="Custom DFA rule"
+                                       @bind="_faSpecText"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnDfaSpecKeyDown" />
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs w-40"
+                                       placeholder="Σ auto (e.g. x,y,z)"
+                                       title="Custom alphabet symbols (e.g. x,y,z or 0,1 — leave blank to auto-detect)"
+                                       aria-label="Custom alphabet symbols"
+                                       @bind="_faAlphabetText"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnDfaSpecKeyDown" />
+                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildCustomDfa">Build DFA</button>
                             </div>
-                        </div>
-                    </div>
-                }
 
-                <div class="flex-1 min-h-[280px] min-w-0 flex flex-col gap-2 overflow-hidden">
-                    @if (_compilerPreviewKind == "nfa" && _compiledSpec?.NfaRequiredDeterminization == true)
-                    {
-                        <div class="px-3 py-2 rounded-lg text-xs shrink-0 flex flex-wrap items-center justify-between gap-2"
-                             style="background: var(--pill-warning-bg); color: var(--pill-warning-ink); border: 1px solid var(--warning);">
-                            <span><strong>Determinized to DFA:</strong> @_compiledSpec.NfaDeterminizationReason</span>
-                            <button type="button" class="bp-btn-secondary !h-6 text-[11px]" @onclick="OpenCompiledInDfa">Open in DFA Studio →</button>
-                        </div>
-                    }
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="bp-seg" role="group" aria-label="DFA representation">
+                                    <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "min" ? "true" : "false")" @onclick='() => SwitchFaView("min")'>Min DFA</button>
+                                    <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "dfa" ? "true" : "false")" @onclick='() => SwitchFaView("dfa")'>Subset DFA</button>
+                                </div>
 
-                    @if (_compilerPreviewKind == "pda-stack" && _compilerPdaTrace is not null)
-                    {
-                        <div class="flex-1 min-h-0 bp-card p-3 overflow-hidden">
-                            <PdaStackVisualizer Trace="@_compilerPdaTrace"
-                                                @bind-CurrentStepIndex="_compilerPdaStepIndex"
-                                                ShowCompactStepControls="true"
-                                                SnapMotion="@AppState.SnapMotion" />
-                        </div>
-                    }
-                    else if (_compilerPreviewKind == "cfg-queue" && _compilerCfgResult is not null)
-                    {
-                        <div class="flex-1 min-h-0 bp-card p-3 overflow-hidden">
-                            <CfgQueueVisualizer Result="@_compilerCfgResult"
-                                                @bind-CurrentStepIndex="_compilerCfgStepIndex"
-                                                ShowCompactStepControls="true"
-                                                SnapMotion="@AppState.SnapMotion" />
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="flex-1 min-h-0">
-                            <InteractiveSvgCanvas Scene="@GetCompilerPreviewScene()"
-                                                  SnapMotion="@AppState.SnapMotion"
-                                                  ErrorBanner="@_compilerError"
-                                                  ExportFileName="compiled-automaton.svg" />
-                        </div>
-                    }
-                </div>
-            </div>
-
-            @* Right: Open-In-Studio Actions + Live Batch Tester + Generated Grammar/Schema Summary *@
-            <div class="@(_inspectorCollapsed ? "hidden" : "w-full lg:w-[390px] xl:w-[420px] min-w-0 shrink-0 flex flex-col min-h-0 overflow-y-auto p-3 space-y-3")"
-                 style="border-left: 1px solid var(--border);">
-                @if (_compiledSpec is not null)
-                {
-                    <div class="bp-card p-3 space-y-2">
-                        <div class="flex items-center justify-between gap-2">
-                            <span class="text-xs font-semibold">Open Generated Artifact in Workbench</span>
-                            <button type="button"
-                                    class="bp-btn-ghost !h-7 !px-2 text-[11px]"
-                                    title="Save this custom problem to your local workspace history"
-                                    @onclick="SaveCustomProblemToWorkspace">
-                                @(_savedProblemNotice ? "Saved ✓" : "Save Problem")
-                            </button>
-                        </div>
-                        <div class="grid grid-cols-2 gap-1.5">
-                            @if (_compiledSpec.MinimalDfa is not null)
-                            {
-                                <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="OpenCompiledInDfa">
-                                    Open in DFA Studio →
-                                </button>
-                            }
-                            @if (_compiledSpec.Nfa is not null)
-                            {
-                                <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="OpenCompiledInNfa">
-                                    Open in NFA Studio →
-                                </button>
-                            }
-                            @if (_compiledSpec.Grammar is not null)
-                            {
-                                <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="OpenCompiledInCfg">
-                                    Open in CFG Studio →
-                                </button>
-                            }
-                            @if (_compiledSpec.Pda is not null)
-                            {
-                                <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="OpenCompiledInPda">
-                                    Open in PDA Studio →
-                                </button>
-                            }
-                            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="OpenCompiledInTm">
-                                Open in TM Studio →
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="bp-card p-3 space-y-2.5">
-                        <div class="flex items-center justify-between gap-2">
-                            <span class="text-xs font-semibold">Test Input Against Spec</span>
-                            <span class="text-[11px] font-mono" style="color: var(--faint);">Empty string = e</span>
-                        </div>
-                        <div class="flex items-center gap-1.5">
-                            <input type="text"
-                                   class="bp-input !h-8 font-mono text-xs flex-1"
-                                   placeholder="Enter string (e for empty)"
-                                   @bind="_compilerTestInput"
-                                   @bind:event="oninput" />
-                            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="RunCompilerTest">
-                                Test
-                            </button>
-                            @if (_compiledSpec.SuggestedTests is { Count: > 0 })
-                            {
-                                <button type="button"
-                                        class="bp-btn-secondary !h-8 text-xs shrink-0"
-                                        title="Run auto-generated positive & negative boundary tests"
-                                        @onclick="RunAutoTestSuite">
-                                    Auto Suite (@_compiledSpec.SuggestedTests.Count)
-                                </button>
-                            }
-                        </div>
-
-                        @if (_compilerTestRows.Count > 0)
-                        {
-                            <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
-                                <table class="w-full text-xs text-left">
-                                    <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
-                                        <tr>
-                                            <th class="px-2.5 py-1.5 font-medium">Input</th>
-                                            <th class="px-2.5 py-1.5 font-medium">Result</th>
-                                            <th class="px-2.5 py-1.5 font-medium">Detail</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var row in _compilerTestRows)
-                                        {
-                                            var rowInput = row.Input;
-                                            var isSelectedPreview = (_compilerPreviewKind is "pda-stack" or "cfg-queue") && string.Equals(_compilerTestInput, rowInput, StringComparison.Ordinal);
-                                            <tr class="cursor-pointer transition-colors"
-                                                style="@(isSelectedPreview ? "background: var(--accent-soft);" : "") border-bottom: 1px solid var(--rule);"
-                                                title="Click to inspect this input in the preview"
-                                                @onclick="() => InspectCompilerRow(rowInput)">
-                                                <td class="px-2.5 py-1.5 font-mono">@row.Input</td>
-                                                <td class="px-2.5 py-1.5">
-                                                    <div class="flex items-center gap-1">
-                                                        @if (row.Accepted is true)
-                                                        {
-                                                            <span class="bp-pill bp-pill-positive text-[11px]">Accept</span>
-                                                        }
-                                                        else if (row.Accepted is false)
-                                                        {
-                                                            <span class="bp-pill bp-pill-negative text-[11px]">Reject</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="bp-pill bp-pill-accent text-[11px]">Halted</span>
-                                                        }
-                                                        @if (row.Expected.HasValue)
-                                                        {
-                                                            <span class="text-[10px] font-mono"
-                                                                  style="color: @(row.Accepted == row.Expected ? "var(--positive)" : "var(--negative)");"
-                                                                  title="@(row.Reason ?? "")">
-                                                                @(row.Accepted == row.Expected ? "✓" : "✗")
-                                                            </span>
-                                                        }
-                                                    </div>
-                                                </td>
-                                                <td class="px-2.5 py-1.5 font-mono text-[11px]" style="color: var(--muted);">
-                                                    @if (!string.IsNullOrEmpty(row.Reason))
-                                                    {
-                                                        <span>@row.Reason · </span>
-                                                    }
-                                                    @row.Detail
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Complement current minimal DFA" @onclick="ApplyFaComplement">Complement</button>
+                                    <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Kleene Star of current minimal DFA" @onclick="ApplyFaStar">Star (*)</button>
+                                    <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Convert current DFA to Decidable Turing Machine" @onclick="SendDfaToTm">To TM →</button>
+                                </div>
                             </div>
-                        }
-                    </div>
-
-                    @if (_compiledSpec.Grammar is not null)
-                    {
-                        <div class="bp-card p-3 space-y-1.5">
-                            <div class="flex items-center justify-between">
-                                <span class="text-xs font-semibold">Synthesized Grammar</span>
-                                <span class="bp-pill bp-pill-neutral text-[10px]">
-                                    @(_compiledSpec.Grammar.IsRegularGrammar() ? "Right-Linear Regular" : "Context-Free")
-                                </span>
-                            </div>
-                            <pre class="text-xs font-mono p-2 rounded overflow-x-auto" style="background: var(--raised);">@_compiledSpec.Grammar.ToGrammarText()</pre>
-                        </div>
-                    }
-
-                    <div class="bp-card p-3 space-y-1.5">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold">Compiled Formal TM Stats</span>
-                            <span class="font-mono text-[11px] tnum" style="color: var(--muted);">
-                                @_compiledSpec.CompiledTm.Machine.States.Count states · @_compiledSpec.CompiledTm.Machine.Transitions.Count δ rules
-                            </span>
-                        </div>
-                        <pre class="text-[11px] font-mono p-2 rounded overflow-x-auto max-h-52" style="background: var(--raised);">@_compiledSpec.TmSchema.ToDslText()</pre>
-                    </div>
-                }
-            </div>
-        </div>
-    }
-
-    @* ===================================================================== *@
-    @* MODE 2: DFA STUDIO (TOTAL DETERMINISTIC + CLOSURES + DECISIONS)       *@
-    @* ===================================================================== *@
-    else if (_activeMode == StudioMode.Dfa)
-    {
-        <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-            @* Left: Source Bar + Interactive DFA SVG + Playback *@
-            <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
-                <div class="flex flex-wrap items-center justify-between gap-2 shrink-0">
-                    <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-[260px]">
-                        <select class="bp-input !h-8 text-xs"
-                                value="@_faSourceKind"
-                                @onchange="e => _faSourceKind = e.Value!.ToString()!">
-                            <option value="constraint">Constraint</option>
-                            <option value="regex">Regex</option>
-                        </select>
-                        <input type="text"
-                               class="bp-input !h-8 font-mono text-xs flex-1 min-w-[160px]"
-                               placeholder="e.g. starts with aba | does not contain aba | (a|b)*aba(a|b)*"
-                               @bind="_faSpecText" />
-                        <input type="text"
-                               class="bp-input !h-8 font-mono text-xs w-32"
-                               placeholder="Σ auto (x,y,z)"
-                               title="Custom alphabet symbols (e.g. x,y,z or 0,1 — leave blank to auto-detect)"
-                               @bind="_faAlphabetText" />
-                        <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildFaFromSpec">Build DFA</button>
-                    </div>
-
-                    <div class="flex items-center gap-1.5 flex-wrap">
-                        <div class="bp-seg">
-                            <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "min" ? "true" : "false")" @onclick='() => SwitchFaView("min")'>Min DFA</button>
-                            <button type="button" class="bp-seg-btn" data-active="@(_faViewKind == "dfa" ? "true" : "false")" @onclick='() => SwitchFaView("dfa")'>Subset DFA</button>
-                        </div>
-                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Complement current minimal DFA" @onclick="ApplyFaComplement">Complement</button>
-                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Kleene Star of current minimal DFA" @onclick="ApplyFaStar">Star (*)</button>
-                        <button type="button" class="bp-btn-secondary !h-7 !px-2 text-xs" title="Convert current DFA to Decidable Turing Machine" @onclick="SendDfaToTm">To TM →</button>
-                    </div>
-                </div>
-
-                @* Input Tape & Verdict Strip *@
-                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
-                        <input type="text"
-                               class="bp-input !h-7 font-mono text-xs w-36"
-                               @bind="_faInput"
-                               @bind:event="oninput" />
-                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="TraceFa">Trace</button>
-
-                        @foreach (var sample in _faSampleInputs)
-                        {
-                            <button type="button"
-                                    class="bp-chip font-mono"
-                                    @onclick="() => { _faInput = sample; TraceFa(); }">
-                                @sample
-                            </button>
-                        }
-                    </div>
-
-                    @if (_faTimeline is not null)
-                    {
-                        var curStep = CurrentFaStep;
-                        <div class="flex items-center gap-2">
-                            @if (curStep is not null)
-                            {
-                                <span class="font-mono text-xs px-2 py-0.5 rounded" style="background: var(--raised); border: 1px solid var(--border);">
-                                    @curStep.State.Configuration
-                                </span>
-                            }
-                            <span class="bp-pill @(_faTimeline.IsSuccess ? "bp-pill-positive" : "bp-pill-negative")">
-                                @(_faTimeline.IsSuccess ? "Accepted" : "Rejected")
-                            </span>
                         </div>
                     }
                 </div>
@@ -570,7 +259,7 @@
                         @if (_faTimeline is not null)
                         {
                             <div class="space-y-1">
-                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Execution Steps</div>
+                                <div class="text-[11.5px] font-semibold" style="color: var(--muted);">Execution Steps</div>
                                 <div class="rounded-md overflow-hidden" style="border: 1px solid var(--border);">
                                     @for (var i = 0; i < _faTimeline.Steps.Count; i++)
                                     {
@@ -592,7 +281,7 @@
                         @if (ActiveDfa is not null)
                         {
                             <div class="space-y-1.5">
-                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Transition Matrix δ(q, σ)</div>
+                                <div class="text-[11.5px] font-semibold" style="color: var(--muted);">Transition Matrix δ(q, σ)</div>
                                 <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
                                     <table class="w-full text-xs text-left font-mono">
                                         <thead style="background: var(--raised); border-bottom: 1px solid var(--border);">
@@ -624,7 +313,7 @@
                             </div>
 
                             <div class="bp-card p-2.5 space-y-1">
-                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Formal Quintuple</div>
+                                <div class="text-[11.5px] font-semibold" style="color: var(--muted);">Formal Quintuple</div>
                                 <pre class="text-[11px] font-mono whitespace-pre-wrap" style="color: var(--muted);">@ActiveDfa.ToFormalString()</pre>
                             </div>
                         }
@@ -725,105 +414,187 @@
     }
 
     @* ===================================================================== *@
-    @* MODE 3: DEDICATED NFA STUDIO (COMPACT STRING-EDGE NFAs + SUBSET MAP)  *@
+    @* MODE 2: DEDICATED NFA STUDIO (COMPACT STRING-EDGE NFAs + SUBSET MAP)  *@
     @* ===================================================================== *@
     else if (_activeMode == StudioMode.Nfa)
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-            @* Left: NFA Source Bar + Negation Banner + Compact NFA Canvas + Playback *@
+            @* Left: Unified Command Strip + Optional Amber Banner + Compact NFA Canvas + Playback *@
             <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
-                <div class="bp-card p-2.5 space-y-2 shrink-0">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-[260px]">
-                            <select class="bp-input !h-8 text-xs"
-                                    value="@_nfaSourceKind"
-                                    @onchange="e => _nfaSourceKind = e.Value!.ToString()!">
-                                <option value="constraint">Constraint</option>
-                                <option value="regex">Regex</option>
-                            </select>
-                            <input type="text"
-                                   class="bp-input !h-8 font-mono text-xs flex-1 min-w-[160px]"
-                                   placeholder="e.g. starts with aba | ends with aba | contains aba | starts with aba OR ends with bab"
-                                   @bind="_nfaSpecText" />
-                            <input type="text"
-                                   class="bp-input !h-8 font-mono text-xs w-32"
-                                   placeholder="Σ auto (x,y,z)"
-                                   title="Custom alphabet symbols (leave blank to auto-detect)"
-                                   @bind="_nfaAlphabetText" />
-                            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildNfaFromSpec">Build NFA</button>
+                <div class="bp-cmd-strip shrink-0">
+                    <div class="bp-cmd-row">
+                        @* Zone A: Prominent Example Dropdown (Replaces 7-chip wall) *@
+                        <div class="bp-cmd-preset">
+                            <label for="nfa-example-select" class="bp-field-label">Example</label>
+                            <div class="bp-select-wrap">
+                                <svg class="bp-select-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M8 2.2L14 5.5L8 8.8L2 5.5L8 2.2Z" stroke-linejoin="round" />
+                                    <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                                    <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <select id="nfa-example-select"
+                                        class="bp-select-prominent"
+                                        value="@_nfaExampleKey"
+                                        @onchange="OnNfaExampleChanged">
+                                    <option value="@CustomKey" disabled hidden="@(_nfaExampleKey != CustomKey)">Custom rule</option>
+                                    @foreach (var grp in NfaExamples.GroupBy(e => e.Group))
+                                    {
+                                        <optgroup label="@grp.Key">
+                                            @foreach (var ex in grp)
+                                            {
+                                                <option value="@ex.Key">@ex.Label</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                                <svg class="bp-select-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </div>
                         </div>
 
-                        <button type="button"
-                                class="bp-btn-secondary !h-8 text-xs"
-                                title="Convert this NFA into a complete minimized DFA via Subset Construction"
-                                @onclick="ConvertCurrentNfaToDfa">
-                            Convert to DFA →
-                        </button>
+                        <div class="bp-cmd-divider hidden xl:block" aria-hidden="true"></div>
+
+                        @* Zone B: Central Input Checker + Instant Verdict *@
+                        <div class="bp-cmd-tester">
+                            <div class="flex items-center justify-between gap-2">
+                                <label for="nfa-input-w" class="bp-field-label">Check input w</label>
+                                <div class="bp-sample-wrap">
+                                    <select @key="@($"nfa-smp-{_samplePickerGen}")"
+                                            class="bp-select-sample"
+                                            aria-label="Pick NFA sample input"
+                                            value=""
+                                            @onchange="OnNfaSamplePicked">
+                                        <option value="">Samples</option>
+                                        @foreach (var sample in _nfaSampleInputs)
+                                        {
+                                            <option value="@sample">@(sample == "e" ? "e (empty)" : sample)</option>
+                                        }
+                                    </select>
+                                    <svg class="bp-sample-chevron" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                        <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <div class="bp-tester-row">
+                                <div class="bp-tester-field">
+                                    <span class="bp-tester-prefix" aria-hidden="true">w =</span>
+                                    <input id="nfa-input-w"
+                                           type="text"
+                                           class="bp-tester-input"
+                                           placeholder="Type string (e = empty)"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           value="@_nfaInput"
+                                           @oninput="OnNfaInputChanged"
+                                           @onkeydown="OnNfaInputKeyDown" />
+                                    @if (!string.IsNullOrEmpty(_nfaInput))
+                                    {
+                                        <button type="button"
+                                                class="bp-tester-clear"
+                                                title="Clear input (empty string e)"
+                                                aria-label="Clear input to empty string"
+                                                @onclick="ClearNfaInput">
+                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                                <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke-linecap="round" />
+                                            </svg>
+                                        </button>
+                                    }
+                                    <button type="button"
+                                            class="bp-tester-submit"
+                                            title="Trace input from start (Enter)"
+                                            aria-label="Check NFA input string"
+                                            @onclick="TraceNfa">
+                                        ↵
+                                    </button>
+                                </div>
+
+                                @if (_nfaTimeline is not null)
+                                {
+                                    <div class="bp-verdict @(_nfaTimeline.IsSuccess ? "bp-verdict-accept" : "bp-verdict-reject")" aria-live="polite">
+                                        <span aria-hidden="true">@(_nfaTimeline.IsSuccess ? "✓" : "✕")</span>
+                                        <span>@(_nfaTimeline.IsSuccess ? "Accepted" : "Rejected")</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        @* Zone C: Custom Rule Toggle *@
+                        <div class="bp-cmd-actions">
+                            <button type="button"
+                                    class="bp-btn-toggle"
+                                    data-open="@(_nfaDrawerOpen ? "true" : "false")"
+                                    aria-expanded="@(_nfaDrawerOpen ? "true" : "false")"
+                                    @onclick="() => _nfaDrawerOpen = !_nfaDrawerOpen">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M2.5 4.5H13.5M2.5 8H13.5M2.5 11.5H13.5" stroke-linecap="round" />
+                                    <circle cx="5.5" cy="4.5" r="1.4" fill="var(--surface)" />
+                                    <circle cx="10.5" cy="8" r="1.4" fill="var(--surface)" />
+                                    <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
+                                </svg>
+                                <span>Custom Rule</span>
+                                @if (_nfaExampleKey == CustomKey)
+                                {
+                                    <span class="bp-custom-dot" title="Custom rule active" aria-hidden="true"></span>
+                                }
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                                     style="@(_nfaDrawerOpen ? "transform: rotate(180deg);" : "") transition: transform 140ms ease;"
+                                     aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="flex flex-wrap items-center gap-1.5">
-                        <span class="text-[11px] font-medium" style="color: var(--faint);">Try NFA vs Negated DFA:</span>
-                        @foreach (var ex in NfaExamples)
-                        {
-                            <button type="button"
-                                    class="bp-chip font-mono"
-                                    @onclick="() => RunNfaExample(ex.Spec, ex.SampleInput)">
-                                @ex.Label
-                            </button>
-                        }
-                    </div>
+                    @if (_nfaDrawerOpen)
+                    {
+                        <div class="bp-rule-drawer">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="bp-seg" role="group" aria-label="NFA specification mode">
+                                    <button type="button" class="bp-seg-btn" data-active="@(_nfaSourceKind == "auto" ? "true" : "false")" @onclick='() => _nfaSourceKind = "auto"'>Auto</button>
+                                    <button type="button" class="bp-seg-btn" data-active="@(_nfaSourceKind == "constraint" ? "true" : "false")" @onclick='() => _nfaSourceKind = "constraint"'>Constraint</button>
+                                    <button type="button" class="bp-seg-btn" data-active="@(_nfaSourceKind == "regex" ? "true" : "false")" @onclick='() => _nfaSourceKind = "regex"'>Regex</button>
+                                </div>
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
+                                       placeholder="e.g. starts with aba | ends with aba | contains aba | (a|b)*aba"
+                                       aria-label="Custom NFA rule"
+                                       @bind="_nfaSpecText"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnNfaSpecKeyDown" />
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs w-40"
+                                       placeholder="Σ auto (e.g. x,y,z)"
+                                       title="Custom alphabet symbols (leave blank to auto-detect)"
+                                       aria-label="Custom alphabet symbols"
+                                       @bind="_nfaAlphabetText"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnNfaSpecKeyDown" />
+                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="BuildCustomNfa">Build NFA</button>
+                                <button type="button"
+                                        class="bp-btn-secondary !h-8 text-xs"
+                                        title="Convert this NFA into a complete minimized DFA via Subset Construction"
+                                        @onclick="ConvertCurrentNfaToDfa">
+                                    Convert to DFA →
+                                </button>
+                            </div>
+                        </div>
+                    }
                 </div>
 
                 @if (_nfaRequiredDeterminization)
                 {
-                    <div class="px-3 py-2 rounded-lg text-xs shrink-0 flex flex-wrap items-center justify-between gap-2"
-                         style="background: var(--pill-warning-bg); color: var(--pill-warning-ink); border: 1px solid var(--warning);">
+                    <div class="bp-notice-amber shrink-0" role="status">
                         <span>
                             <strong>Determinized to DFA (Negation Rule):</strong>
                             @(_nfaDeterminizationReason ?? "Negation requires converting the NFA into a complete DFA before complementing accept states.")
                         </span>
-                        <button type="button" class="bp-btn-secondary !h-6 text-[11px]" @onclick="ConvertCurrentNfaToDfa">
+                        <button type="button" class="bp-btn-secondary !h-7 text-xs shrink-0" @onclick="ConvertCurrentNfaToDfa">
                             Open in DFA Studio →
                         </button>
                     </div>
                 }
-
-                @* Input Strip & Active Set Verdict *@
-                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
-                        <input type="text"
-                               class="bp-input !h-7 font-mono text-xs w-36"
-                               @bind="_nfaInput"
-                               @bind:event="oninput" />
-                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="TraceNfa">Trace</button>
-
-                        @foreach (var sample in _nfaSampleInputs)
-                        {
-                            <button type="button"
-                                    class="bp-chip font-mono"
-                                    @onclick="() => { _nfaInput = sample; TraceNfa(); }">
-                                @sample
-                            </button>
-                        }
-                    </div>
-
-                    @if (_nfaTimeline is not null)
-                    {
-                        var curStep = CurrentNfaStep;
-                        <div class="flex items-center gap-2">
-                            @if (curStep is not null)
-                            {
-                                <span class="font-mono text-xs px-2 py-0.5 rounded" style="background: var(--raised); border: 1px solid var(--border);">
-                                    @curStep.State.Configuration
-                                </span>
-                            }
-                            <span class="bp-pill @(_nfaTimeline.IsSuccess ? "bp-pill-positive" : "bp-pill-negative")">
-                                @(_nfaTimeline.IsSuccess ? "Accepted" : "Rejected")
-                            </span>
-                        </div>
-                    }
-                </div>
 
                 <div class="flex-1 min-h-[260px]">
                     <InteractiveSvgCanvas Scene="@CurrentNfaScene"
@@ -860,7 +631,7 @@
                         @if (_nfaTimeline is not null)
                         {
                             <div class="space-y-1">
-                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Nondeterministic Steps</div>
+                                <div class="text-[11.5px] font-semibold" style="color: var(--muted);">Nondeterministic Steps</div>
                                 <div class="rounded-md overflow-hidden" style="border: 1px solid var(--border);">
                                     @for (var i = 0; i < _nfaTimeline.Steps.Count; i++)
                                     {
@@ -883,7 +654,7 @@
                         {
                             <div class="space-y-1.5">
                                 <div class="flex items-center justify-between">
-                                    <span class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">Transition Relation Δ</span>
+                                    <span class="text-[11.5px] font-semibold" style="color: var(--muted);">Transition Relation Δ</span>
                                     <span class="text-[11px] font-mono tnum" style="color: var(--muted);">
                                         @_currentNfa.States.Count states · @_currentNfa.Transitions.Count edges
                                     </span>
@@ -912,7 +683,7 @@
                             </div>
 
                             <div class="bp-card p-2.5 space-y-1">
-                                <div class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--faint);">NFA Formal Quintuple</div>
+                                <div class="text-[11.5px] font-semibold" style="color: var(--muted);">NFA Formal Quintuple</div>
                                 <pre class="text-[11px] font-mono whitespace-pre-wrap max-h-52 overflow-y-auto" style="color: var(--muted);">@_currentNfa.ToFormalString()</pre>
                             </div>
                         }
@@ -958,39 +729,166 @@
     }
 
     @* ===================================================================== *@
-    @* MODE 4: CONTEXT-FREE GRAMMAR + FIFO DERIVATION QUEUE                  *@
+    @* MODE 3: CONTEXT-FREE GRAMMAR + FIFO DERIVATION QUEUE                  *@
     @* ===================================================================== *@
     else if (_activeMode == StudioMode.Cfg)
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-            @* Left: Input Tester + Horizontal FIFO Derivation Queue + Playback *@
+            @* Left: Unified Command Strip + Horizontal FIFO Derivation Queue + Playback *@
             <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
-                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-xs font-medium" style="color: var(--muted);">String w:</span>
-                        <input type="text"
-                               class="bp-input !h-7 font-mono text-xs w-44"
-                               @bind="_cfgInput"
-                               @bind:event="oninput" />
-                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ParseCfgAndInput">Derive</button>
+                <div class="bp-cmd-strip shrink-0">
+                    <div class="bp-cmd-row">
+                        @* Zone A: Prominent Example Dropdown *@
+                        <div class="bp-cmd-preset">
+                            <label for="cfg-example-select" class="bp-field-label">Example</label>
+                            <div class="bp-select-wrap">
+                                <svg class="bp-select-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M8 2.2L14 5.5L8 8.8L2 5.5L8 2.2Z" stroke-linejoin="round" />
+                                    <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                                    <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <select id="cfg-example-select"
+                                        class="bp-select-prominent"
+                                        value="@_cfgExampleKey"
+                                        @onchange="OnCfgExampleChanged">
+                                    <option value="@CustomKey" disabled hidden="@(_cfgExampleKey != CustomKey)">Custom grammar</option>
+                                    @foreach (var grp in CfgExamples.GroupBy(e => e.Group))
+                                    {
+                                        <optgroup label="@grp.Key">
+                                            @foreach (var ex in grp)
+                                            {
+                                                <option value="@ex.Key">@ex.Label</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                                <svg class="bp-select-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </div>
+                        </div>
 
-                        @foreach (var sample in _cfgSampleInputs)
-                        {
+                        <div class="bp-cmd-divider hidden xl:block" aria-hidden="true"></div>
+
+                        @* Zone B: Central Input Checker + Instant Verdict *@
+                        <div class="bp-cmd-tester">
+                            <div class="flex items-center justify-between gap-2">
+                                <label for="cfg-input-w" class="bp-field-label">Check input w</label>
+                                <div class="bp-sample-wrap">
+                                    <select @key="@($"cfg-smp-{_samplePickerGen}")"
+                                            class="bp-select-sample"
+                                            aria-label="Pick CFG sample input"
+                                            value=""
+                                            @onchange="OnCfgSamplePicked">
+                                        <option value="">Samples</option>
+                                        @foreach (var sample in _cfgSampleInputs)
+                                        {
+                                            <option value="@sample">@(sample == "e" ? "e (empty)" : sample)</option>
+                                        }
+                                    </select>
+                                    <svg class="bp-sample-chevron" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                        <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <div class="bp-tester-row">
+                                <div class="bp-tester-field">
+                                    <span class="bp-tester-prefix" aria-hidden="true">w =</span>
+                                    <input id="cfg-input-w"
+                                           type="text"
+                                           class="bp-tester-input"
+                                           placeholder="Type string (e = empty)"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           value="@_cfgInput"
+                                           @oninput="OnCfgInputChanged"
+                                           @onkeydown="OnCfgInputKeyDown" />
+                                    @if (!string.IsNullOrEmpty(_cfgInput))
+                                    {
+                                        <button type="button"
+                                                class="bp-tester-clear"
+                                                title="Clear input (empty string e)"
+                                                aria-label="Clear input to empty string"
+                                                @onclick="ClearCfgInput">
+                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                                <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke-linecap="round" />
+                                            </svg>
+                                        </button>
+                                    }
+                                    <button type="button"
+                                            class="bp-tester-submit"
+                                            title="Derive string immediately (Enter)"
+                                            aria-label="Check CFG input string"
+                                            @onclick="RunCfgInputImmediate">
+                                        ↵
+                                    </button>
+                                </div>
+
+                                @if (_cfgParseResult is not null)
+                                {
+                                    <div class="bp-verdict @(_cfgParseResult.Accepted ? "bp-verdict-accept" : "bp-verdict-reject")" aria-live="polite">
+                                        <span aria-hidden="true">@(_cfgParseResult.Accepted ? "✓" : "✕")</span>
+                                        <span>@(_cfgParseResult.Accepted ? "Accepted" : "Rejected")</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        @* Zone C: Custom Rule Toggle *@
+                        <div class="bp-cmd-actions">
                             <button type="button"
-                                    class="bp-chip font-mono"
-                                    @onclick="() => { _cfgInput = sample; ParseCfgAndInput(); }">
-                                @sample
+                                    class="bp-btn-toggle"
+                                    data-open="@(_cfgDrawerOpen ? "true" : "false")"
+                                    aria-expanded="@(_cfgDrawerOpen ? "true" : "false")"
+                                    @onclick="() => _cfgDrawerOpen = !_cfgDrawerOpen">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M2.5 4.5H13.5M2.5 8H13.5M2.5 11.5H13.5" stroke-linecap="round" />
+                                    <circle cx="5.5" cy="4.5" r="1.4" fill="var(--surface)" />
+                                    <circle cx="10.5" cy="8" r="1.4" fill="var(--surface)" />
+                                    <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
+                                </svg>
+                                <span>Custom Rule</span>
+                                @if (_cfgExampleKey == CustomKey)
+                                {
+                                    <span class="bp-custom-dot" title="Custom grammar active" aria-hidden="true"></span>
+                                }
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                                     style="@(_cfgDrawerOpen ? "transform: rotate(180deg);" : "") transition: transform 140ms ease;"
+                                     aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
                             </button>
-                        }
+                        </div>
                     </div>
 
-                    @if (_cfgParseResult is not null)
+                    @if (_cfgDrawerOpen)
                     {
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs hidden xl:inline" style="color: var(--muted);">@_cfgParseResult.Summary</span>
-                            <span class="bp-pill @(_cfgParseResult.Accepted ? "bp-pill-positive" : "bp-pill-negative")">
-                                @(_cfgParseResult.Accepted ? "Accepted" : "Rejected")
-                            </span>
+                        <div class="bp-rule-drawer">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
+                                       placeholder="e.g. a^n b^m where n > m | x^n y^n | palindromes"
+                                       aria-label="Parametric or regular specification to synthesize CFG"
+                                       @bind="_cfgSynthSpec"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnCfgSynthKeyDown" />
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs w-40"
+                                       placeholder="Σ auto (e.g. x,y,z)"
+                                       title="Custom alphabet symbols (leave blank to auto-detect)"
+                                       aria-label="Custom alphabet symbols"
+                                       @bind="_cfgSynthAlphabet"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnCfgSynthKeyDown" />
+                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="SynthesizeCustomCfg">Synthesize CFG</button>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_cfgSynthError))
+                            {
+                                <div class="text-xs px-2.5 py-1.5 rounded-md" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink);">
+                                    @_cfgSynthError
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -1031,7 +929,7 @@
                     <textarea class="bp-textarea w-full text-xs" rows="6" @bind="_cfgText"></textarea>
 
                     <div class="flex flex-wrap items-center gap-1.5">
-                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ParseCfgAndInput">Apply Grammar</button>
+                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ApplyCustomCfgText">Apply Grammar</button>
                         @if (_currentCfg is not null)
                         {
                             <button type="button" class="bp-btn-secondary !h-7 text-xs" @onclick="ConvertCurrentCfgToPda">
@@ -1096,39 +994,168 @@
     }
 
     @* ===================================================================== *@
-    @* MODE 4: GENERALIZED 6-TUPLE PUSHDOWN AUTOMATON (EMPTY-STACK + FINAL)  *@
+    @* MODE 4: GENERALIZED 6-TUPLE PUSHDOWN AUTOMATON (STACK-ONLY VIEW)      *@
     @* ===================================================================== *@
     else if (_activeMode == StudioMode.Pda)
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-            @* Left: Input Strip + Canvas + Live LIFO Stack + Playback *@
+            @* Left: Unified Command Strip + Live LIFO Stack + Playback *@
             <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
-                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
-                        <input type="text"
-                               class="bp-input !h-7 font-mono text-xs w-36"
-                               @bind="_pdaInput"
-                               @bind:event="oninput" />
-                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="TracePda">Trace</button>
+                <div class="bp-cmd-strip shrink-0">
+                    <div class="bp-cmd-row">
+                        @* Zone A: Prominent Example Dropdown *@
+                        <div class="bp-cmd-preset">
+                            <label for="pda-example-select" class="bp-field-label">Example</label>
+                            <div class="bp-select-wrap">
+                                <svg class="bp-select-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M8 2.2L14 5.5L8 8.8L2 5.5L8 2.2Z" stroke-linejoin="round" />
+                                    <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                                    <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <select id="pda-example-select"
+                                        class="bp-select-prominent"
+                                        value="@_pdaExampleKey"
+                                        @onchange="OnPdaExampleChanged">
+                                    <option value="@CustomKey" disabled hidden="@(_pdaExampleKey != CustomKey)">Custom rule</option>
+                                    @foreach (var grp in PdaExamples.GroupBy(e => e.Group))
+                                    {
+                                        <optgroup label="@grp.Key">
+                                            @foreach (var ex in grp)
+                                            {
+                                                <option value="@ex.Key">@ex.Label</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                                <svg class="bp-select-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </div>
+                        </div>
 
-                        @foreach (var sample in _pdaSampleInputs)
-                        {
+                        <div class="bp-cmd-divider hidden xl:block" aria-hidden="true"></div>
+
+                        @* Zone B: Central Input Checker + Instant Verdict *@
+                        <div class="bp-cmd-tester">
+                            <div class="flex items-center justify-between gap-2">
+                                <label for="pda-input-w" class="bp-field-label">Check input w</label>
+                                <div class="bp-sample-wrap">
+                                    <select @key="@($"pda-smp-{_samplePickerGen}")"
+                                            class="bp-select-sample"
+                                            aria-label="Pick PDA sample input"
+                                            value=""
+                                            @onchange="OnPdaSamplePicked">
+                                        <option value="">Samples</option>
+                                        @foreach (var sample in _pdaSampleInputs)
+                                        {
+                                            <option value="@sample">@(sample == "e" ? "e (empty)" : sample)</option>
+                                        }
+                                    </select>
+                                    <svg class="bp-sample-chevron" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                        <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <div class="bp-tester-row">
+                                <div class="bp-tester-field">
+                                    <span class="bp-tester-prefix" aria-hidden="true">w =</span>
+                                    <input id="pda-input-w"
+                                           type="text"
+                                           class="bp-tester-input"
+                                           placeholder="Type string (e = empty)"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           value="@_pdaInput"
+                                           @oninput="OnPdaInputChanged"
+                                           @onkeydown="OnPdaInputKeyDown" />
+                                    @if (!string.IsNullOrEmpty(_pdaInput))
+                                    {
+                                        <button type="button"
+                                                class="bp-tester-clear"
+                                                title="Clear input (empty string e)"
+                                                aria-label="Clear input to empty string"
+                                                @onclick="ClearPdaInput">
+                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                                <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke-linecap="round" />
+                                            </svg>
+                                        </button>
+                                    }
+                                    <button type="button"
+                                            class="bp-tester-submit"
+                                            title="Trace PDA immediately (Enter)"
+                                            aria-label="Check PDA input string"
+                                            @onclick="RunPdaInputImmediate">
+                                        ↵
+                                    </button>
+                                </div>
+
+                                @if (_pdaResult is not null)
+                                {
+                                    <div class="bp-verdict @(_pdaResult.Accepted ? "bp-verdict-accept" : "bp-verdict-reject")"
+                                         title="@(_pdaResult.Accepted ? "Final state, empty input, empty stack" : "No accepting path reaches final state with empty input and empty stack")"
+                                         aria-live="polite">
+                                        <span aria-hidden="true">@(_pdaResult.Accepted ? "✓" : "✕")</span>
+                                        <span>@(_pdaResult.Accepted ? "Accepted" : "Rejected")</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        @* Zone C: Custom Rule Toggle *@
+                        <div class="bp-cmd-actions">
                             <button type="button"
-                                    class="bp-chip font-mono"
-                                    @onclick="() => { _pdaInput = sample; TracePda(); }">
-                                @sample
+                                    class="bp-btn-toggle"
+                                    data-open="@(_pdaDrawerOpen ? "true" : "false")"
+                                    aria-expanded="@(_pdaDrawerOpen ? "true" : "false")"
+                                    @onclick="() => _pdaDrawerOpen = !_pdaDrawerOpen">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M2.5 4.5H13.5M2.5 8H13.5M2.5 11.5H13.5" stroke-linecap="round" />
+                                    <circle cx="5.5" cy="4.5" r="1.4" fill="var(--surface)" />
+                                    <circle cx="10.5" cy="8" r="1.4" fill="var(--surface)" />
+                                    <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
+                                </svg>
+                                <span>Custom Rule</span>
+                                @if (_pdaExampleKey == CustomKey)
+                                {
+                                    <span class="bp-custom-dot" title="Custom rule active" aria-hidden="true"></span>
+                                }
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                                     style="@(_pdaDrawerOpen ? "transform: rotate(180deg);" : "") transition: transform 140ms ease;"
+                                     aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
                             </button>
-                        }
+                        </div>
                     </div>
 
-                    @if (_pdaResult is not null)
+                    @if (_pdaDrawerOpen)
                     {
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <span class="text-[11px] font-mono tnum" style="color: var(--muted);">@_pdaResult.ExploredConfigurations configs</span>
-                            <span class="bp-pill @(_pdaResult.Accepted ? "bp-pill-positive" : "bp-pill-negative")">
-                                @(_pdaResult.Accepted ? "Accepted (q ∈ F, e, e)" : "Rejected")
-                            </span>
+                        <div class="bp-rule-drawer">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
+                                       placeholder="e.g. a^n b^m where n > m | a^2n b^n | #a = #b | palindromes"
+                                       aria-label="Parametric specification to synthesize PDA"
+                                       @bind="_pdaSynthSpec"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnPdaSynthKeyDown" />
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs w-40"
+                                       placeholder="Σ auto (e.g. x,y,z)"
+                                       title="Custom alphabet symbols (leave blank to auto-detect)"
+                                       aria-label="Custom alphabet symbols"
+                                       @bind="_pdaSynthAlphabet"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnPdaSynthKeyDown" />
+                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="SynthesizeCustomPda">Synthesize PDA</button>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_pdaSynthError))
+                            {
+                                <div class="text-xs px-2.5 py-1.5 rounded-md" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink);">
+                                    @_pdaSynthError
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -1163,8 +1190,9 @@
                 <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
                     @if (_pdaRightTab == "table" && _pdaResult is not null)
                     {
-                        <div class="text-[11px]" style="color: var(--muted);">
-                            Acceptance requires final state <code>p ∈ F</code>, empty input <code>e</code>, and empty stack <code>e</code>. Click any row to jump.
+                        <div class="flex items-center justify-between gap-2 text-[11px]" style="color: var(--muted);">
+                            <span>Acceptance requires final state <code>p ∈ F</code>, empty input <code>e</code>, and empty stack <code>e</code>.</span>
+                            <span class="font-mono tnum shrink-0">@_pdaResult.ExploredConfigurations configs</span>
                         </div>
                         <div class="overflow-x-auto rounded-md" style="border: 1px solid var(--border);">
                             <table class="w-full text-[11px] text-left">
@@ -1204,7 +1232,7 @@
                             <textarea class="bp-textarea w-full text-xs" rows="10" @bind="_pdaTransitionsText"></textarea>
                             <div class="flex items-center justify-between gap-2">
                                 <span class="text-[11px]" style="color: var(--faint);">Use <code>e</code> for empty string; optional <code>start:</code> and <code>accept:</code> headers.</span>
-                                <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ParseAndTracePda">Apply &amp; Trace</button>
+                                <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ApplyCustomPdaTransitions">Apply &amp; Trace</button>
                             </div>
                         </div>
 
@@ -1229,78 +1257,227 @@
     else if (_activeMode == StudioMode.TuringMachine)
     {
         <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-            @* Left: Input/Head/Granularity Bar + Horizontal Tape Strip + Schema Canvas + Playback *@
+            @* Left: Unified Command Strip + Horizontal Tape Strip + Schema Canvas + Playback *@
             <div class="shrink-0 lg:shrink lg:flex-1 min-w-0 lg:min-h-0 flex flex-col p-3 gap-2.5 lg:overflow-hidden">
-                <div class="bp-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-xs font-medium" style="color: var(--muted);">Input w:</span>
-                        <input type="text"
-                               class="bp-input !h-7 font-mono text-xs w-32"
-                               @bind="_tmInput"
-                               @bind:event="oninput" />
-                        <select class="bp-input !h-7 text-xs"
-                                title="Initial tape head position on #w#"
-                                value="@_tmHeadStart"
-                                @onchange="OnTmHeadStartChanged">
-                            <option value="@HeadStartMode.RightBlank">Head: Right # (#w[#])</option>
-                            <option value="@HeadStartMode.FirstSymbol">Head: First Cell (#[w]#)</option>
-                            <option value="@HeadStartMode.LeftBlank">Head: Left # ([ # ]w#)</option>
-                        </select>
-                        <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="RunTmTrace">Run</button>
-
-                        @foreach (var sample in _tmSampleInputs)
-                        {
-                            <button type="button"
-                                    class="bp-chip font-mono"
-                                    @onclick="() => { _tmInput = sample; RunTmTrace(); }">
-                                @sample
-                            </button>
-                        }
-                    </div>
-
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <div class="flex items-center rounded-md p-0.5" style="background: var(--raised); border: 1px solid var(--border);">
-                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                    style="@(!_tmMicroMode ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                    @onclick="() => SwitchTmGranularity(false)">Macro (@(_tmTrace?.MacroTimeline.Steps.Count ?? 0))</button>
-                            <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
-                                    style="@(_tmMicroMode ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                    @onclick="() => SwitchTmGranularity(true)">Micro (@(_tmTrace?.MicroTrace.Count ?? 0))</button>
+                <div class="bp-cmd-strip shrink-0">
+                    <div class="bp-cmd-row">
+                        @* Zone A: Prominent Example Dropdown *@
+                        <div class="bp-cmd-preset">
+                            <label for="tm-example-select" class="bp-field-label">Example</label>
+                            <div class="bp-select-wrap">
+                                <svg class="bp-select-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M8 2.2L14 5.5L8 8.8L2 5.5L8 2.2Z" stroke-linejoin="round" />
+                                    <path d="M2 8.5L8 11.8L14 8.5" stroke-linecap="round" stroke-linejoin="round" />
+                                    <path d="M2 11.2L8 14.5L14 11.2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <select id="tm-example-select"
+                                        class="bp-select-prominent"
+                                        value="@_tmExampleKey"
+                                        @onchange="OnTmExampleChanged">
+                                    <option value="@CustomKey" disabled hidden="@(_tmExampleKey != CustomKey)">Custom rule</option>
+                                    @foreach (var grp in TmExamples.GroupBy(e => e.Group))
+                                    {
+                                        <optgroup label="@grp.Key">
+                                            @foreach (var ex in grp)
+                                            {
+                                                <option value="@ex.Key">@ex.Label</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                                <svg class="bp-select-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </div>
                         </div>
 
-                        @if (_tmTrace is not null)
-                        {
-                            @if (_tmTrace.AcceptedDecision is true)
-                            {
-                                <span class="bp-pill bp-pill-positive">Accepted (#y#)</span>
-                            }
-                            else if (_tmTrace.AcceptedDecision is false)
-                            {
-                                <span class="bp-pill bp-pill-negative">Rejected (#n#)</span>
-                            }
-                            else if (_tmTrace.HaltedNormally)
-                            {
-                                <span class="bp-pill bp-pill-accent font-mono">Output: @_tmTrace.TrimmedTape</span>
-                            }
-                            else
-                            {
-                                <span class="bp-pill bp-pill-warning">@_tmTrace.HaltReason</span>
-                            }
-                        }
+                        <div class="bp-cmd-divider hidden xl:block" aria-hidden="true"></div>
+
+                        @* Zone B: Central Input Checker + Instant Verdict *@
+                        <div class="bp-cmd-tester">
+                            <div class="flex items-center justify-between gap-2">
+                                <label for="tm-input-w" class="bp-field-label">Check input w</label>
+                                <div class="bp-sample-wrap">
+                                    <select @key="@($"tm-smp-{_samplePickerGen}")"
+                                            class="bp-select-sample"
+                                            aria-label="Pick Turing Machine sample input"
+                                            value=""
+                                            @onchange="OnTmSamplePicked">
+                                        <option value="">Samples</option>
+                                        @foreach (var sample in _tmSampleInputs)
+                                        {
+                                            <option value="@sample">@(sample == "e" ? "e (empty)" : sample)</option>
+                                        }
+                                    </select>
+                                    <svg class="bp-sample-chevron" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                        <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <div class="bp-tester-row">
+                                <div class="bp-tester-field">
+                                    <span class="bp-tester-prefix" aria-hidden="true">w =</span>
+                                    <input id="tm-input-w"
+                                           type="text"
+                                           class="bp-tester-input"
+                                           placeholder="Type string (e = empty)"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           value="@_tmInput"
+                                           @oninput="OnTmInputChanged"
+                                           @onkeydown="OnTmInputKeyDown" />
+                                    @if (!string.IsNullOrEmpty(_tmInput))
+                                    {
+                                        <button type="button"
+                                                class="bp-tester-clear"
+                                                title="Clear input (empty string e)"
+                                                aria-label="Clear input to empty string"
+                                                @onclick="ClearTmInput">
+                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                                <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke-linecap="round" />
+                                            </svg>
+                                        </button>
+                                    }
+                                    <button type="button"
+                                            class="bp-tester-submit"
+                                            title="Run Turing Machine immediately (Enter)"
+                                            aria-label="Run Turing Machine on input string"
+                                            @onclick="RunTmInputImmediate">
+                                        ↵
+                                    </button>
+                                </div>
+
+                                @if (_tmTrace is not null)
+                                {
+                                    @if (_tmTrace.AcceptedDecision is true)
+                                    {
+                                        <div class="bp-verdict bp-verdict-accept" aria-live="polite">
+                                            <span aria-hidden="true">✓</span>
+                                            <span>Accepted · #y#</span>
+                                        </div>
+                                    }
+                                    else if (_tmTrace.AcceptedDecision is false)
+                                    {
+                                        <div class="bp-verdict bp-verdict-reject" aria-live="polite">
+                                            <span aria-hidden="true">✕</span>
+                                            <span>Rejected · #n#</span>
+                                        </div>
+                                    }
+                                    else if (_tmTrace.HaltedNormally)
+                                    {
+                                        <div class="bp-verdict bp-verdict-output" aria-live="polite">
+                                            <span>→ Output: @_tmTrace.TrimmedTape</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="bp-verdict bp-verdict-warn" aria-live="polite">
+                                            <span aria-hidden="true">⚠</span>
+                                            <span>@_tmTrace.HaltReason</span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+
+                        @* Zone C: Custom Rule Toggle *@
+                        <div class="bp-cmd-actions">
+                            <button type="button"
+                                    class="bp-btn-toggle"
+                                    data-open="@(_tmDrawerOpen ? "true" : "false")"
+                                    aria-expanded="@(_tmDrawerOpen ? "true" : "false")"
+                                    @onclick="() => _tmDrawerOpen = !_tmDrawerOpen">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                    <path d="M2.5 4.5H13.5M2.5 8H13.5M2.5 11.5H13.5" stroke-linecap="round" />
+                                    <circle cx="5.5" cy="4.5" r="1.4" fill="var(--surface)" />
+                                    <circle cx="10.5" cy="8" r="1.4" fill="var(--surface)" />
+                                    <circle cx="6.5" cy="11.5" r="1.4" fill="var(--surface)" />
+                                </svg>
+                                <span>Custom Rule</span>
+                                @if (_tmExampleKey == CustomKey)
+                                {
+                                    <span class="bp-custom-dot" title="Custom rule active" aria-hidden="true"></span>
+                                }
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+                                     style="@(_tmDrawerOpen ? "transform: rotate(180deg);" : "") transition: transform 140ms ease;"
+                                     aria-hidden="true">
+                                    <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
+
+                    @if (_tmDrawerOpen)
+                    {
+                        <div class="bp-rule-drawer">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs flex-1 min-w-[200px]"
+                                       placeholder="e.g. a^n b^m c^k where n + m = k | invert 0 and 1 | XOR | does not contain abc"
+                                       aria-label="Specification to synthesize Turing Machine"
+                                       @bind="_tmSynthSpec"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnTmSynthKeyDown" />
+                                <input type="text"
+                                       class="bp-input !h-8 font-mono text-xs w-40"
+                                       placeholder="Σ auto (e.g. x,y,z)"
+                                       title="Custom alphabet symbols (leave blank to auto-detect)"
+                                       aria-label="Custom alphabet symbols"
+                                       @bind="_tmSynthAlphabet"
+                                       @bind:event="oninput"
+                                       @onkeydown="OnTmSynthKeyDown" />
+                                <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="SynthesizeCustomTm">Synthesize TM</button>
+
+                                <label class="flex items-center gap-1.5 text-xs shrink-0" style="color: var(--muted);">
+                                    <span>Head start</span>
+                                    <select class="bp-input !h-8 text-xs"
+                                            title="Initial tape head position on #w#"
+                                            value="@_tmHeadStart"
+                                            @onchange="OnTmHeadStartChanged">
+                                        <option value="@HeadStartMode.RightBlank">Right # (#w[#])</option>
+                                        <option value="@HeadStartMode.FirstSymbol">First Cell (#[w]#)</option>
+                                        <option value="@HeadStartMode.LeftBlank">Left # ([#]w#)</option>
+                                    </select>
+                                </label>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_tmSynthError))
+                            {
+                                <div class="text-xs px-2.5 py-1.5 rounded-md" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink);">
+                                    @_tmSynthError
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
 
-                @* Interactive Horizontal Semi-Infinite Tape Strip *@
+                @* Interactive Horizontal Semi-Infinite Tape Strip (with Macro/Micro toggle) *@
                 @{
                     var tapeInfo = CurrentTmTapeSnapshot;
                 }
                 <div class="bp-card px-3 py-2.5 shrink-0 space-y-2">
                     <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
                             <span class="bp-pill bp-pill-accent font-mono">@tapeInfo.StateLabel</span>
-                            <span class="font-medium">@tapeInfo.Summary</span>
+                            <span class="font-medium truncate">@tapeInfo.Summary</span>
                         </div>
-                        <span class="font-mono text-[11px] tnum" style="color: var(--muted);">Head cell: @tapeInfo.HeadIndex</span>
+                        <div class="flex items-center gap-2.5 shrink-0">
+                            <span class="font-mono text-[11px] tnum" style="color: var(--muted);">Head cell: @tapeInfo.HeadIndex</span>
+                            <div class="bp-seg" role="group" aria-label="Turing machine trace granularity">
+                                <button type="button"
+                                        class="bp-seg-btn !h-6 !text-[11px]"
+                                        data-active="@(!_tmMicroMode ? "true" : "false")"
+                                        @onclick="() => SwitchTmGranularity(false)">
+                                    Macro (@(_tmTrace?.MacroTimeline.Steps.Count ?? 0))
+                                </button>
+                                <button type="button"
+                                        class="bp-seg-btn !h-6 !text-[11px]"
+                                        data-active="@(_tmMicroMode ? "true" : "false")"
+                                        @onclick="() => SwitchTmGranularity(true)">
+                                    Micro (@(_tmTrace?.MicroTrace.Count ?? 0))
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="flex items-end gap-1 overflow-x-auto pb-1">
@@ -1419,7 +1596,7 @@
                         <div class="bp-card p-3 space-y-2">
                             <div class="flex items-center justify-between">
                                 <span class="text-xs font-semibold">Composable Machine-Schema DSL</span>
-                                <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="CompileAndRunTmDsl">Compile &amp; Run</button>
+                                <button type="button" class="bp-btn-primary !h-7 text-xs" @onclick="ApplyCustomTmDsl">Compile &amp; Run</button>
                             </div>
                             <textarea class="bp-textarea w-full text-xs" rows="13" @bind="_tmDslText"></textarea>
                             <div class="text-[11px] space-y-1 pt-1" style="color: var(--muted);">
@@ -1478,9 +1655,10 @@
 </div>
 
 @code {
+    private const string CustomKey = "__custom__";
+
     private enum StudioMode
     {
-        Compiler,
         Dfa,
         Nfa,
         Cfg,
@@ -1489,27 +1667,59 @@
     }
 
     private sealed record TabItem(StudioMode Mode, string Label);
-    private sealed record CompilerExample(string Label, string Spec, string SampleInput);
-    private sealed record CompilerTestRow(string Input, bool? Accepted, string Detail, bool? Expected = null, string? Reason = null);
     private sealed record TapeSnapshot(string StateLabel, string Summary, string Tape, int HeadIndex);
-    private sealed record ThreeBlockRelOption(string Label, string Expr);
 
-    private static readonly string[] BuilderOps = [">", ">=", "<", "<=", "=", "!="];
-    private static readonly ThreeBlockRelOption[] ThreeBlockBuilderRelations =
-    [
-        new("n + m = k", "n + m = k"),
-        new("n + m > k", "n + m > k"),
-        new("n > m > k", "n > m > k"),
-        new("n >= m >= k", "n >= m >= k"),
-        new("n = m or m = k", "n = m or m = k"),
-        new("n > m", "n > m"),
-        new("n = k", "n = k"),
-        new("n = m and m = k", "n = m and m = k")
-    ];
+    private sealed record DfaExampleItem(
+        string Key,
+        string Group,
+        string Label,
+        string SourceKind,
+        string Spec,
+        string DefaultInput,
+        IReadOnlyList<string> Samples,
+        string Description);
+
+    private sealed record NfaExampleItem(
+        string Key,
+        string Group,
+        string Label,
+        string Spec,
+        string DefaultInput,
+        IReadOnlyList<string> Samples,
+        string Description);
+
+    private sealed record CfgExampleItem(
+        string Key,
+        string Group,
+        string Label,
+        string DefaultInput,
+        IReadOnlyList<string> Samples,
+        string Description,
+        string? GrammarText = null,
+        string? SynthSpec = null);
+
+    private sealed record PdaExampleItem(
+        string Key,
+        string Group,
+        string Label,
+        string DefaultInput,
+        IReadOnlyList<string> Samples,
+        string Description,
+        string? PresetKey = null,
+        string? SynthSpec = null);
+
+    private sealed record TmExampleItem(
+        string Key,
+        string Group,
+        string Label,
+        string? PresetKey = null,
+        string? SynthSpec = null,
+        string? DefaultInput = null,
+        IReadOnlyList<string>? Samples = null,
+        string? Description = null);
 
     private static readonly TabItem[] StudioTabs =
     [
-        new(StudioMode.Compiler, "Language Compiler"),
         new(StudioMode.Dfa, "DFA"),
         new(StudioMode.Nfa, "NFA"),
         new(StudioMode.Cfg, "CFG & Derivation"),
@@ -1517,76 +1727,85 @@
         new(StudioMode.TuringMachine, "Turing Machine")
     ];
 
-    private static readonly CompilerExample[] NfaExamples =
+    private static readonly DfaExampleItem[] DfaExamples =
     [
-        new("starts with aba", "starts with aba", "ababa"),
-        new("ends with aba", "ends with aba", "bbaba"),
-        new("contains aba", "contains aba", "bbabaa"),
-        new("starts aba OR ends bab", "starts with aba OR ends with bab", "abbab"),
-        new("does not start with aba (→ DFA)", "does not start with aba", "bba"),
-        new("does not contain aba (→ DFA)", "does not contain aba", "aabb"),
-        new("does not end with aba (→ DFA)", "does not end with aba", "abaa")
+        new("dfa-contains-aba", "Regular Constraints", "Contains substring 'aba'", "constraint", "contains aba", "bbabaa", ["aba", "bbabaa", "aabb", "bbb", "e"], "Minimal 4-state DFA accepting strings over {a, b} containing 'aba'."),
+        new("dfa-even-b", "Regular Constraints", "Even number of b's", "constraint", "even b", "abab", ["e", "aaa", "abab", "bb", "b", "abbba"], "Minimal 2-state DFA accepting strings over {a, b} with an even count of 'b'."),
+        new("dfa-bb-bab-aa", "Regular Constraints", "Starts bb, contains bab, ends aa", "constraint", "starts with bb AND contains bab AND ends with aa", "bbabaa", ["bbabaa", "bbbabaa", "bbaa", "bbaba", "abaa"], "Exact minimal DFA synthesized from Boolean conjunction."),
+        new("dfa-starts-aba", "Regular Constraints", "Starts with 'aba'", "constraint", "starts with aba", "ababa", ["aba", "ababa", "ab", "bbaba", "e"], "Minimal DFA accepting strings over {a, b} starting with 'aba'."),
+        new("dfa-no-aba", "Regular Constraints", "Does not contain 'aba'", "constraint", "does not contain aba", "aabb", ["aabb", "e", "ab", "aba", "bbabaa"], "Complement DFA rejecting any string over {a, b} containing 'aba'."),
+        new("dfa-abstar", "Regular Expressions", "Pattern a*b*a*", "regex", "a*b*a*", "abba", ["abba", "aba", "e", "bbb", "babab", "baba"], "Minimal DFA compiled from regular expression a*b*a*.")
     ];
 
-    private static readonly CompilerExample[] CompilerExamples =
+    private static readonly NfaExampleItem[] NfaExamples =
     [
-        new("aⁿbᵐ (n > m)", "a^n b^m where n > m", "aab"),
-        new("aⁿbᵐ (n ≠ m)", "a^n b^m where n != m", "abb"),
-        new("aⁿbᵐcᵏ (n+m=k)", "a^n b^m c^k where n + m = k", "abbccc"),
-        new("aⁿbᵐcᵏ (n>m>k)", "a^n b^m c^k where n > m > k", "aaabbc"),
-        new("starts bb ∧ bab ∧ aa", "starts with bb AND contains bab AND ends with aa", "bbabaa"),
-        new("even b ∧ ¬aba", "even b AND does not contain aba", "bbaa"),
-        new("palindromes", "palindromes", "abba"),
-        new("a^2n b^n", "a^2n b^n", "aaaabb"),
-        new("a^n b^n c^n", "a^n b^n c^n", "aabbcc"),
-        new("#a > #b", "#a > #b", "aab"),
-        new("invert a and b", "invert a and b", "aab"),
-        new("XOR", "XOR", "1011")
+        new("nfa-starts-aba", "Compact NFA (String Edges)", "Starts with 'aba'", "starts with aba", "ababa", ["aba", "ababa", "ab", "bbaba", "e"], "Compact 2-state string-edge NFA recognizing strings starting with 'aba'."),
+        new("nfa-ends-aba", "Compact NFA (String Edges)", "Ends with 'aba'", "ends with aba", "bbaba", ["aba", "bbaba", "abaa", "bb", "e"], "Compact 2-state string-edge NFA recognizing strings ending with 'aba'."),
+        new("nfa-contains-aba", "Compact NFA (String Edges)", "Contains 'aba'", "contains aba", "bbabaa", ["aba", "bbabaa", "aabb", "bbb", "e"], "Compact NFA recognizing strings containing 'aba'."),
+        new("nfa-starts-or-ends", "Compact NFA (String Edges)", "Starts 'aba' OR ends 'bab'", "starts with aba OR ends with bab", "abbab", ["abaa", "abbab", "bab", "ab", "e"], "Nondeterministic union of prefix and suffix rules."),
+        new("nfa-not-starts-aba", "Negated Rules (Determinizes → DFA)", "Does not start with 'aba' (→ DFA)", "does not start with aba", "bba", ["bba", "e", "ab", "aba", "ababa"], "Negated prefix rule determinized into a complete DFA."),
+        new("nfa-not-contains-aba", "Negated Rules (Determinizes → DFA)", "Does not contain 'aba' (→ DFA)", "does not contain aba", "aabb", ["aabb", "e", "ab", "aba", "bbabaa"], "Negated substring rule determinized into a complete DFA."),
+        new("nfa-not-ends-aba", "Negated Rules (Determinizes → DFA)", "Does not end with 'aba' (→ DFA)", "does not end with aba", "abaa", ["abaa", "e", "ab", "aba", "bbaba"], "Negated suffix rule determinized into a complete DFA.")
     ];
 
-    private StudioMode _activeMode = StudioMode.TuringMachine;
-    private string _selectedPresetKey = "tm-palindrome";
+    private static readonly CfgExampleItem[] CfgExamples =
+    [
+        new("cfg-arith", "Context-Free Grammars", "Arithmetic Expressions (E, T, F)", "(x+y)+x", ["(x+y)+x", "x+y*x", "(x*y)+(y*x)", "x+", "((x)"], "Left-recursive context-free grammar for +, *, parentheses, and variables x, y.", GrammarText: "E -> E+T | T\nT -> T*F | F\nF -> (E) | x | y"),
+        new("cfg-anbn", "Context-Free Grammars", "Equal aⁿbⁿ", "aabb", ["aabb", "ab", "e", "aab", "abb"], "Context-free grammar generating { aⁿbⁿ | n ≥ 0 }.", GrammarText: "S -> aSb | e"),
+        new("cfg-palindrome", "Context-Free Grammars", "Palindromes (w = wᴿ)", "abba", ["abba", "aba", "a", "e", "ab", "abaa"], "Context-free grammar generating odd and even palindromes over {a, b}.", GrammarText: "S -> aSa | bSb | a | b | e"),
+        new("cfg-parens", "Context-Free Grammars", "Balanced Parentheses", "(()())", ["(()())", "(())", "()", "e", ")(", "(()"], "Dyck grammar generating balanced parenthesis strings.", GrammarText: "S -> (S) | SS | e"),
+        new("cfg-more-a", "Context-Free Grammars", "More a's than b's (aⁿbᵐ, n > m)", "aab", ["aab", "aaab", "a", "ab", "abb", "e"], "Synthesized CFG for { aⁿbᵐ | n > m ≥ 0 }.", SynthSpec: "a^n b^m where n > m")
+    ];
+
+    private static readonly PdaExampleItem[] PdaExamples =
+    [
+        new("pda-anbn", "Pushdown Automata", "Equal aⁿbⁿ", "aabb", ["aabb", "e", "ab", "abb", "aab"], "Generalized 6-tuple PDA accepting { aⁿbⁿ | n ≥ 0 } by empty stack and final state.", PresetKey: "pda-anbn"),
+        new("pda-palindrome", "Pushdown Automata", "Palindromes (Odd & Even)", "abba", ["e", "a", "aba", "abba", "ab", "abaa"], "Nondeterministic PDA accepting all palindromes over {a, b}.", PresetKey: "pda-palindrome"),
+        new("pda-parens", "Pushdown Automata", "Balanced Parentheses", "(()())", ["e", "()", "(())", "(()())", ")(", "(()"], "Single-state PDA recognizing well-formed parenthesis strings.", PresetKey: "pda-parens"),
+        new("pda-a2nbn", "Pushdown Automata", "Double Prefix a²ⁿbⁿ", "aaaabb", ["aaaabb", "aab", "e", "aabb", "ab", "aa"], "PDA matching two leading a's per trailing b.", SynthSpec: "a^2n b^n"),
+        new("pda-more-a", "Pushdown Automata", "More a's than b's (aⁿbᵐ, n > m)", "aab", ["aab", "aaab", "a", "ab", "abb", "e"], "Synthesized PDA accepting { aⁿbᵐ | n > m ≥ 0 }.", SynthSpec: "a^n b^m where n > m")
+    ];
+
+    private static readonly TmExampleItem[] TmExamples =
+    [
+        new("tm-palindrome", "Deciders", "Palindromes (w = wᴿ)", PresetKey: "tm-palindrome"),
+        new("tm-anbn", "Deciders", "Equal aⁿbⁿ", PresetKey: "tm-anbn"),
+        new("tm-anbncn", "Deciders", "Equal Triples aⁿbⁿcⁿ", PresetKey: "tm-anbncn"),
+        new("tm-a2nbn", "Deciders", "Double Prefix a²ⁿbⁿ", PresetKey: "tm-a2nbn"),
+        new("tm-abstar", "Deciders", "Regular Pattern a*b*a*", PresetKey: "tm-abstar"),
+        new("tm-starts-a", "Deciders", "Starts with 'a'", PresetKey: "tm-starts-a"),
+        new("tm-block-sum", "Deciders", "Block Sum aⁿbᵐcᵏ (n + m = k)", SynthSpec: "a^n b^m c^k where n + m = k", DefaultInput: "abbccc", Samples: ["abbccc", "ac", "bc", "e", "abcc", "aabc"], Description: "Synthesized decidable TM accepting { aⁿbᵐcᵏ | n + m = k }."),
+        new("tm-invert", "Transducers & Macros", "Invert a ↔ b", PresetKey: "tm-invert"),
+        new("tm-shift-left", "Transducers & Macros", "Shift Left (S_L)", PresetKey: "tm-shift-left"),
+        new("tm-xor", "Transducers & Macros", "Binary XOR", SynthSpec: "XOR", DefaultInput: "1011", Samples: ["1011", "01", "10", "11", "00", "1"], Description: "Computes logical XOR / odd parity across binary input over {0, 1}*.")
+    ];
+
+    private StudioMode _activeMode = StudioMode.Dfa;
     private bool _inspectorCollapsed;
+    private int _samplePickerGen;
+    private bool _disposed;
 
-    // --- Compiler Tab State ---
-    private LanguageSpecMode _specMode = LanguageSpecMode.Auto;
-    private string _specText = "a^n b^m where n > m";
-    private string _specAlphabetText = string.Empty;
-    private string _compilerPreviewKind = "dfa";
-    private string _compilerTestInput = "aab";
-    private string? _compilerError;
-    private LanguageSpecCompilationResult? _compiledSpec;
-    private DiagramScene? _lastValidCompilerScene;
-    private readonly List<CompilerTestRow> _compilerTestRows = new();
-    private bool _showCustomBuilder;
-    private string _builderTemplate = "2block";
-    private string _builderSymbols = "a,b";
-    private string _builderOp = ">";
-    private int _builderMultiplier = 1;
-    private int _builderOffset = 0;
-    private int _builderMinBound = 0;
-    private string _builderThreeRel = "n + m = k";
-    private bool _savedProblemNotice;
-    private PdaTraceResult? _compilerPdaTrace;
-    private int _compilerPdaStepIndex;
-    private CfgParseResult? _compilerCfgResult;
-    private int _compilerCfgStepIndex;
+    private CancellationTokenSource? _cfgDebounceCts;
+    private CancellationTokenSource? _pdaDebounceCts;
+    private CancellationTokenSource? _tmDebounceCts;
 
     // --- DFA Tab State ---
-    private string _faSourceKind = "constraint";
-    private string _faSpecText = "starts with aba";
+    private string _dfaExampleKey = "dfa-contains-aba";
+    private bool _dfaDrawerOpen;
+    private string _faSourceKind = "auto";
+    private string _faSpecText = "contains aba";
     private string _faAlphabetText = string.Empty;
     private string _faViewKind = "min";
     private string _faRightTab = "trace";
-    private string _faInput = "ababa";
-    private IReadOnlyList<string> _faSampleInputs = ["aba", "ababa", "ab", "bbaba", "e"];
+    private string _faInput = "bbabaa";
+    private IReadOnlyList<string> _faSampleInputs = ["aba", "bbabaa", "aabb", "bbb", "e"];
     private string? _faError;
     private Dfa? _faMinDfa;
     private Dfa? _faRawDfa;
     private TraceTimeline<FaStepState>? _faTimeline;
     private DiagramScene? _lastValidFaScene;
     private int _faStepIndex;
-    private string _faCompareSpec = "contains aba";
+    private string _faCompareSpec = "starts with aba";
     private string? _faCompareError;
     private Dfa? _faCompareDfa;
     private FaDecisionResult? _faCompareEquiv;
@@ -1594,7 +1813,9 @@
     private FaDecisionResult? _faCompareSub21;
 
     // --- NFA Tab State ---
-    private string _nfaSourceKind = "constraint";
+    private string _nfaExampleKey = "nfa-starts-aba";
+    private bool _nfaDrawerOpen;
+    private string _nfaSourceKind = "auto";
     private string _nfaSpecText = "starts with aba";
     private string _nfaAlphabetText = string.Empty;
     private string _nfaRightTab = "trace";
@@ -1610,15 +1831,25 @@
     private int _nfaStepIndex;
 
     // --- CFG Tab State ---
+    private string _cfgExampleKey = "cfg-arith";
+    private bool _cfgDrawerOpen;
+    private string _cfgSynthSpec = string.Empty;
+    private string _cfgSynthAlphabet = string.Empty;
+    private string? _cfgSynthError;
     private string _cfgText = "E -> E+T | T\nT -> T*F | F\nF -> (E) | x | y";
     private string _cfgInput = "(x+y)+x";
-    private IReadOnlyList<string> _cfgSampleInputs = ["(x+y)+x", "x+y*x", "(x*y)+(y*x)", "x+"];
+    private IReadOnlyList<string> _cfgSampleInputs = ["(x+y)+x", "x+y*x", "(x*y)+(y*x)", "x+", "((x)"];
     private string? _cfgError;
     private Cfg? _currentCfg;
     private CfgParseResult? _cfgParseResult;
     private int _cfgStepIndex;
 
     // --- PDA Tab State ---
+    private string _pdaExampleKey = "pda-anbn";
+    private bool _pdaDrawerOpen;
+    private string _pdaSynthSpec = string.Empty;
+    private string _pdaSynthAlphabet = string.Empty;
+    private string? _pdaSynthError;
     private string _pdaTransitionsText = "start: s\naccept: f\n((s, a, e), (s, a))\n((s, e, e), (f, e))\n((f, b, a), (f, e))";
     private string _pdaInput = "aabb";
     private IReadOnlyList<string> _pdaSampleInputs = ["aabb", "e", "ab", "abb", "aab"];
@@ -1629,6 +1860,11 @@
     private int _pdaStepIndex;
 
     // --- TM Tab State ---
+    private string _tmExampleKey = "tm-palindrome";
+    private bool _tmDrawerOpen;
+    private string _tmSynthSpec = string.Empty;
+    private string _tmSynthAlphabet = string.Empty;
+    private string? _tmSynthError;
     private string _tmDslText = string.Empty;
     private string _tmInput = "abba";
     private IReadOnlyList<string> _tmSampleInputs = ["e", "a", "aba", "abba", "abaa", "ab"];
@@ -1643,78 +1879,121 @@
 
     protected override void OnInitialized()
     {
-        // Pre-initialize all 6 workbenches so tab switching is instant
-        CompileSpec();
-        BuildFaFromSpec();
-        BuildNfaFromSpec();
-        ParseCfgAndInput();
-        ParseAndTracePda();
+        // Pre-initialize all 5 workbenches silently so tab switching is instant
+        SelectNfaExample("nfa-starts-aba", recordRecent: false);
+        SelectCfgExample("cfg-arith", recordRecent: false);
+        SelectPdaExample("pda-anbn", recordRecent: false);
+        SelectTmExample("tm-palindrome", recordRecent: false);
+        SelectDfaExample("dfa-contains-aba", recordRecent: false);
+        _activeMode = StudioMode.Dfa;
 
+        // Consume any navigation target from Home or Command Palette; otherwise default to DFA
+        if (!ConsumePendingNavigationState())
+        {
+            RecordExampleRecent("dfa-contains-aba", "DFA: Contains Substring 'aba'", "Minimal 4-state DFA accepting strings over {a, b} containing 'aba'.");
+        }
+
+        AppState.OnChange += OnAppStateChanged;
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        AppState.OnChange -= OnAppStateChanged;
+        CancelDebounce(ref _cfgDebounceCts);
+        CancelDebounce(ref _pdaDebounceCts);
+        CancelDebounce(ref _tmDebounceCts);
+    }
+
+    private void OnAppStateChanged()
+    {
+        if (_disposed) return;
+        _ = InvokeAsync(() =>
+        {
+            if (_disposed) return;
+            ConsumePendingNavigationState();
+            StateHasChanged();
+        });
+    }
+
+    private bool ConsumePendingNavigationState()
+    {
         var pendingSpec = AppState.PendingAutomataSpec;
         var pendingAlpha = AppState.PendingAutomataAlphabet;
+        var pendingKey = AppState.PendingPresetKey;
+
+        if (string.IsNullOrWhiteSpace(pendingSpec) && string.IsNullOrWhiteSpace(pendingKey))
+        {
+            return false;
+        }
+
         AppState.PendingAutomataSpec = null;
         AppState.PendingAutomataAlphabet = null;
-
-        var initialKey = !string.IsNullOrWhiteSpace(AppState.PendingPresetKey) && AutomataPresets.ByKey.ContainsKey(AppState.PendingPresetKey)
-            ? AppState.PendingPresetKey
-            : "tm-palindrome";
         AppState.PendingPresetKey = null;
-        LoadPreset(initialKey);
 
         if (!string.IsNullOrWhiteSpace(pendingSpec))
         {
-            _specMode = LanguageSpecMode.Auto;
-            _specText = pendingSpec;
-            _specAlphabetText = pendingAlpha ?? string.Empty;
-            _activeMode = StudioMode.Compiler;
-            CompileSpec();
+            RoutePendingSpec(pendingSpec, pendingAlpha);
+            return true;
         }
+
+        if (!string.IsNullOrWhiteSpace(pendingKey))
+        {
+            LoadPresetKey(pendingKey, recordRecent: true);
+            return true;
+        }
+
+        return false;
     }
 
     private void SwitchMode(StudioMode mode)
     {
         _activeMode = mode;
-        var syncedKey = mode switch
-        {
-            StudioMode.Dfa or StudioMode.Nfa => "dfa-contains-aba",
-            StudioMode.Cfg => "cfg-arith",
-            StudioMode.Pda => "pda-anbn",
-            StudioMode.TuringMachine => "tm-palindrome",
-            _ => _selectedPresetKey
-        };
-        if (AutomataPresets.ByKey.ContainsKey(syncedKey))
-        {
-            _selectedPresetKey = syncedKey;
-        }
     }
 
-    private static string FormatPresetGroup(AutomataPresetKind kind) => kind switch
+    private void LoadPresetKey(string key, bool recordRecent)
     {
-        AutomataPresetKind.FiniteAutomaton => "Finite Automata (DFA / NFA)",
-        AutomataPresetKind.ContextFreeGrammar => "Context-Free Grammars",
-        AutomataPresetKind.PushdownAutomaton => "Pushdown Automata (PDA)",
-        AutomataPresetKind.TuringMachine => "Turing Machines",
-        _ => kind.ToString()
-    };
-
-    private void OnPresetChanged(ChangeEventArgs e)
-    {
-        var key = e.Value?.ToString();
-        if (!string.IsNullOrWhiteSpace(key))
+        if (DfaExamples.Any(e => e.Key == key))
         {
-            LoadPreset(key);
+            SelectDfaExample(key, recordRecent);
+            _activeMode = StudioMode.Dfa;
+            return;
         }
-    }
 
-    private void LoadPreset(string key)
-    {
+        if (NfaExamples.Any(e => e.Key == key))
+        {
+            SelectNfaExample(key, recordRecent);
+            _activeMode = StudioMode.Nfa;
+            return;
+        }
+
+        if (CfgExamples.Any(e => e.Key == key))
+        {
+            SelectCfgExample(key, recordRecent);
+            _activeMode = StudioMode.Cfg;
+            return;
+        }
+
+        if (PdaExamples.Any(e => e.Key == key))
+        {
+            SelectPdaExample(key, recordRecent);
+            _activeMode = StudioMode.Pda;
+            return;
+        }
+
+        if (TmExamples.Any(e => e.Key == key))
+        {
+            SelectTmExample(key, recordRecent);
+            _activeMode = StudioMode.TuringMachine;
+            return;
+        }
+
         if (!AutomataPresets.ByKey.TryGetValue(key, out var preset)) return;
-        _selectedPresetKey = key;
 
         switch (preset.Kind)
         {
             case AutomataPresetKind.FiniteAutomaton:
-                _activeMode = StudioMode.Dfa;
+                _dfaExampleKey = CustomKey;
                 _faInput = preset.DefaultInput;
                 _faSampleInputs = preset.SampleInputs;
                 if (!string.IsNullOrWhiteSpace(preset.ConstraintSpec))
@@ -1728,42 +2007,113 @@
                     _faSpecText = preset.RegexPattern;
                 }
                 _faAlphabetText = string.Empty;
-                BuildFaFromSpec();
+                BuildFaFromSpec(updateSamples: false);
+                _activeMode = StudioMode.Dfa;
                 break;
 
             case AutomataPresetKind.ContextFreeGrammar:
-                _activeMode = StudioMode.Cfg;
+                _cfgExampleKey = CustomKey;
                 _cfgText = preset.GrammarText ?? _cfgText;
                 _cfgInput = preset.DefaultInput;
                 _cfgSampleInputs = preset.SampleInputs;
                 ParseCfgAndInput();
+                _activeMode = StudioMode.Cfg;
                 break;
 
             case AutomataPresetKind.PushdownAutomaton:
-                _activeMode = StudioMode.Pda;
+                _pdaExampleKey = CustomKey;
                 _pdaTransitionsText = preset.PdaTransitionsText ?? _pdaTransitionsText;
                 _pdaInput = preset.DefaultInput;
                 _pdaSampleInputs = preset.SampleInputs;
                 ParseAndTracePda();
+                _activeMode = StudioMode.Pda;
                 break;
 
             case AutomataPresetKind.TuringMachine:
-                _activeMode = StudioMode.TuringMachine;
+                _tmExampleKey = CustomKey;
                 _tmDslText = preset.TmSchemaText ?? _tmDslText;
                 _tmInput = preset.DefaultInput;
                 _tmSampleInputs = preset.SampleInputs;
                 _tmHeadStart = HeadStartMode.RightBlank;
                 CompileAndRunTmDsl();
+                _activeMode = StudioMode.TuringMachine;
                 break;
         }
 
+        if (recordRecent)
+        {
+            RecordExampleRecent(preset.Key, preset.Title, preset.Description);
+        }
+    }
+
+    private void RoutePendingSpec(string spec, string? alphaRaw)
+    {
+        try
+        {
+            var alpha = ParseAlphabetInput(alphaRaw);
+            var compiled = LanguageSpecCompiler.Compile(spec, LanguageSpecMode.Auto, alpha);
+            var samples = ExtractSampleInputs(compiled.SuggestedTests);
+            var preferredInput = PickPreferredInput(compiled.SuggestedTests);
+
+            if (compiled.MinimalDfa is not null)
+            {
+                _faMinDfa = compiled.MinimalDfa;
+                _faRawDfa = compiled.ResolvedMode == LanguageSpecMode.Regex && compiled.Nfa is not null
+                    ? compiled.Nfa.ToDfa(renameStates: true)
+                    : compiled.MinimalDfa;
+                _faSpecText = spec;
+                _faAlphabetText = alphaRaw ?? string.Empty;
+                _faSourceKind = "auto";
+                _faViewKind = "min";
+                _dfaExampleKey = CustomKey;
+                if (samples is not null) _faSampleInputs = samples;
+                if (preferredInput is not null) _faInput = preferredInput;
+                _faError = null;
+                TraceFa();
+                _activeMode = StudioMode.Dfa;
+            }
+            else if (compiled.Pda is not null)
+            {
+                _pdaTransitionsText = compiled.Pda.ToTransitionsText();
+                _pdaSynthSpec = spec;
+                _pdaSynthAlphabet = alphaRaw ?? string.Empty;
+                _pdaExampleKey = CustomKey;
+                if (samples is not null) _pdaSampleInputs = samples;
+                if (preferredInput is not null) _pdaInput = preferredInput;
+                _pdaSynthError = null;
+                ParseAndTracePda();
+                _activeMode = StudioMode.Pda;
+            }
+            else
+            {
+                _tmDslText = compiled.TmSchema.ToDslText();
+                _tmSynthSpec = spec;
+                _tmSynthAlphabet = alphaRaw ?? string.Empty;
+                _tmHeadStart = compiled.TmSchema.HeadStart;
+                _tmExampleKey = CustomKey;
+                if (samples is not null) _tmSampleInputs = samples;
+                if (preferredInput is not null) _tmInput = preferredInput;
+                _tmSynthError = null;
+                CompileAndRunTmDsl();
+                _activeMode = StudioMode.TuringMachine;
+            }
+        }
+        catch (Exception ex)
+        {
+            _faError = ex.Message;
+            _activeMode = StudioMode.Dfa;
+        }
+    }
+
+    private void RecordExampleRecent(string key, string title, string description)
+    {
         AppState.RecordRecent(new WorkspaceDocument(
-            $"auto-{preset.Key}",
-            preset.Title,
+            $"auto-{key}",
+            title,
             StudioKind.Automata,
-            preset.Description,
+            description,
             DateTimeOffset.UtcNow,
-            JsonSerializer.SerializeToElement(new { preset = preset.Key })));
+            JsonSerializer.SerializeToElement(new { preset = key })));
     }
 
     private static IEnumerable<char>? ParseAlphabetInput(string? raw)
@@ -1783,299 +2133,66 @@
         return chars.Count > 0 ? chars : null;
     }
 
-    // ==================== COMPILER MODE ====================
-
-    private void OnSpecKeyDown(KeyboardEventArgs e)
+    private static IReadOnlyList<string>? ExtractSampleInputs(IReadOnlyList<LanguageTestCase>? tests)
     {
-        if (e.Key == "Enter")
+        if (tests is not { Count: > 0 }) return null;
+        var list = tests.Select(t => t.Input).Distinct(StringComparer.Ordinal).Take(6).ToArray();
+        return list.Length > 0 ? list : null;
+    }
+
+    private static string? PickPreferredInput(IReadOnlyList<LanguageTestCase>? tests)
+    {
+        if (tests is not { Count: > 0 }) return null;
+        var preferred = tests.FirstOrDefault(t => t.ExpectedAccept && t.Input != "e" && t.Input.Length >= 2)
+            ?? tests.FirstOrDefault(t => t.ExpectedAccept)
+            ?? tests[0];
+        return preferred.Input;
+    }
+
+    private static bool InputFitsAlphabet(string? input, IReadOnlySet<char> alphabet)
+    {
+        var normalized = AutomataSymbols.NormalizeWord(input, alphabet);
+        return normalized.All(alphabet.Contains);
+    }
+
+    private static void CancelDebounce(ref CancellationTokenSource? slot)
+    {
+        var existing = Interlocked.Exchange(ref slot, null);
+        if (existing is not null)
         {
-            CompileSpec();
+            try { existing.Cancel(); } catch { }
+            existing.Dispose();
         }
     }
 
-    private void SetBuilderTemplate(string template)
+    private void ScheduleDebounced(ref CancellationTokenSource? slot, Action work)
     {
-        _builderTemplate = template;
-        var curSyms = ParseAlphabetInput(_builderSymbols)?.ToList() ?? new List<char>();
-        if (template == "3block" && curSyms.Count < 3)
-        {
-            _builderSymbols = curSyms.Count == 2 && curSyms[0] == 'x' && curSyms[1] == 'y'
-                ? "x,y,z"
-                : "a,b,c";
-        }
-        else if (template != "3block" && curSyms.Count >= 3)
-        {
-            _builderSymbols = $"{curSyms[0]},{curSyms[1]}";
-        }
+        CancelDebounce(ref slot);
+        var cts = new CancellationTokenSource();
+        slot = cts;
+        var token = cts.Token;
+        _ = RunDebouncedAsync(token, work);
     }
 
-    private string BuildCustomSpecPreview()
-    {
-        var syms = ParseAlphabetInput(_builderSymbols)?
-            .Where(char.IsLetterOrDigit)
-            .Select(char.ToLowerInvariant)
-            .Distinct()
-            .ToList() ?? new List<char>();
-
-        var s1 = syms.Count > 0 ? syms[0] : 'a';
-        var s2 = syms.Count > 1 ? syms[1] : (s1 == 'a' ? 'b' : 'y');
-        var s3 = syms.Count > 2 ? syms[2] : (s2 == 'b' ? 'c' : 'z');
-
-        if (_builderTemplate == "3block")
-        {
-            var boundSuffix = _builderMinBound > 0 ? $", n, m, k >= {_builderMinBound}" : "";
-            return $"{s1}^n {s2}^m {s3}^k where {_builderThreeRel}{boundSuffix}";
-        }
-
-        var rhsMul = _builderMultiplier == 1 ? "m" : $"{_builderMultiplier}m";
-        var rhsOff = _builderOffset switch
-        {
-            > 0 => $" + {_builderOffset}",
-            < 0 => $" - {System.Math.Abs(_builderOffset)}",
-            _ => ""
-        };
-
-        if (_builderTemplate == "count")
-        {
-            var cRhs = _builderMultiplier == 1 ? $"#{s2}" : $"{_builderMultiplier}*#{s2}";
-            var extraAlpha = syms.Count > 2 ? $"{{ w in {{{string.Join(",", syms)}}}* | #{s1}(w) {_builderOp} {cRhs}{rhsOff} }}" : $"#{s1} {_builderOp} {cRhs}{rhsOff}";
-            return extraAlpha;
-        }
-
-        var minPart = _builderMinBound > 0 ? $", n, m >= {_builderMinBound}" : "";
-        return $"{s1}^n {s2}^m where n {_builderOp} {rhsMul}{rhsOff}{minPart}";
-    }
-
-    private void ApplyCustomBuilder()
-    {
-        _specMode = LanguageSpecMode.Auto;
-        _specText = BuildCustomSpecPreview();
-        _specAlphabetText = string.Empty;
-        CompileSpec();
-        RunAutoTestSuite();
-    }
-
-    private void SaveCustomProblemToWorkspace()
-    {
-        if (_compiledSpec is null) return;
-        var id = $"auto-custom-{Math.Abs(_compiledSpec.Specification.GetHashCode())}";
-        AppState.RecordRecent(new WorkspaceDocument(
-            id,
-            _compiledSpec.Title,
-            StudioKind.Automata,
-            $"{_compiledSpec.LanguageClass} · {_compiledSpec.Specification}",
-            DateTimeOffset.UtcNow,
-            JsonSerializer.SerializeToElement(new
-            {
-                customSpec = _compiledSpec.Specification,
-                alphabet = _specAlphabetText
-            })));
-        _savedProblemNotice = true;
-    }
-
-    private void CompileSpec()
+    private async Task RunDebouncedAsync(CancellationToken token, Action work)
     {
         try
         {
-            _compilerError = null;
-            _savedProblemNotice = false;
-            var alpha = ParseAlphabetInput(_specAlphabetText);
-            _compiledSpec = LanguageSpecCompiler.Compile(_specText, _specMode, alpha);
-            _compilerPreviewKind = _compiledSpec.MinimalDfa is not null
-                ? "dfa"
-                : _compiledSpec.Pda is not null
-                    ? "pda-stack"
-                    : "tm";
-            _lastValidCompilerScene = GetCompilerPreviewScene();
-            if (_compiledSpec.SuggestedTests is { Count: > 0 } tests)
+            await Task.Delay(120, token);
+            if (token.IsCancellationRequested || _disposed) return;
+            await InvokeAsync(() =>
             {
-                var preferredPos = tests.FirstOrDefault(t => t.ExpectedAccept && t.Input != "e" && t.Input.Length >= 2)
-                    ?? tests.FirstOrDefault(t => t.ExpectedAccept)
-                    ?? tests[0];
-                _compilerTestInput = preferredPos.Input;
-            }
-            RefreshCompilerPdaTrace();
-            _compilerTestRows.Clear();
-            RunCompilerTest();
+                if (token.IsCancellationRequested || _disposed) return;
+                work();
+                StateHasChanged();
+            });
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            _compilerError = ex.Message;
         }
-    }
-
-    private void RefreshCompilerPdaTrace()
-    {
-        var input = string.IsNullOrEmpty(_compilerTestInput) ? "e" : _compilerTestInput;
-
-        if (_compiledSpec?.Pda is null)
+        catch (ObjectDisposedException)
         {
-            _compilerPdaTrace = null;
-            _compilerPdaStepIndex = 0;
         }
-        else
-        {
-            _compilerPdaTrace = PdaTracer.Trace(_compiledSpec.Pda, input);
-            var firstStackIdx = -1;
-            for (var i = 0; i < _compilerPdaTrace.Timeline.Steps.Count; i++)
-            {
-                if (_compilerPdaTrace.Timeline.Steps[i].State.StackFrames.Count >= 2)
-                {
-                    firstStackIdx = i;
-                    break;
-                }
-            }
-            if (firstStackIdx < 0)
-            {
-                firstStackIdx = _compilerPdaTrace.Timeline.Steps.Count > 1 ? 1 : 0;
-            }
-            _compilerPdaStepIndex = firstStackIdx;
-        }
-
-        if (_compiledSpec?.Grammar is null)
-        {
-            _compilerCfgResult = null;
-            _compilerCfgStepIndex = 0;
-        }
-        else
-        {
-            _compilerCfgResult = CfgParser.Parse(_compiledSpec.Grammar, input);
-            _compilerCfgStepIndex = _compilerCfgResult.QueueSteps is { Count: > 1 } ? 1 : 0;
-        }
-    }
-
-    private void InspectCompilerRow(string input)
-    {
-        _compilerTestInput = input;
-        RefreshCompilerPdaTrace();
-    }
-
-    private void RunCompilerExample(string spec, string sampleInput)
-    {
-        _specMode = LanguageSpecMode.Auto;
-        _specText = spec;
-        _specAlphabetText = string.Empty;
-        _compilerTestInput = sampleInput;
-        CompileSpec();
-    }
-
-    private DiagramScene? GetCompilerPreviewScene()
-    {
-        if (_compiledSpec is null) return _lastValidCompilerScene;
-        var scene = _compilerPreviewKind switch
-        {
-            "dfa" when _compiledSpec.MinimalDfa is not null => _compiledSpec.MinimalDfa.ToDiagramScene(caption: _compiledSpec.Title),
-            "nfa" when _compiledSpec.Nfa is not null => _compiledSpec.Nfa.ToDiagramScene(caption: _compiledSpec.Title),
-            "pda" when _compiledSpec.Pda is not null => _compiledSpec.Pda.ToDiagramScene(caption: _compiledSpec.Title),
-            _ => _compiledSpec.CompiledTm.SchemaScene
-        };
-        _lastValidCompilerScene = scene;
-        return scene;
-    }
-
-    private void RunCompilerTest()
-    {
-        if (_compiledSpec is null) return;
-        var input = string.IsNullOrEmpty(_compilerTestInput) ? "e" : _compilerTestInput;
-        var tmRes = _compiledSpec.CompiledTm.Trace(input);
-        bool? accepted = _compiledSpec.MinimalDfa is not null
-            ? _compiledSpec.MinimalDfa.Accepts(input)
-            : tmRes.AcceptedDecision;
-
-        var detail = _compiledSpec.LanguageClass == LanguageClass.Transducer
-            ? $"Tape: {tmRes.TrimmedTape} ({tmRes.MicroTrace.Count - 1} steps)"
-            : $"TM: {tmRes.TrimmedTape} ({tmRes.MacroTrace.Count - 1} macro / {tmRes.MicroTrace.Count - 1} micro)";
-
-        _compilerTestRows.Insert(0, new CompilerTestRow(input, accepted, detail));
-        if (_compilerTestRows.Count > 10) _compilerTestRows.RemoveAt(_compilerTestRows.Count - 1);
-        RefreshCompilerPdaTrace();
-    }
-
-    private void RunAutoTestSuite()
-    {
-        if (_compiledSpec?.SuggestedTests is null) return;
-        _compilerTestRows.Clear();
-        foreach (var tc in _compiledSpec.SuggestedTests)
-        {
-            var tmRes = _compiledSpec.CompiledTm.Trace(tc.Input);
-            bool? accepted = _compiledSpec.MinimalDfa is not null
-                ? _compiledSpec.MinimalDfa.Accepts(tc.Input)
-                : tmRes.AcceptedDecision;
-            var detail = $"{tmRes.MacroTrace.Count - 1} macro / {tmRes.MicroTrace.Count - 1} micro";
-            _compilerTestRows.Add(new CompilerTestRow(tc.Input, accepted, detail, tc.ExpectedAccept, tc.Reason));
-        }
-    }
-
-    private IReadOnlyList<string> BuildCompiledSampleInputs(IReadOnlyList<string> fallback)
-    {
-        if (_compiledSpec?.SuggestedTests is { Count: > 0 } tests)
-        {
-            return tests.Select(t => t.Input).Distinct().Take(6).ToArray();
-        }
-        return fallback;
-    }
-
-    private void OpenCompiledInDfa()
-    {
-        if (_compiledSpec?.MinimalDfa is null) return;
-        _faMinDfa = _compiledSpec.MinimalDfa;
-        _faRawDfa = _compiledSpec.MinimalDfa;
-        _faSpecText = _compiledSpec.Specification;
-        _faAlphabetText = _specAlphabetText;
-        _faSourceKind = _compiledSpec.ResolvedMode == LanguageSpecMode.Constraint ? "constraint" : "regex";
-        _faViewKind = "min";
-        _faSampleInputs = BuildCompiledSampleInputs(_faSampleInputs);
-        _faInput = _compilerTestInput;
-        _faError = null;
-        TraceFa();
-        _activeMode = StudioMode.Dfa;
-    }
-
-    private void OpenCompiledInNfa()
-    {
-        if (_compiledSpec?.Nfa is null) return;
-        _currentNfa = _compiledSpec.Nfa;
-        _nfaRequiredDeterminization = _compiledSpec.NfaRequiredDeterminization;
-        _nfaDeterminizationReason = _compiledSpec.NfaDeterminizationReason;
-        _nfaSpecText = _compiledSpec.Specification;
-        _nfaAlphabetText = _specAlphabetText;
-        _nfaSourceKind = _compiledSpec.ResolvedMode == LanguageSpecMode.Constraint ? "constraint" : "regex";
-        _nfaSampleInputs = BuildCompiledSampleInputs(_nfaSampleInputs);
-        _nfaInput = _compilerTestInput;
-        _nfaError = null;
-        RefreshNfaSubsetAndTrace();
-        _activeMode = StudioMode.Nfa;
-    }
-
-    private void OpenCompiledInCfg()
-    {
-        if (_compiledSpec?.Grammar is null) return;
-        _cfgText = _compiledSpec.Grammar.ToGrammarText();
-        _cfgSampleInputs = BuildCompiledSampleInputs(_cfgSampleInputs);
-        _cfgInput = _compilerTestInput;
-        ParseCfgAndInput();
-        _activeMode = StudioMode.Cfg;
-    }
-
-    private void OpenCompiledInPda()
-    {
-        if (_compiledSpec?.Pda is null) return;
-        _pdaTransitionsText = _compiledSpec.Pda.ToTransitionsText();
-        _pdaSampleInputs = BuildCompiledSampleInputs(_pdaSampleInputs);
-        _pdaInput = _compilerTestInput;
-        ParseAndTracePda();
-        _activeMode = StudioMode.Pda;
-    }
-
-    private void OpenCompiledInTm()
-    {
-        if (_compiledSpec is null) return;
-        _tmDslText = _compiledSpec.TmSchema.ToDslText();
-        _tmSampleInputs = BuildCompiledSampleInputs(_tmSampleInputs);
-        _tmInput = _compilerTestInput;
-        _tmHeadStart = _compiledSpec.TmSchema.HeadStart;
-        CompileAndRunTmDsl();
-        _activeMode = StudioMode.TuringMachine;
     }
 
     // ==================== DFA MODE ====================
@@ -2089,29 +2206,143 @@
 
     private DiagramScene? CurrentFaScene => CurrentFaStep?.State.Scene ?? _lastValidFaScene;
 
-    private void BuildFaFromSpec()
+    private void OnDfaExampleChanged(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        {
+            SelectDfaExample(key, recordRecent: true);
+        }
+    }
+
+    private void SelectDfaExample(string key, bool recordRecent)
+    {
+        var ex = DfaExamples.FirstOrDefault(x => x.Key == key);
+        if (ex is null) return;
+
+        _dfaExampleKey = ex.Key;
+        _faSourceKind = ex.SourceKind;
+        _faSpecText = ex.Spec;
+        _faAlphabetText = string.Empty;
+        _faViewKind = "min";
+        _faInput = ex.DefaultInput;
+        _faSampleInputs = ex.Samples;
+        BuildFaFromSpec(updateSamples: false);
+
+        if (recordRecent)
+        {
+            RecordExampleRecent(ex.Key, $"DFA: {ex.Label}", ex.Description);
+        }
+    }
+
+    private void OnDfaInputChanged(ChangeEventArgs e)
+    {
+        _faInput = e.Value?.ToString() ?? string.Empty;
+        TraceFa();
+    }
+
+    private void OnDfaInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            TraceFa();
+        }
+    }
+
+    private void ClearDfaInput()
+    {
+        _faInput = string.Empty;
+        TraceFa();
+    }
+
+    private void OnDfaSamplePicked(ChangeEventArgs e)
+    {
+        var sample = e.Value?.ToString();
+        _samplePickerGen++;
+        if (!string.IsNullOrEmpty(sample))
+        {
+            _faInput = sample;
+            TraceFa();
+        }
+    }
+
+    private void OnDfaSpecKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            BuildCustomDfa();
+        }
+    }
+
+    private void BuildCustomDfa()
+    {
+        _dfaExampleKey = CustomKey;
+        BuildFaFromSpec(updateSamples: true);
+    }
+
+    private void BuildFaFromSpec(bool updateSamples)
     {
         try
         {
             _faError = null;
             var alpha = ParseAlphabetInput(_faAlphabetText);
+
             if (_faSourceKind == "constraint")
             {
-                var dfa = LanguageSpecCompiler.CompileConstraintToDfa(_faSpecText, alpha);
-                _faMinDfa = dfa;
-                _faRawDfa = dfa;
+                var compiled = LanguageSpecCompiler.CompileConstraint(_faSpecText, alpha);
+                _faMinDfa = compiled.MinimalDfa;
+                _faRawDfa = compiled.Nfa?.ToDfa(renameStates: true) ?? compiled.MinimalDfa;
+                ApplyFaSuggestedSamples(compiled.SuggestedTests, updateSamples);
             }
-            else
+            else if (_faSourceKind == "regex")
             {
                 var compiled = RegexCompiler.Compile(_faSpecText, alpha);
                 _faMinDfa = compiled.MinimalDfa;
                 _faRawDfa = compiled.Dfa;
+                if (updateSamples)
+                {
+                    var specRes = LanguageSpecCompiler.CompileRegex(_faSpecText, alpha);
+                    ApplyFaSuggestedSamples(specRes.SuggestedTests, updateSamples: true);
+                }
             }
+            else
+            {
+                var compiled = LanguageSpecCompiler.Compile(_faSpecText, LanguageSpecMode.Auto, alpha);
+                if (compiled.MinimalDfa is null)
+                {
+                    _faError = $"'{_faSpecText}' is {compiled.LanguageClass} (not regular). Switch to CFG, PDA, or Turing Machine to synthesize it.";
+                    return;
+                }
+                _faMinDfa = compiled.MinimalDfa;
+                _faRawDfa = compiled.ResolvedMode == LanguageSpecMode.Regex
+                    ? RegexCompiler.Compile(_faSpecText, alpha).Dfa
+                    : compiled.Nfa?.ToDfa(renameStates: true) ?? compiled.MinimalDfa;
+                ApplyFaSuggestedSamples(compiled.SuggestedTests, updateSamples);
+            }
+
             TraceFa();
         }
         catch (Exception ex)
         {
             _faError = ex.Message;
+        }
+    }
+
+    private void ApplyFaSuggestedSamples(IReadOnlyList<LanguageTestCase>? tests, bool updateSamples)
+    {
+        if (!updateSamples) return;
+        var samples = ExtractSampleInputs(tests);
+        if (samples is not null)
+        {
+            _faSampleInputs = samples;
+        }
+        if (_faMinDfa is not null && !InputFitsAlphabet(_faInput, _faMinDfa.Alphabet))
+        {
+            var preferred = PickPreferredInput(tests);
+            if (preferred is not null)
+            {
+                _faInput = preferred;
+            }
         }
     }
 
@@ -2123,14 +2354,19 @@
 
     private void TraceFa()
     {
-        if (ActiveDfa is not null)
+        if (ActiveDfa is null) return;
+        try
         {
             _faTimeline = FaTracer.Trace(ActiveDfa, _faInput);
+            _faStepIndex = 0;
+            if (CurrentFaStep is not null)
+            {
+                _lastValidFaScene = CurrentFaStep.State.Scene;
+            }
         }
-        _faStepIndex = 0;
-        if (CurrentFaStep is not null)
+        catch (Exception ex)
         {
-            _lastValidFaScene = CurrentFaStep.State.Scene;
+            _faError = ex.Message;
         }
     }
 
@@ -2140,6 +2376,7 @@
         _faMinDfa = FaOperations.Complement(_faMinDfa);
         _faRawDfa = _faMinDfa;
         _faViewKind = "min";
+        _dfaExampleKey = CustomKey;
         TraceFa();
     }
 
@@ -2149,6 +2386,7 @@
         _faMinDfa = FaOperations.KleeneStar(_faMinDfa);
         _faRawDfa = _faMinDfa;
         _faViewKind = "min";
+        _dfaExampleKey = CustomKey;
         TraceFa();
     }
 
@@ -2161,7 +2399,80 @@
 
     private DiagramScene? CurrentNfaScene => CurrentNfaStep?.State.Scene ?? _lastValidNfaScene;
 
-    private void BuildNfaFromSpec()
+    private void OnNfaExampleChanged(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        {
+            SelectNfaExample(key, recordRecent: true);
+        }
+    }
+
+    private void SelectNfaExample(string key, bool recordRecent)
+    {
+        var ex = NfaExamples.FirstOrDefault(x => x.Key == key);
+        if (ex is null) return;
+
+        _nfaExampleKey = ex.Key;
+        _nfaSourceKind = "constraint";
+        _nfaSpecText = ex.Spec;
+        _nfaAlphabetText = string.Empty;
+        _nfaInput = ex.DefaultInput;
+        _nfaSampleInputs = ex.Samples;
+        BuildNfaFromSpec(updateSamples: false);
+
+        if (recordRecent)
+        {
+            RecordExampleRecent(ex.Key, $"NFA: {ex.Label}", ex.Description);
+        }
+    }
+
+    private void OnNfaInputChanged(ChangeEventArgs e)
+    {
+        _nfaInput = e.Value?.ToString() ?? string.Empty;
+        TraceNfa();
+    }
+
+    private void OnNfaInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            TraceNfa();
+        }
+    }
+
+    private void ClearNfaInput()
+    {
+        _nfaInput = string.Empty;
+        TraceNfa();
+    }
+
+    private void OnNfaSamplePicked(ChangeEventArgs e)
+    {
+        var sample = e.Value?.ToString();
+        _samplePickerGen++;
+        if (!string.IsNullOrEmpty(sample))
+        {
+            _nfaInput = sample;
+            TraceNfa();
+        }
+    }
+
+    private void OnNfaSpecKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            BuildCustomNfa();
+        }
+    }
+
+    private void BuildCustomNfa()
+    {
+        _nfaExampleKey = CustomKey;
+        BuildNfaFromSpec(updateSamples: true);
+    }
+
+    private void BuildNfaFromSpec(bool updateSamples)
     {
         try
         {
@@ -2173,14 +2484,43 @@
                 _currentNfa = compiled.Nfa;
                 _nfaRequiredDeterminization = compiled.RequiredDeterminization;
                 _nfaDeterminizationReason = compiled.DeterminizationReason;
+                if (updateSamples)
+                {
+                    var specRes = LanguageSpecCompiler.CompileConstraint(_nfaSpecText, alpha);
+                    ApplyNfaSuggestedSamples(specRes.SuggestedTests);
+                }
             }
-            else
+            else if (_nfaSourceKind == "regex")
             {
                 var compiled = RegexCompiler.Compile(_nfaSpecText, alpha);
                 _currentNfa = compiled.Nfa.CompactLiteralChains();
                 _nfaRequiredDeterminization = false;
                 _nfaDeterminizationReason = null;
+                if (updateSamples)
+                {
+                    var specRes = LanguageSpecCompiler.CompileRegex(_nfaSpecText, alpha);
+                    ApplyNfaSuggestedSamples(specRes.SuggestedTests);
+                }
             }
+            else
+            {
+                var compiled = LanguageSpecCompiler.Compile(_nfaSpecText, LanguageSpecMode.Auto, alpha);
+                if (compiled.Nfa is null)
+                {
+                    _nfaError = $"'{_nfaSpecText}' is {compiled.LanguageClass} (not regular). Switch to CFG, PDA, or Turing Machine to synthesize it.";
+                    return;
+                }
+                _currentNfa = compiled.ResolvedMode == LanguageSpecMode.Regex
+                    ? compiled.Nfa.CompactLiteralChains()
+                    : compiled.Nfa;
+                _nfaRequiredDeterminization = compiled.NfaRequiredDeterminization;
+                _nfaDeterminizationReason = compiled.NfaDeterminizationReason;
+                if (updateSamples)
+                {
+                    ApplyNfaSuggestedSamples(compiled.SuggestedTests);
+                }
+            }
+
             RefreshNfaSubsetAndTrace();
         }
         catch (Exception ex)
@@ -2189,13 +2529,21 @@
         }
     }
 
-    private void RunNfaExample(string spec, string sampleInput)
+    private void ApplyNfaSuggestedSamples(IReadOnlyList<LanguageTestCase>? tests)
     {
-        _nfaSourceKind = "constraint";
-        _nfaSpecText = spec;
-        _nfaAlphabetText = string.Empty;
-        _nfaInput = sampleInput;
-        BuildNfaFromSpec();
+        var samples = ExtractSampleInputs(tests);
+        if (samples is not null)
+        {
+            _nfaSampleInputs = samples;
+        }
+        if (_currentNfa is not null && !InputFitsAlphabet(_nfaInput, _currentNfa.Alphabet))
+        {
+            var preferred = PickPreferredInput(tests);
+            if (preferred is not null)
+            {
+                _nfaInput = preferred;
+            }
+        }
     }
 
     private void RefreshNfaSubsetAndTrace()
@@ -2209,11 +2557,18 @@
     private void TraceNfa()
     {
         if (_currentNfa is null) return;
-        _nfaTimeline = FaTracer.Trace(_currentNfa, _nfaInput);
-        _nfaStepIndex = 0;
-        if (CurrentNfaStep is not null)
+        try
         {
-            _lastValidNfaScene = CurrentNfaStep.State.Scene;
+            _nfaTimeline = FaTracer.Trace(_currentNfa, _nfaInput);
+            _nfaStepIndex = 0;
+            if (CurrentNfaStep is not null)
+            {
+                _lastValidNfaScene = CurrentNfaStep.State.Scene;
+            }
+        }
+        catch (Exception ex)
+        {
+            _nfaError = ex.Message;
         }
     }
 
@@ -2230,6 +2585,8 @@
         _faInput = _nfaInput;
         _faSampleInputs = _nfaSampleInputs;
         _faError = null;
+        var matchingDfa = DfaExamples.FirstOrDefault(e => string.Equals(e.Spec, _nfaSpecText, StringComparison.OrdinalIgnoreCase));
+        _dfaExampleKey = matchingDfa?.Key ?? CustomKey;
         TraceFa();
         _activeMode = StudioMode.Dfa;
     }
@@ -2240,7 +2597,9 @@
         var schema = LanguageSpecCompiler.DfaToDecidableTmSchema(_faMinDfa, $"Decider ({_faSpecText})");
         _tmDslText = schema.ToDslText();
         _tmInput = _faInput;
+        _tmSampleInputs = _faSampleInputs;
         _tmHeadStart = HeadStartMode.RightBlank;
+        _tmExampleKey = CustomKey;
         CompileAndRunTmDsl();
         _activeMode = StudioMode.TuringMachine;
     }
@@ -2249,6 +2608,8 @@
     {
         _cfgText = grammar.ToGrammarText();
         _cfgInput = _faInput;
+        _cfgSampleInputs = _faSampleInputs;
+        _cfgExampleKey = CustomKey;
         ParseCfgAndInput();
         _activeMode = StudioMode.Cfg;
     }
@@ -2289,10 +2650,136 @@
         };
         _faRawDfa = _faMinDfa;
         _faViewKind = "min";
+        _dfaExampleKey = CustomKey;
         TraceFa();
     }
 
     // ==================== CFG MODE ====================
+
+    private void OnCfgExampleChanged(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        {
+            SelectCfgExample(key, recordRecent: true);
+        }
+    }
+
+    private void SelectCfgExample(string key, bool recordRecent)
+    {
+        var ex = CfgExamples.FirstOrDefault(x => x.Key == key);
+        if (ex is null) return;
+
+        CancelDebounce(ref _cfgDebounceCts);
+        _cfgExampleKey = ex.Key;
+        _cfgSynthError = null;
+        _cfgInput = ex.DefaultInput;
+        _cfgSampleInputs = ex.Samples;
+
+        if (!string.IsNullOrWhiteSpace(ex.GrammarText))
+        {
+            _cfgText = ex.GrammarText;
+            _cfgSynthSpec = string.Empty;
+        }
+        else if (!string.IsNullOrWhiteSpace(ex.SynthSpec))
+        {
+            var compiled = LanguageSpecCompiler.Compile(ex.SynthSpec, LanguageSpecMode.Auto);
+            if (compiled.Grammar is not null)
+            {
+                _cfgText = compiled.Grammar.ToGrammarText();
+                _cfgSynthSpec = ex.SynthSpec;
+            }
+        }
+
+        ParseCfgAndInput();
+
+        if (recordRecent)
+        {
+            RecordExampleRecent(ex.Key, $"CFG: {ex.Label}", ex.Description);
+        }
+    }
+
+    private void OnCfgInputChanged(ChangeEventArgs e)
+    {
+        _cfgInput = e.Value?.ToString() ?? string.Empty;
+        ScheduleDebounced(ref _cfgDebounceCts, TraceCfgInput);
+    }
+
+    private void OnCfgInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            RunCfgInputImmediate();
+        }
+    }
+
+    private void RunCfgInputImmediate()
+    {
+        CancelDebounce(ref _cfgDebounceCts);
+        TraceCfgInput();
+    }
+
+    private void ClearCfgInput()
+    {
+        CancelDebounce(ref _cfgDebounceCts);
+        _cfgInput = string.Empty;
+        TraceCfgInput();
+    }
+
+    private void OnCfgSamplePicked(ChangeEventArgs e)
+    {
+        var sample = e.Value?.ToString();
+        _samplePickerGen++;
+        if (!string.IsNullOrEmpty(sample))
+        {
+            CancelDebounce(ref _cfgDebounceCts);
+            _cfgInput = sample;
+            TraceCfgInput();
+        }
+    }
+
+    private void OnCfgSynthKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            SynthesizeCustomCfg();
+        }
+    }
+
+    private void SynthesizeCustomCfg()
+    {
+        try
+        {
+            _cfgSynthError = null;
+            var alpha = ParseAlphabetInput(_cfgSynthAlphabet);
+            var compiled = LanguageSpecCompiler.Compile(_cfgSynthSpec, LanguageSpecMode.Auto, alpha);
+            if (compiled.Grammar is null)
+            {
+                _cfgSynthError = $"'{_cfgSynthSpec}' is {compiled.LanguageClass} and cannot be expressed as a context-free grammar. Try it in the Turing Machine tab.";
+                return;
+            }
+
+            CancelDebounce(ref _cfgDebounceCts);
+            _cfgText = compiled.Grammar.ToGrammarText();
+            _cfgExampleKey = CustomKey;
+            var samples = ExtractSampleInputs(compiled.SuggestedTests);
+            if (samples is not null) _cfgSampleInputs = samples;
+            var preferred = PickPreferredInput(compiled.SuggestedTests);
+            if (preferred is not null) _cfgInput = preferred;
+            ParseCfgAndInput();
+        }
+        catch (Exception ex)
+        {
+            _cfgSynthError = ex.Message;
+        }
+    }
+
+    private void ApplyCustomCfgText()
+    {
+        CancelDebounce(ref _cfgDebounceCts);
+        _cfgExampleKey = CustomKey;
+        ParseCfgAndInput();
+    }
 
     private void ParseCfgAndInput()
     {
@@ -2309,12 +2796,33 @@
         }
     }
 
+    private void TraceCfgInput()
+    {
+        if (_currentCfg is null)
+        {
+            ParseCfgAndInput();
+            return;
+        }
+        try
+        {
+            _cfgError = null;
+            _cfgParseResult = CfgParser.Parse(_currentCfg, _cfgInput);
+            _cfgStepIndex = 0;
+        }
+        catch (Exception ex)
+        {
+            _cfgError = ex.Message;
+        }
+    }
+
     private void ConvertCurrentCfgToPda()
     {
         if (_currentCfg is null) return;
         var pda = CfgToPdaConverter.Convert(_currentCfg);
         _pdaTransitionsText = pda.ToTransitionsText();
         _pdaInput = _cfgInput;
+        _pdaSampleInputs = _cfgSampleInputs;
+        _pdaExampleKey = CustomKey;
         ParseAndTracePda();
         _activeMode = StudioMode.Pda;
     }
@@ -2326,12 +2834,141 @@
         _nfaRequiredDeterminization = false;
         _nfaDeterminizationReason = null;
         _nfaInput = _cfgInput;
+        _nfaSampleInputs = _cfgSampleInputs;
+        _nfaExampleKey = CustomKey;
         _nfaError = null;
         RefreshNfaSubsetAndTrace();
         _activeMode = StudioMode.Nfa;
     }
 
     // ==================== PDA MODE ====================
+
+    private void OnPdaExampleChanged(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        {
+            SelectPdaExample(key, recordRecent: true);
+        }
+    }
+
+    private void SelectPdaExample(string key, bool recordRecent)
+    {
+        var ex = PdaExamples.FirstOrDefault(x => x.Key == key);
+        if (ex is null) return;
+
+        CancelDebounce(ref _pdaDebounceCts);
+        _pdaExampleKey = ex.Key;
+        _pdaSynthError = null;
+        _pdaInput = ex.DefaultInput;
+        _pdaSampleInputs = ex.Samples;
+
+        if (!string.IsNullOrWhiteSpace(ex.PresetKey) && AutomataPresets.ByKey.TryGetValue(ex.PresetKey, out var preset))
+        {
+            _pdaTransitionsText = preset.PdaTransitionsText ?? _pdaTransitionsText;
+            _pdaSynthSpec = string.Empty;
+        }
+        else if (!string.IsNullOrWhiteSpace(ex.SynthSpec))
+        {
+            var compiled = LanguageSpecCompiler.Compile(ex.SynthSpec, LanguageSpecMode.Auto);
+            var pda = compiled.Pda ?? (compiled.Grammar is not null ? CfgToPdaConverter.Convert(compiled.Grammar) : null);
+            if (pda is not null)
+            {
+                _pdaTransitionsText = pda.ToTransitionsText();
+                _pdaSynthSpec = ex.SynthSpec;
+            }
+        }
+
+        ParseAndTracePda();
+
+        if (recordRecent)
+        {
+            RecordExampleRecent(ex.Key, $"PDA: {ex.Label}", ex.Description);
+        }
+    }
+
+    private void OnPdaInputChanged(ChangeEventArgs e)
+    {
+        _pdaInput = e.Value?.ToString() ?? string.Empty;
+        ScheduleDebounced(ref _pdaDebounceCts, TracePda);
+    }
+
+    private void OnPdaInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            RunPdaInputImmediate();
+        }
+    }
+
+    private void RunPdaInputImmediate()
+    {
+        CancelDebounce(ref _pdaDebounceCts);
+        TracePda();
+    }
+
+    private void ClearPdaInput()
+    {
+        CancelDebounce(ref _pdaDebounceCts);
+        _pdaInput = string.Empty;
+        TracePda();
+    }
+
+    private void OnPdaSamplePicked(ChangeEventArgs e)
+    {
+        var sample = e.Value?.ToString();
+        _samplePickerGen++;
+        if (!string.IsNullOrEmpty(sample))
+        {
+            CancelDebounce(ref _pdaDebounceCts);
+            _pdaInput = sample;
+            TracePda();
+        }
+    }
+
+    private void OnPdaSynthKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            SynthesizeCustomPda();
+        }
+    }
+
+    private void SynthesizeCustomPda()
+    {
+        try
+        {
+            _pdaSynthError = null;
+            var alpha = ParseAlphabetInput(_pdaSynthAlphabet);
+            var compiled = LanguageSpecCompiler.Compile(_pdaSynthSpec, LanguageSpecMode.Auto, alpha);
+            var pda = compiled.Pda ?? (compiled.Grammar is not null ? CfgToPdaConverter.Convert(compiled.Grammar) : null);
+            if (pda is null)
+            {
+                _pdaSynthError = $"'{_pdaSynthSpec}' is {compiled.LanguageClass} and cannot be recognized by a pushdown automaton. Try it in the Turing Machine tab.";
+                return;
+            }
+
+            CancelDebounce(ref _pdaDebounceCts);
+            _pdaTransitionsText = pda.ToTransitionsText();
+            _pdaExampleKey = CustomKey;
+            var samples = ExtractSampleInputs(compiled.SuggestedTests);
+            if (samples is not null) _pdaSampleInputs = samples;
+            var preferred = PickPreferredInput(compiled.SuggestedTests);
+            if (preferred is not null) _pdaInput = preferred;
+            ParseAndTracePda();
+        }
+        catch (Exception ex)
+        {
+            _pdaSynthError = ex.Message;
+        }
+    }
+
+    private void ApplyCustomPdaTransitions()
+    {
+        CancelDebounce(ref _pdaDebounceCts);
+        _pdaExampleKey = CustomKey;
+        ParseAndTracePda();
+    }
 
     private void ParseAndTracePda()
     {
@@ -2350,8 +2987,16 @@
     private void TracePda()
     {
         if (_currentPda is null) return;
-        _pdaResult = PdaTracer.Trace(_currentPda, _pdaInput);
-        _pdaStepIndex = 0;
+        try
+        {
+            _pdaError = null;
+            _pdaResult = PdaTracer.Trace(_currentPda, _pdaInput);
+            _pdaStepIndex = 0;
+        }
+        catch (Exception ex)
+        {
+            _pdaError = ex.Message;
+        }
     }
 
     // ==================== TURING MACHINE MODE ====================
@@ -2403,6 +3048,133 @@
         }
     }
 
+    private void OnTmExampleChanged(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(key) && key != CustomKey)
+        {
+            SelectTmExample(key, recordRecent: true);
+        }
+    }
+
+    private void SelectTmExample(string key, bool recordRecent)
+    {
+        var ex = TmExamples.FirstOrDefault(x => x.Key == key);
+        if (ex is null) return;
+
+        CancelDebounce(ref _tmDebounceCts);
+        _tmExampleKey = ex.Key;
+        _tmSynthError = null;
+        _tmHeadStart = HeadStartMode.RightBlank;
+
+        string title = $"TM: {ex.Label}";
+        string desc = ex.Description ?? ex.Label;
+
+        if (!string.IsNullOrWhiteSpace(ex.PresetKey) && AutomataPresets.ByKey.TryGetValue(ex.PresetKey, out var preset))
+        {
+            _tmDslText = preset.TmSchemaText ?? _tmDslText;
+            _tmInput = preset.DefaultInput;
+            _tmSampleInputs = preset.SampleInputs;
+            _tmSynthSpec = string.Empty;
+            title = preset.Title;
+            desc = preset.Description;
+        }
+        else if (!string.IsNullOrWhiteSpace(ex.SynthSpec))
+        {
+            var compiled = LanguageSpecCompiler.Compile(ex.SynthSpec, LanguageSpecMode.Auto);
+            _tmDslText = compiled.TmSchema.ToDslText();
+            _tmHeadStart = compiled.TmSchema.HeadStart;
+            _tmSynthSpec = ex.SynthSpec;
+            _tmInput = ex.DefaultInput ?? PickPreferredInput(compiled.SuggestedTests) ?? "abba";
+            _tmSampleInputs = ex.Samples ?? ExtractSampleInputs(compiled.SuggestedTests) ?? [_tmInput, "e"];
+        }
+
+        CompileAndRunTmDsl();
+
+        if (recordRecent)
+        {
+            RecordExampleRecent(ex.Key, title, desc);
+        }
+    }
+
+    private void OnTmInputChanged(ChangeEventArgs e)
+    {
+        _tmInput = e.Value?.ToString() ?? string.Empty;
+        ScheduleDebounced(ref _tmDebounceCts, RunTmTrace);
+    }
+
+    private void OnTmInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            RunTmInputImmediate();
+        }
+    }
+
+    private void RunTmInputImmediate()
+    {
+        CancelDebounce(ref _tmDebounceCts);
+        RunTmTrace();
+    }
+
+    private void ClearTmInput()
+    {
+        CancelDebounce(ref _tmDebounceCts);
+        _tmInput = string.Empty;
+        RunTmTrace();
+    }
+
+    private void OnTmSamplePicked(ChangeEventArgs e)
+    {
+        var sample = e.Value?.ToString();
+        _samplePickerGen++;
+        if (!string.IsNullOrEmpty(sample))
+        {
+            CancelDebounce(ref _tmDebounceCts);
+            _tmInput = sample;
+            RunTmTrace();
+        }
+    }
+
+    private void OnTmSynthKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            SynthesizeCustomTm();
+        }
+    }
+
+    private void SynthesizeCustomTm()
+    {
+        try
+        {
+            _tmSynthError = null;
+            var alpha = ParseAlphabetInput(_tmSynthAlphabet);
+            var compiled = LanguageSpecCompiler.Compile(_tmSynthSpec, LanguageSpecMode.Auto, alpha);
+
+            CancelDebounce(ref _tmDebounceCts);
+            _tmDslText = compiled.TmSchema.ToDslText();
+            _tmHeadStart = compiled.TmSchema.HeadStart;
+            _tmExampleKey = CustomKey;
+            var samples = ExtractSampleInputs(compiled.SuggestedTests);
+            if (samples is not null) _tmSampleInputs = samples;
+            var preferred = PickPreferredInput(compiled.SuggestedTests);
+            if (preferred is not null) _tmInput = preferred;
+            CompileAndRunTmDsl();
+        }
+        catch (Exception ex)
+        {
+            _tmSynthError = ex.Message;
+        }
+    }
+
+    private void ApplyCustomTmDsl()
+    {
+        CancelDebounce(ref _tmDebounceCts);
+        _tmExampleKey = CustomKey;
+        CompileAndRunTmDsl();
+    }
+
     private void CompileAndRunTmDsl()
     {
         try
@@ -2421,9 +3193,17 @@
     private void RunTmTrace()
     {
         if (_tmCompiled is null) return;
-        _tmTrace = _tmCompiled.Trace(_tmInput, headStartOverride: _tmHeadStart);
-        _tmStepIndex = 0;
-        _lastValidTmScene = CurrentTmScene;
+        try
+        {
+            _tmError = null;
+            _tmTrace = _tmCompiled.Trace(_tmInput, headStartOverride: _tmHeadStart);
+            _tmStepIndex = 0;
+            _lastValidTmScene = CurrentTmScene;
+        }
+        catch (Exception ex)
+        {
+            _tmError = ex.Message;
+        }
     }
 
     private void OnTmHeadStartChanged(ChangeEventArgs e)

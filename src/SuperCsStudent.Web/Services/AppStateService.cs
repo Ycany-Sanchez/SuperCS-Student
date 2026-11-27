@@ -166,8 +166,9 @@ public sealed class AppStateService
 
         new("auto-palindrome", "TM Schema: Palindromes (w = w^R)", "Machine-schema diagram + macro & micro trace", "Automata", "/automata", "tm-palindrome"),
         new("auto-anbn-pda", "PDA: a^n b^n", "Empty-stack + final-state 5-column trace", "Automata", "/automata", "pda-anbn"),
-        new("auto-contains-aba", "DFA + TM: Contains 'aba'", "Regex -> NFA -> Min DFA -> Decidable TM", "Automata", "/automata", "dfa-contains-aba"),
-        new("auto-expr-cfg", "CFG Parse Tree: Arithmetic E/T/F", "Leftmost derivation and parse tree diagram", "Automata", "/automata", "cfg-arith"),
+        new("auto-contains-aba", "DFA: Contains 'aba'", "Minimal DFA trace, regular grammar & decisions", "Automata", "/automata", "dfa-contains-aba"),
+        new("auto-nfa-starts", "NFA: Starts with 'aba'", "Compact 2-state string-edge NFA & subset map", "Automata", "/automata", "nfa-starts-aba"),
+        new("auto-expr-cfg", "CFG Queue: Arithmetic E/T/F", "Leftmost derivation and FIFO queue trace", "Automata", "/automata", "cfg-arith"),
 
         new("daa-nested3", "3-Level Nested Dependent Loop", "T(n) = (2/3)n^3 + 4n^2 + (22/3)n + 3", "Runtime", "/daa", "nested-3"),
         new("daa-log", "Logarithmic Step Loop (i *= 2)", "T(n) = 4 log_2 n + 3", "Runtime", "/daa", "log-base2"),
