@@ -11,294 +11,364 @@
 @using SuperCsStudent.Algorithms.Symbolic
 
 <div class="flex flex-col h-full min-h-0 min-w-0 w-full overflow-hidden">
-    @* Studio Header Bar *@
+    @* Slim Studio Header (2 groups only, matching Automata Studio) *@
     <div class="px-4 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0" style="border-bottom: 1px solid var(--border);">
         <div class="flex items-center gap-2.5 min-w-0 flex-wrap">
             <h1 class="text-[15px] font-semibold tracking-tight whitespace-nowrap">Runtime Analyzer</h1>
-            <select class="bp-input !h-8 text-xs max-w-[240px]"
-                    aria-label="Select algorithm preset"
-                    value="@_selectedPresetKey"
-                    @onchange="OnPresetChanged">
-                @foreach (var grp in AlgorithmPresets.All.GroupBy(p => p.Category))
-                {
-                    <optgroup label="@grp.Key">
-                        @foreach (var p in grp)
-                        {
-                            <option value="@p.Key">@p.Title</option>
-                        }
-                    </optgroup>
-                }
-            </select>
-        </div>
-
-        <div class="flex items-center gap-2 flex-wrap">
             <div class="bp-seg" role="tablist" aria-label="Analyzer mode">
-                <button type="button" class="bp-seg-btn" data-active="@(!_recurrenceDirectMode ? "true" : "false")" @onclick="() => _recurrenceDirectMode = false">
+                <button type="button"
+                        class="bp-seg-btn"
+                        role="tab"
+                        aria-selected="@(!_recurrenceDirectMode ? "true" : "false")"
+                        data-active="@(!_recurrenceDirectMode ? "true" : "false")"
+                        @onclick="SwitchToBlockBuilderMode">
                     Block Builder
                 </button>
-                <button type="button" class="bp-seg-btn" data-active="@(_recurrenceDirectMode ? "true" : "false")" @onclick="SwitchToRecurrenceMode">
+                <button type="button"
+                        class="bp-seg-btn"
+                        role="tab"
+                        aria-selected="@(_recurrenceDirectMode ? "true" : "false")"
+                        data-active="@(_recurrenceDirectMode ? "true" : "false")"
+                        @onclick="SwitchToRecurrenceMode">
                     Recurrence Solver
                 </button>
             </div>
+        </div>
 
+        <div class="flex items-center gap-2">
             @if (!_recurrenceDirectMode)
             {
-                <div class="bp-seg hidden xl:inline-flex" role="group" aria-label="Pane focus">
-                    <button type="button" class="bp-seg-btn !px-2" data-active="@(_layoutFocus == "split" ? "true" : "false")" @onclick='() => _layoutFocus = "split"'>Split</button>
-                    <button type="button" class="bp-seg-btn !px-2" data-active="@(_layoutFocus == "blocks" ? "true" : "false")" @onclick='() => _layoutFocus = "blocks"'>Blocks</button>
-                    <button type="button" class="bp-seg-btn !px-2" data-active="@(_layoutFocus == "proof" ? "true" : "false")" @onclick='() => _layoutFocus = "proof"'>Proof</button>
-                </div>
+                <button type="button"
+                        class="bp-btn-ghost !h-8 text-xs hidden lg:inline-flex"
+                        title="@(_fullCanvas ? "Show analysis inspector" : "Expand workspace to full canvas")"
+                        @onclick="ToggleFullCanvas">
+                    @(_fullCanvas ? "Show analysis" : "Full canvas")
+                </button>
             }
-
-            <button type="button"
-                    class="bp-btn-secondary !h-8 text-xs"
-                    style="@(_rulesOpen ? "border-color: var(--accent); background: var(--accent-soft); color: var(--accent);" : "")"
-                    @onclick="() => _rulesOpen = !_rulesOpen">
-                Cost Rules: @_profile.Preset
-            </button>
-
-            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="ExportReportMarkdown">
-                Export MD
-            </button>
         </div>
     </div>
-
-    @* Collapsible Segmented Cost Rules Strip (Zero Raw OS Select Grids) *@
-    @if (_rulesOpen)
-    {
-        <div class="px-4 py-3 shrink-0 space-y-2.5" style="background: var(--canvas-well); border-bottom: 1px solid var(--border);">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-xs font-semibold">Operation Cost Profile</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !text-[11px]"
-                                data-active="@(_profile.Preset == CostProfilePreset.StandardUnitCost ? "true" : "false")"
-                                @onclick="() => ApplyProfilePreset(CostProfilePreset.StandardUnitCost)">
-                            Standard Unit-Cost
-                        </button>
-                        <button type="button" class="bp-seg-btn !h-6 !text-[11px]"
-                                data-active="@(_profile.Preset == CostProfilePreset.StrictSeparateOp ? "true" : "false")"
-                                @onclick="() => ApplyProfilePreset(CostProfilePreset.StrictSeparateOp)">
-                            Strict Separate-Op
-                        </button>
-                    </div>
-                </div>
-                <span class="text-xs" style="color: var(--muted);">Changes recalculate T(n), inline counts, and proofs live.</span>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-6 text-xs">
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">++ / -- cost</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.UnaryIncrementCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, UnaryIncrementCost = 1 })">1</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.UnaryIncrementCost == 2 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, UnaryIncrementCost = 2 })">2</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">+= / *= cost</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.CompoundAssignCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CompoundAssignCost = 1 })">1</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.CompoundAssignCost == 2 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CompoundAssignCost = 2 })">2</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">return keyword</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ReturnKeywordCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ReturnKeywordCost = 0 })">0</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ReturnKeywordCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ReturnKeywordCost = 1 })">1</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">array[i] access</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ArrayIndexingCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ArrayIndexingCost = 1 })">1</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ArrayIndexingCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ArrayIndexingCost = 0 })">0</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">Var declare</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.DeclarationCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, DeclarationCost = 0 })">0</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.DeclarationCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, DeclarationCost = 1 })">1</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">Logical &amp;&amp; / ||</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogicalOperatorCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogicalOperatorCost = 0 })">0</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogicalOperatorCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogicalOperatorCost = 1 })">1</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">Function call</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.FunctionCallCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, FunctionCallCost = 1 })">1</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.FunctionCallCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, FunctionCallCost = 0 })">0</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">Switch case</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.SwitchCaseComparisonCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, SwitchCaseComparisonCost = 1 })">1</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.SwitchCaseComparisonCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, SwitchCaseComparisonCost = 0 })">0</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">Bound arith</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(!_profile.CountLoopBoundArithmetic ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CountLoopBoundArithmetic = false })">Off</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_profile.CountLoopBoundArithmetic ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CountLoopBoundArithmetic = true })">Count</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">Log loop (i*=b)</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogLoopConvention == LogLoopConvention.ExactLogBase ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogLoopConvention = LogLoopConvention.ExactLogBase })">log_b n</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogLoopConvention == LogLoopConvention.FloorLogPlusOne ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogLoopConvention = LogLoopConvention.FloorLogPlusOne })">+1</button>
-                    </div>
-                </div>
-
-                <div class="bp-rule-row">
-                    <span style="color: var(--muted);">Stride (i+=s)</span>
-                    <div class="bp-seg">
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.StepLoopConvention == StepLoopConvention.AlgebraicRatio ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, StepLoopConvention = StepLoopConvention.AlgebraicRatio })">n / s</button>
-                        <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.StepLoopConvention == StepLoopConvention.CeilingOffset ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, StepLoopConvention = StepLoopConvention.CeilingOffset })">ceil</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
 
     @* Main Workbench Body *@
     @if (!_recurrenceDirectMode)
     {
-        <div class="flex-1 min-h-0 min-w-0 grid grid-cols-1 lg:grid-cols-12 overflow-y-auto lg:overflow-hidden">
-            @* Left: Scratch-style Blockly Workspace *@
-            <div class="@BlocklyColClass flex flex-col min-w-0 min-h-[340px] lg:min-h-0" style="border-right: 1px solid var(--border);">
-                <div class="px-3 py-1.5 flex items-center justify-between text-xs shrink-0" style="border-bottom: 1px solid var(--border); color: var(--muted);">
-                    <span>Scratch Block Workspace</span>
-                    <span class="font-mono truncate">@(_currentAst?.Name ?? "algorithm")(@string.Join(", ", _currentAst?.Parameters ?? Array.Empty<string>()))</span>
-                </div>
-                <div @ref="_blocklyHost" class="flex-1 min-h-[300px] w-full relative"></div>
-            </div>
-
-            @* Middle: Annotated Code with Inline Operator Badges & T_in Boxes *@
-            <div class="@CodeColClass flex flex-col min-w-0 min-h-0 overflow-hidden" style="border-right: 1px solid var(--border);">
-                <div class="px-3 py-1.5 flex items-center justify-between text-xs shrink-0" style="border-bottom: 1px solid var(--border);">
-                    <span class="font-medium">Annotated Code (@(_activeCaseTab == "best" ? "Best" : "Worst"))</span>
-                    <label class="flex items-center gap-1.5 cursor-pointer" style="color: var(--muted);">
-                        <input type="checkbox" class="accent-[var(--accent)]" @bind="_showInlineBadges" />
-                        <span>Op counts</span>
-                    </label>
-                </div>
-
-                <div class="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-1.5">
-                    @if (ActiveCase is not null)
-                    {
-                        @foreach (var line in ActiveCase.AnnotatedLines)
-                        {
-                            var isHovered = !string.IsNullOrEmpty(_hoveredBlockId) && _hoveredBlockId == line.BlockId;
-                            var inBox = !string.IsNullOrEmpty(line.BoxGroupId);
-                            <div class="rounded px-2 py-1.5 transition-colors"
-                                 style="@GetCodeLineStyle(isHovered, inBox, line.BoxHeaderLabel is not null)"
-                                 @onmouseenter="() => OnHoverBlock(line.BlockId)"
-                                 @onmouseleave="() => OnHoverBlock(null)">
-                                @if (!string.IsNullOrEmpty(line.BoxHeaderLabel))
-                                {
-                                    <div class="mb-1 flex items-center justify-between">
-                                        <span class="bp-pill bp-pill-warning font-mono text-[10px]">@line.BoxHeaderLabel</span>
-                                    </div>
-                                }
-                                <div class="flex items-start justify-between gap-2">
-                                    <div class="flex items-start gap-2 min-w-0">
-                                        <span class="tnum select-none w-5 text-right shrink-0" style="color: var(--faint);">@line.LineNumber</span>
-                                        <div class="min-w-0">
-                                            <div class="whitespace-pre-wrap break-words" style="padding-left: @(line.IndentLevel * 12)px;">@line.CodeText</div>
-                                            @if (_showInlineBadges && line.InlineBadges.Count > 0)
+        <div class="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+            @* Left Stage: Single-Row Command Strip + Blockly Workspace *@
+            <div class="flex-1 min-w-0 flex flex-col min-h-[380px] lg:min-h-0 relative"
+                 style="@(!_fullCanvas ? "border-right: 1px solid var(--border);" : "")">
+                @* Single-Row Command Strip *@
+                <div class="px-3 py-2 shrink-0" style="background: var(--surface); border-bottom: 1px solid var(--border);">
+                    <div class="bp-cmd-strip">
+                        <div class="bp-cmd-row !py-2 !px-2.5 items-end">
+                            <div class="bp-cmd-preset" style="flex: 0 1 310px;">
+                                <label for="daa-preset-select" class="bp-field-label">Algorithm</label>
+                                <div class="bp-select-wrap">
+                                    <svg class="bp-select-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                        <path d="M5.5 4L2 8l3.5 4M10.5 4L14 8l-3.5 4M9 3l-2 10" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                    <select id="daa-preset-select"
+                                            class="bp-select-prominent"
+                                            aria-label="Select algorithm preset"
+                                            value="@_selectedPresetKey"
+                                            @onchange="OnPresetChanged">
+                                        <option value="@AlgorithmPresets.Blank.Key">@AlgorithmPresets.Blank.Title</option>
+                                        @foreach (var category in AlgorithmPresets.OrderedCategories)
+                                        {
+                                            var items = AlgorithmPresets.All
+                                                .Where(p => p.Category == category && p.Key != AlgorithmPresets.Blank.Key)
+                                                .ToList();
+                                            if (items.Count > 0)
                                             {
-                                                <div class="flex flex-wrap gap-1 mt-1" style="padding-left: @(line.IndentLevel * 12)px;">
-                                                    @foreach (var badge in line.InlineBadges)
+                                                <optgroup label="@category">
+                                                    @foreach (var p in items)
                                                     {
-                                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] tnum whitespace-nowrap"
-                                                              style="background: var(--raised); border: 1px solid var(--border); color: var(--muted);"
-                                                              title="@badge.Description">
-                                                            <strong style="color: var(--text);">@badge.Token</strong>
-                                                            <span>×@badge.Frequency</span>
-                                                        </span>
+                                                        <option value="@p.Key">@p.Title</option>
                                                     }
-                                                </div>
+                                                </optgroup>
                                             }
-                                        </div>
-                                    </div>
-                                    <span class="shrink-0 tnum text-[11px]" style="color: var(--accent);">
-                                        <MathFormula Latex="@line.LineCostLatex" />
-                                    </span>
+                                        }
+                                    </select>
+                                    <svg class="bp-select-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                        <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
                                 </div>
                             </div>
-                        }
-                    }
-                </div>
-            </div>
 
-            @* Right: Symbolic T(n) Derivation, Big-O/Omega/Theta Proofs & D3 Growth Chart *@
-            <div class="@ProofColClass flex flex-col min-w-0 min-h-0 overflow-hidden">
-                <div class="px-2 flex items-center gap-0.5 shrink-0 overflow-x-auto" style="border-bottom: 1px solid var(--border);">
-                    <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "worst" ? "true" : "false")" @onclick='() => SetCaseTab("worst")'>Worst Case</button>
-                    <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "best" ? "true" : "false")" @onclick='() => SetCaseTab("best")'>Best Case</button>
-                    <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "asymptotic" ? "true" : "false")" @onclick='() => SetCaseTab("asymptotic")'>O / Ω / Θ</button>
-                    <button type="button" class="bp-tab !px-2 !text-xs whitespace-nowrap" data-active="@(_activeCaseTab == "chart" ? "true" : "false")" @onclick='() => SetCaseTab("chart")'>Growth Chart</button>
-                </div>
-
-                <div class="flex-1 overflow-y-auto p-4 space-y-4">
-                    @if (_analysis is not null)
-                    {
-                        @* Headline Result Strip *@
-                        <div class="bp-card p-3.5 space-y-2">
-                            <div class="flex items-center justify-between gap-2">
-                                <span class="text-xs font-medium" style="color: var(--muted);">
-                                    @(_activeCaseTab == "best" ? "Best-case exact runtime" : "Worst-case exact runtime")
+                            <div class="flex items-center gap-2 ml-auto">
+                                <span class="hidden sm:inline-flex items-center h-8 px-2.5 rounded-md font-mono text-[11.5px] max-w-[200px] truncate"
+                                      style="background: var(--surface); border: 1px solid var(--border); color: var(--muted);"
+                                      title="@FunctionSignature">
+                                    @FunctionSignature
                                 </span>
-                                <div class="flex items-center gap-1.5">
-                                    <span class="bp-pill bp-pill-accent font-mono">@_analysis.Asymptotic.BigO</span>
-                                    <span class="bp-pill @(_analysis.Asymptotic.IsTight ? "bp-pill-positive" : "bp-pill-neutral") font-mono">
-                                        @(_analysis.Asymptotic.IsTight ? _analysis.Asymptotic.BigTheta : "Θ: Not tight")
-                                    </span>
-                                    <button type="button" class="bp-btn-ghost !h-6 !px-1.5 text-[11px] font-mono"
-                                            title="Copy T(n) LaTeX"
-                                            @onclick="CopyHeadlineLatex">
-                                        @(_copiedLatex ? "Copied" : "LaTeX")
+                                <button type="button"
+                                        class="bp-btn-secondary !h-8 text-xs"
+                                        title="Fit blocks to workspace view"
+                                        @onclick="FitBlocklyWorkspace">
+                                    Fit
+                                </button>
+                                @if (_selectedPresetKey != AlgorithmPresets.Blank.Key || (_currentAst?.Body.Count ?? 0) > 0)
+                                {
+                                    <button type="button"
+                                            class="bp-btn-ghost !h-8 text-xs"
+                                            title="Reset to blank algorithm(n) template"
+                                            @onclick="LoadBlankTemplate">
+                                        Blank
                                     </button>
-                                </div>
-                            </div>
-                            <div class="overflow-x-auto py-1">
-                                <MathFormula DisplayMode="true" Latex="@($"T({_analysis.PrimaryVariable}) = {(ActiveCase?.Latex ?? "0")}")" />
+                                }
                             </div>
                         </div>
+                    </div>
+                </div>
 
-                        @if (_activeCaseTab is "worst" or "best")
+                @* Blockly Workspace *@
+                <div class="flex-1 min-h-[320px] w-full relative overflow-hidden">
+                    <div @ref="_blocklyHost" class="w-full h-full"></div>
+
+                    @* Bottom-Left Floating Cost Rules Button *@
+                    <button type="button"
+                            class="daa-cost-fab"
+                            data-active="@(_rulesTabOpen && _activeAnalysisTab == "rules" ? "true" : "false")"
+                            title="Configure operation cost rules"
+                            @onclick="OpenCostRulesTab">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                            <path d="M2.5 4.5h3m3 0h5M2.5 8h7m3 0h1M2.5 11.5h4.5m3 0h3.5" stroke-linecap="round" />
+                            <circle cx="7" cy="4.5" r="1.5" />
+                            <circle cx="11" cy="8" r="1.5" />
+                            <circle cx="8.5" cy="11.5" r="1.5" />
+                        </svg>
+                        <span>Cost Rules</span>
+                        <span class="daa-cost-fab-badge">@ProfileShortLabel</span>
+                    </button>
+                </div>
+            </div>
+
+            @* Right Analysis Inspector *@
+            @if (!_fullCanvas)
+            {
+                <div class="w-full lg:w-[500px] xl:w-[560px] shrink-0 flex flex-col min-h-[420px] lg:min-h-0 overflow-hidden">
+                    @* Pinned Verdict Strip (Always Visible Across All Tabs) *@
+                    <div class="p-3 pb-2.5 shrink-0" style="border-bottom: 1px solid var(--border);">
+                        <div class="bp-formal-top space-y-1.5">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex items-center gap-1.5">
+                                    <div class="bp-seg" role="group" aria-label="Runtime case">
+                                        <button type="button"
+                                                class="bp-seg-btn !h-6 !px-2 !text-[11.5px]"
+                                                data-active="@(_selectedCase == "worst" ? "true" : "false")"
+                                                @onclick='() => SetSelectedCase("worst")'>
+                                            Worst
+                                        </button>
+                                        <button type="button"
+                                                class="bp-seg-btn !h-6 !px-2 !text-[11.5px]"
+                                                data-active="@(_selectedCase == "best" ? "true" : "false")"
+                                                @onclick='() => SetSelectedCase("best")'>
+                                            Best
+                                        </button>
+                                    </div>
+                                    @if (_analysis is not null && _analysis.WorstCase.Plain == _analysis.BestCase.Plain)
+                                    {
+                                        <span class="bp-pill bp-pill-neutral !h-5 !px-1.5 !text-[10.5px] font-medium"
+                                              title="Worst-case and best-case runtimes are identical">
+                                            Same
+                                        </span>
+                                    }
+                                </div>
+
+                                @if (_analysis is not null)
+                                {
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span class="bp-pill bp-pill-accent font-mono !h-6 !px-2 !text-[11px]">@_analysis.Asymptotic.BigO</span>
+                                        <span class="bp-pill @(_analysis.Asymptotic.IsTight ? "bp-pill-positive" : "bp-pill-neutral") font-mono !h-6 !px-2 !text-[11px]">
+                                            @(_analysis.Asymptotic.IsTight ? _analysis.Asymptotic.BigTheta : "Θ: Not tight")
+                                        </span>
+                                        <button type="button"
+                                                class="bp-btn-ghost !h-6 !px-1.5 text-[11px] font-mono"
+                                                title="Copy T(n) LaTeX"
+                                                @onclick="CopyHeadlineLatex">
+                                            @(_copiedLatex ? "Copied" : "LaTeX")
+                                        </button>
+                                        <button type="button"
+                                                class="bp-btn-ghost !h-6 !px-1.5 text-[11px] font-mono"
+                                                title="Export Markdown report"
+                                                @onclick="ExportReportMarkdown">
+                                            MD
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+
+                            @if (_analysis is not null)
+                            {
+                                <div class="overflow-x-auto py-0.5">
+                                    <MathFormula DisplayMode="true" Latex="@($"T({_analysis.PrimaryVariable}) = {(ActiveCase?.Latex ?? "0")}")" />
+                                </div>
+                            }
+
+                            @if ((_currentAst?.Body.Count ?? 0) == 0)
+                            {
+                                <div class="text-[11.5px]" style="color: var(--muted);">
+                                    Drag blocks from the top bar into algorithm(n), or pick an example.
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* Underline Tabs *@
+                    <div class="px-3 flex items-center gap-0.5 shrink-0 overflow-x-auto"
+                         style="border-bottom: 1px solid var(--border);"
+                         role="tablist"
+                         aria-label="Analysis views">
+                        <button type="button"
+                                class="bp-tab !px-2.5 !text-xs"
+                                role="tab"
+                                aria-selected="@(_activeAnalysisTab == "code" ? "true" : "false")"
+                                data-active="@(_activeAnalysisTab == "code" ? "true" : "false")"
+                                @onclick='() => SetAnalysisTab("code")'>
+                            Code
+                        </button>
+                        <button type="button"
+                                class="bp-tab !px-2.5 !text-xs"
+                                role="tab"
+                                aria-selected="@(_activeAnalysisTab == "derivation" ? "true" : "false")"
+                                data-active="@(_activeAnalysisTab == "derivation" ? "true" : "false")"
+                                @onclick='() => SetAnalysisTab("derivation")'>
+                            Derivation
+                        </button>
+                        <button type="button"
+                                class="bp-tab !px-2.5 !text-xs"
+                                role="tab"
+                                aria-selected="@(_activeAnalysisTab == "asymptotic" ? "true" : "false")"
+                                data-active="@(_activeAnalysisTab == "asymptotic" ? "true" : "false")"
+                                @onclick='() => SetAnalysisTab("asymptotic")'>
+                            O / Ω / Θ
+                        </button>
+                        <button type="button"
+                                class="bp-tab !px-2.5 !text-xs"
+                                role="tab"
+                                aria-selected="@(_activeAnalysisTab == "chart" ? "true" : "false")"
+                                data-active="@(_activeAnalysisTab == "chart" ? "true" : "false")"
+                                @onclick='() => SetAnalysisTab("chart")'>
+                            Chart
+                        </button>
+                        @if (_rulesTabOpen)
+                        {
+                            <div class="bp-tab !px-2 !text-xs"
+                                 role="tab"
+                                 tabindex="0"
+                                 aria-selected="@(_activeAnalysisTab == "rules" ? "true" : "false")"
+                                 data-active="@(_activeAnalysisTab == "rules" ? "true" : "false")"
+                                 @onclick='() => SetAnalysisTab("rules")'
+                                 @onkeydown='e => { if (e.Key is "Enter" or " ") SetAnalysisTab("rules"); }'>
+                                <span>Cost Rules</span>
+                                <button type="button"
+                                        class="daa-tab-close"
+                                        title="Close Cost Rules tab"
+                                        aria-label="Close Cost Rules tab"
+                                        @onclick="CloseCostRulesTab"
+                                        @onclick:stopPropagation="true">
+                                    ×
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    @* Tab Panels *@
+                    <div class="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3.5">
+                        @if (_activeAnalysisTab == "code")
+                        {
+                            <div class="flex items-center justify-between gap-2 text-xs">
+                                <span class="font-medium" style="color: var(--muted);">
+                                    Annotated Code (@(_selectedCase == "best" ? "Best" : "Worst"))
+                                </span>
+                                <label class="inline-flex items-center gap-1.5 cursor-pointer select-none" style="color: var(--muted);">
+                                    <input type="checkbox" class="accent-[var(--accent)]" @bind="_showInlineBadges" />
+                                    <span>Op details</span>
+                                </label>
+                            </div>
+
+                            @if (ActiveCase is not null && ActiveCase.AnnotatedLines.Count > 0)
+                            {
+                                <div class="daa-code-grid">
+                                    @foreach (var line in ActiveCase.AnnotatedLines)
+                                    {
+                                        var isHovered = !string.IsNullOrEmpty(_hoveredBlockId) && _hoveredBlockId == line.BlockId;
+                                        var inBox = !string.IsNullOrEmpty(line.BoxGroupId);
+
+                                        @if (!string.IsNullOrEmpty(line.BoxHeaderLabel))
+                                        {
+                                            var boxInfo = !string.IsNullOrEmpty(line.BoxGroupId)
+                                                ? ActiveCase.InnerBoxes.FirstOrDefault(b => b.BoxGroupId == line.BoxGroupId)
+                                                : null;
+                                            <div class="daa-code-box-head"
+                                                 @onmouseenter="() => OnHoverBlock(line.BlockId)"
+                                                 @onmouseleave="() => OnHoverBlock(null)">
+                                                @if (boxInfo is not null)
+                                                {
+                                                    <span class="font-mono font-semibold" style="color: var(--warning);">@boxInfo.Label</span>
+                                                    <span class="tnum overflow-x-auto" style="color: var(--text);">
+                                                        <MathFormula Latex="@boxInfo.Latex" />
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    var eqIdx = line.BoxHeaderLabel.IndexOf(" = ", StringComparison.Ordinal);
+                                                    if (eqIdx > 0)
+                                                    {
+                                                        <span class="font-mono font-semibold" style="color: var(--warning);">@(line.BoxHeaderLabel.Substring(0, eqIdx))</span>
+                                                        <span class="font-mono tnum" style="color: var(--text);">@(line.BoxHeaderLabel.Substring(eqIdx + 3))</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="font-mono font-semibold" style="color: var(--warning);">@line.BoxHeaderLabel</span>
+                                                    }
+                                                }
+                                            </div>
+                                        }
+
+                                        <div class="daa-code-row @(inBox ? "daa-code-inbox" : "")"
+                                             data-hovered="@(isHovered ? "true" : "false")"
+                                             @onmouseenter="() => OnHoverBlock(line.BlockId)"
+                                             @onmouseleave="() => OnHoverBlock(null)">
+                                            <span class="daa-code-ln">@line.LineNumber</span>
+                                            <div class="daa-code-cell">
+                                                <div class="daa-code-line" style="padding-left: @(line.IndentLevel * 12)px;">@line.CodeText</div>
+                                                @if (_showInlineBadges && line.InlineBadges.Count > 0)
+                                                {
+                                                    <div class="daa-code-ops" style="padding-left: @(line.IndentLevel * 12)px;">
+                                                        @(string.Join(" · ", line.InlineBadges.Select(b => $"{b.Token} ×{b.Frequency}")))
+                                                    </div>
+                                                }
+                                            </div>
+                                            <div class="daa-cost-gutter">
+                                                @if (line.LineCostLatex == "0")
+                                                {
+                                                    <span style="color: var(--faint);">—</span>
+                                                }
+                                                else
+                                                {
+                                                    <MathFormula Latex="@line.LineCostLatex" />
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                        else if (_activeAnalysisTab == "derivation" && _analysis is not null)
                         {
                             @if (ActiveCase is not null && ActiveCase.InnerBoxes.Count > 0)
                             {
                                 <div class="space-y-1.5">
                                     <div class="text-xs font-semibold">Inner Loop Boxes</div>
-                                    <div class="grid grid-cols-1 gap-1.5">
+                                    <div class="bp-card overflow-hidden">
                                         @foreach (var box in ActiveCase.InnerBoxes)
                                         {
-                                            <div class="bp-well px-3 py-2 flex items-center justify-between gap-2 cursor-pointer"
-                                                 style="@(_hoveredBlockId == box.BlockId ? "border-color: var(--warning);" : "")"
+                                            var boxHovered = !string.IsNullOrEmpty(box.BlockId) && _hoveredBlockId == box.BlockId;
+                                            <div class="px-3 py-2 flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                                                 style="border-bottom: 1px solid var(--rule); border-left: 2px solid var(--warning); @(boxHovered ? "background: var(--accent-soft);" : "background: var(--canvas-well);")"
                                                  @onmouseenter="() => OnHoverBlock(box.BlockId)"
                                                  @onmouseleave="() => OnHoverBlock(null)">
                                                 <span class="font-mono text-xs font-medium" style="color: var(--warning);">@box.Label</span>
-                                                <MathFormula Latex="@box.Latex" />
+                                                <div class="overflow-x-auto text-xs"><MathFormula Latex="@box.Latex" /></div>
                                             </div>
                                         }
                                     </div>
@@ -307,23 +377,38 @@
 
                             @if (ActiveCase is not null)
                             {
-                                <div class="space-y-2">
+                                <div class="space-y-1.5">
                                     <div class="text-xs font-semibold">Step-by-Step Summation Derivation</div>
-                                    <ol class="space-y-1.5">
-                                        @for (var i = 0; i < ActiveCase.DerivationSteps.Count; i++)
-                                        {
-                                            var step = ActiveCase.DerivationSteps[i];
-                                            <li class="bp-card px-3 py-2 space-y-1"
-                                                style="@(!string.IsNullOrEmpty(step.BlockId) && step.BlockId == _hoveredBlockId ? "border-color: var(--accent);" : "")"
-                                                @onmouseenter="() => OnHoverBlock(step.BlockId)"
-                                                @onmouseleave="() => OnHoverBlock(null)">
-                                                <div class="text-[11px] font-medium" style="color: var(--muted);">@step.Label</div>
-                                                <div class="overflow-x-auto text-sm">
-                                                    <MathFormula Latex="@step.Latex" />
-                                                </div>
-                                            </li>
-                                        }
-                                    </ol>
+                                    @if (ActiveCase.DerivationSteps.Count == 0)
+                                    {
+                                        <div class="bp-well px-3 py-2.5 text-xs" style="color: var(--muted);">
+                                            No operations counted yet. Add statements to the function to derive T(@_analysis.PrimaryVariable).
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="bp-card overflow-hidden">
+                                            <ol class="daa-step-list">
+                                                @for (var i = 0; i < ActiveCase.DerivationSteps.Count; i++)
+                                                {
+                                                    var step = ActiveCase.DerivationSteps[i];
+                                                    var stepHovered = !string.IsNullOrEmpty(step.BlockId) && step.BlockId == _hoveredBlockId;
+                                                    <li class="daa-step-item"
+                                                        data-hovered="@(stepHovered ? "true" : "false")"
+                                                        @onmouseenter="() => OnHoverBlock(step.BlockId)"
+                                                        @onmouseleave="() => OnHoverBlock(null)">
+                                                        <div class="flex items-center justify-between gap-2">
+                                                            <span class="text-[11px] font-medium" style="color: var(--muted);">@step.Label</span>
+                                                            <span class="text-[10.5px] font-mono tnum" style="color: var(--faint);">@(i + 1)</span>
+                                                        </div>
+                                                        <div class="overflow-x-auto text-sm">
+                                                            <MathFormula Latex="@step.Latex" />
+                                                        </div>
+                                                    </li>
+                                                }
+                                            </ol>
+                                        </div>
+                                    }
                                 </div>
                             }
 
@@ -332,7 +417,7 @@
                                 @RenderRecurrenceSummary(_analysis.Recurrence)
                             }
                         }
-                        else if (_activeCaseTab == "asymptotic")
+                        else if (_activeAnalysisTab == "asymptotic" && _analysis is not null)
                         {
                             <div class="space-y-3">
                                 <div class="grid grid-cols-3 gap-2">
@@ -390,7 +475,7 @@
                                 </div>
                             </div>
                         }
-                        else if (_activeCaseTab == "chart")
+                        else if (_activeAnalysisTab == "chart" && _analysis is not null)
                         {
                             <div class="space-y-3">
                                 <div class="flex flex-wrap items-center gap-3 text-xs">
@@ -403,15 +488,145 @@
                                         </span>
                                     }
                                 </div>
-                                <div @ref="_chartHost" class="bp-well p-3 min-h-[230px]"></div>
-                                <p class="text-xs" style="color: var(--muted);">
-                                    Hover across the plot to inspect exact operation counts from n = 1 to 25 compared against asymptotic baselines.
-                                </p>
+                                <div @ref="_chartHost" class="bp-well p-3 min-h-[240px]"></div>
                             </div>
                         }
-                    }
+                        else if (_activeAnalysisTab == "rules")
+                        {
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="text-xs font-semibold">Operation Cost Profile</span>
+                                    <span class="text-[11px]" style="color: var(--muted);">Updates T(n) live</span>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <button type="button"
+                                            class="daa-preset-card"
+                                            data-active="@(_profile.Preset == CostProfilePreset.StandardUnitCost ? "true" : "false")"
+                                            @onclick="() => ApplyProfilePreset(CostProfilePreset.StandardUnitCost)">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <span class="text-xs font-semibold">Standard Unit-Cost</span>
+                                            @if (_profile.Preset == CostProfilePreset.StandardUnitCost)
+                                            {
+                                                <span class="bp-pill bp-pill-accent !h-5 !px-1.5 !text-[10px]">Active</span>
+                                            }
+                                        </div>
+                                        <p class="mt-1 text-[11px] leading-snug" style="color: var(--muted);">
+                                            1 per operator, return/declare 0, exact log_b n
+                                        </p>
+                                    </button>
+
+                                    <button type="button"
+                                            class="daa-preset-card"
+                                            data-active="@(_profile.Preset == CostProfilePreset.StrictSeparateOp ? "true" : "false")"
+                                            @onclick="() => ApplyProfilePreset(CostProfilePreset.StrictSeparateOp)">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <span class="text-xs font-semibold">Strict Separate-Op</span>
+                                            @if (_profile.Preset == CostProfilePreset.StrictSeparateOp)
+                                            {
+                                                <span class="bp-pill bp-pill-accent !h-5 !px-1.5 !text-[10px]">Active</span>
+                                            }
+                                        </div>
+                                        <p class="mt-1 text-[11px] leading-snug" style="color: var(--muted);">
+                                            2 for ++/+=, counts return/declare/logical ops
+                                        </p>
+                                    </button>
+                                </div>
+
+                                <details class="bp-card p-3" open="@(_profile.Preset == CostProfilePreset.Custom)">
+                                    <summary class="text-xs font-semibold cursor-pointer select-none">
+                                        Customize individual rules (10)
+                                    </summary>
+
+                                    <div class="mt-3 space-y-3 text-xs">
+                                        <div>
+                                            <div class="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style="color: var(--faint);">Operators</div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">++ / -- cost</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.UnaryIncrementCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, UnaryIncrementCost = 1 })">1</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.UnaryIncrementCost == 2 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, UnaryIncrementCost = 2 })">2</button>
+                                                </div>
+                                            </div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">+= / *= cost</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.CompoundAssignCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CompoundAssignCost = 1 })">1</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.CompoundAssignCost == 2 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CompoundAssignCost = 2 })">2</button>
+                                                </div>
+                                            </div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">Logical &amp;&amp; / ||</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogicalOperatorCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogicalOperatorCost = 0 })">0</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogicalOperatorCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogicalOperatorCost = 1 })">1</button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <div class="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style="color: var(--faint);">Statements &amp; Access</div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">array[i] access</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ArrayIndexingCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ArrayIndexingCost = 1 })">1</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ArrayIndexingCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ArrayIndexingCost = 0 })">0</button>
+                                                </div>
+                                            </div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">Var declare</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.DeclarationCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, DeclarationCost = 0 })">0</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.DeclarationCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, DeclarationCost = 1 })">1</button>
+                                                </div>
+                                            </div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">return keyword</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ReturnKeywordCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ReturnKeywordCost = 0 })">0</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.ReturnKeywordCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, ReturnKeywordCost = 1 })">1</button>
+                                                </div>
+                                            </div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">Function call</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.FunctionCallCost == 1 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, FunctionCallCost = 1 })">1</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.FunctionCallCost == 0 ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, FunctionCallCost = 0 })">0</button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <div class="text-[10.5px] font-semibold uppercase tracking-wider mb-1" style="color: var(--faint);">Loop Conventions</div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">Bound arith</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(!_profile.CountLoopBoundArithmetic ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CountLoopBoundArithmetic = false })">Off</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 !text-[11px]" data-active="@(_profile.CountLoopBoundArithmetic ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, CountLoopBoundArithmetic = true })">Count</button>
+                                                </div>
+                                            </div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">Log loop (i*=b)</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogLoopConvention == LogLoopConvention.ExactLogBase ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogLoopConvention = LogLoopConvention.ExactLogBase })">log_b n</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.LogLoopConvention == LogLoopConvention.FloorLogPlusOne ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, LogLoopConvention = LogLoopConvention.FloorLogPlusOne })">+1</button>
+                                                </div>
+                                            </div>
+                                            <div class="bp-rule-row">
+                                                <span style="color: var(--muted);">Stride (i+=s)</span>
+                                                <div class="bp-seg">
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.StepLoopConvention == StepLoopConvention.AlgebraicRatio ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, StepLoopConvention = StepLoopConvention.AlgebraicRatio })">n / s</button>
+                                                    <button type="button" class="bp-seg-btn !h-6 !px-2 font-mono !text-[11px]" data-active="@(_profile.StepLoopConvention == StepLoopConvention.CeilingOffset ? "true" : "false")" @onclick="() => UpdateProfile(_profile with { Preset = CostProfilePreset.Custom, StepLoopConvention = StepLoopConvention.CeilingOffset })">ceil</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </details>
+                            </div>
+                        }
+                    </div>
                 </div>
-            </div>
+            }
         </div>
     }
     else
@@ -419,17 +634,59 @@
         @* Direct Recurrence & Master Theorem Solver View *@
         <div class="flex-1 min-h-0 overflow-y-auto p-6">
             <div class="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <div class="lg:col-span-5 bp-card p-4 space-y-4">
-                    <h2 class="text-sm font-semibold">Recurrence Specification</h2>
+                <div class="lg:col-span-5 bp-card p-4 space-y-4 self-start">
+                    <div class="space-y-2">
+                        <h2 class="text-sm font-semibold">Recurrence Specification</h2>
+                        <div class="bp-well px-3 py-2 overflow-x-auto">
+                            <MathFormula DisplayMode="true" Latex="@LiveRecurrencePreviewLatex" />
+                        </div>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label for="daa-quick-rec-select" class="bp-field-label">Quick Recurrence</label>
+                        <div class="bp-select-wrap">
+                            <svg class="bp-select-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                <path d="M3 4.5h10M3 8h6.5M3 11.5h10" stroke-linecap="round" />
+                            </svg>
+                            <select id="daa-quick-rec-select"
+                                    class="bp-select-prominent"
+                                    aria-label="Select quick recurrence"
+                                    value="@_selectedQuickRecKey"
+                                    @onchange="OnQuickRecurrenceChanged">
+                                @if (_selectedQuickRecKey == "custom")
+                                {
+                                    <option value="custom">Custom recurrence</option>
+                                }
+                                @foreach (var qr in QuickRecurrences)
+                                {
+                                    <option value="@qr.Key">@qr.Label</option>
+                                }
+                            </select>
+                            <svg class="bp-select-chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path d="M4 6L8 10L12 6" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <div class="bp-field-label">Recurrence kind</div>
+                        <div class="bp-seg w-full" role="group" aria-label="Recurrence kind">
+                            <button type="button"
+                                    class="bp-seg-btn flex-1"
+                                    data-active="@(_recKind == "divide" ? "true" : "false")"
+                                    @onclick='() => SetRecKind("divide")'>
+                                Divide: a·T(n/b)
+                            </button>
+                            <button type="button"
+                                    class="bp-seg-btn flex-1"
+                                    data-active="@(_recKind == "subtract" ? "true" : "false")"
+                                    @onclick='() => SetRecKind("subtract")'>
+                                Subtract: a·T(n-c)
+                            </button>
+                        </div>
+                    </div>
 
                     <div class="grid grid-cols-2 gap-3 text-xs">
-                        <label class="space-y-1">
-                            <span style="color: var(--muted);">Recurrence kind</span>
-                            <select class="bp-input w-full" @bind="_recKind" @bind:after="SolveDirectRecurrence">
-                                <option value="divide">Divide: a·T(n/b) + f(n)</option>
-                                <option value="subtract">Subtract: a·T(n-c) + f(n)</option>
-                            </select>
-                        </label>
                         <label class="space-y-1">
                             <span style="color: var(--muted);">Branches (a)</span>
                             <input type="number" min="1" max="16" class="bp-input w-full font-mono" @bind="_recA" @bind:after="SolveDirectRecurrence" />
@@ -459,22 +716,11 @@
                             <span style="color: var(--muted);">Log power p in (log n)^p</span>
                             <input type="number" min="-1" max="3" class="bp-input w-full font-mono" @bind="_recP" @bind:after="SolveDirectRecurrence" />
                         </label>
-                        <label class="space-y-1">
+
+                        <label class="space-y-1 col-span-2">
                             <span style="color: var(--muted);">Base case T(base) = 1</span>
                             <input type="number" min="0" max="1" class="bp-input w-full font-mono" @bind="_recBaseN" @bind:after="SolveDirectRecurrence" />
                         </label>
-                    </div>
-
-                    <div class="pt-2 space-y-1.5" style="border-top: 1px solid var(--border);">
-                        <div class="text-xs font-medium" style="color: var(--muted);">Quick recurrences</div>
-                        <div class="flex flex-wrap gap-1.5">
-                            <button type="button" class="bp-btn-secondary !h-7 text-xs font-mono" @onclick="() => LoadRecQuick(1, 0, 1, 0, 0, 0)">T(n-1)+1</button>
-                            <button type="button" class="bp-btn-secondary !h-7 text-xs font-mono" @onclick="() => LoadRecQuick(1, 0, 1, 1, 0, 0)">T(n-1)+n</button>
-                            <button type="button" class="bp-btn-secondary !h-7 text-xs font-mono" @onclick="() => LoadRecQuick(1, 0, 1, 0, 1, 0)">T(n-1)+log n</button>
-                            <button type="button" class="bp-btn-secondary !h-7 text-xs font-mono" @onclick="() => LoadRecQuick(2, 2, 0, 1, 0, 1)">2T(n/2)+n</button>
-                            <button type="button" class="bp-btn-secondary !h-7 text-xs font-mono" @onclick="() => LoadRecQuick(2, 3, 0, 0, 0, 1)">2T(n/3)+1</button>
-                            <button type="button" class="bp-btn-secondary !h-7 text-xs font-mono" @onclick="() => LoadRecQuick(3, 0, 1, 0, 0, 0)">3T(n-1)+1</button>
-                        </div>
                     </div>
                 </div>
 
@@ -490,45 +736,40 @@
 </div>
 
 @code {
+    private sealed record QuickRecurrencePreset(string Key, string Label, int A, int B, int C, int K, int P, int BaseN);
+
+    private static readonly QuickRecurrencePreset[] QuickRecurrences =
+    {
+        new("div-2-2-n", "2T(n/2) + n — Divide-and-Conquer Linear", 2, 2, 0, 1, 0, 1),
+        new("div-2-3-1", "2T(n/3) + 1 — Sublinear Branching", 2, 3, 0, 0, 0, 1),
+        new("sub-1-1-1", "T(n-1) + 1 — Linear Step", 1, 0, 1, 0, 0, 0),
+        new("sub-1-1-n", "T(n-1) + n — Triangular Sum", 1, 0, 1, 1, 0, 0),
+        new("sub-1-1-logn", "T(n-1) + log n — Logarithmic Step", 1, 0, 1, 0, 1, 0),
+        new("sub-3-1-1", "3T(n-1) + 1 — Exponential Branching", 3, 0, 1, 0, 0, 0)
+    };
+
     private ElementReference _blocklyHost;
     private ElementReference _chartHost;
     private DotNetObjectReference<DaaAnalyzer>? _selfRef;
     private bool _blocklyMounted;
+    private bool? _lastBlocklyDark;
+    private bool _chartRendered;
 
-    private string _selectedPresetKey = "nested-3";
+    private string _selectedPresetKey = AlgorithmPresets.Blank.Key;
     private CostRulesProfile _profile = CostRulesProfile.StandardUnitCost;
     private AlgorithmFunction? _currentAst;
     private string? _pendingBlocklyJson;
     private RuntimeAnalysisResult? _analysis;
 
-    private string _activeCaseTab = "worst";
-    private string _layoutFocus = "split";
-    private bool _rulesOpen;
+    private string _selectedCase = "worst";
+    private string _activeAnalysisTab = "code";
+    private string _lastNonRulesTab = "code";
+    private bool _rulesTabOpen;
+    private bool _fullCanvas;
     private bool _copiedLatex;
-    private bool _showInlineBadges = true;
+    private bool _showInlineBadges;
     private string? _hoveredBlockId;
     private bool _needsChartRender;
-
-    private string BlocklyColClass => _layoutFocus switch
-    {
-        "blocks" => "lg:col-span-7",
-        "proof" => "lg:col-span-3",
-        _ => "lg:col-span-5"
-    };
-
-    private string CodeColClass => _layoutFocus switch
-    {
-        "blocks" => "lg:col-span-5",
-        "proof" => "lg:col-span-4",
-        _ => "lg:col-span-3"
-    };
-
-    private string ProofColClass => _layoutFocus switch
-    {
-        "blocks" => "hidden",
-        "proof" => "lg:col-span-5",
-        _ => "lg:col-span-4"
-    };
 
     private bool _recurrenceDirectMode;
     private string _recKind = "divide";
@@ -538,21 +779,54 @@
     private int _recK = 1;
     private int _recP = 0;
     private int _recBaseN = 1;
+    private string _selectedQuickRecKey = "div-2-2-n";
     private RecurrenceAnalysisResult? _directRecurrence;
 
     private CaseAnalysis? ActiveCase => _analysis is null
         ? null
-        : (_activeCaseTab == "best" ? _analysis.BestCase : _analysis.WorstCase);
+        : (_selectedCase == "best" ? _analysis.BestCase : _analysis.WorstCase);
+
+    private string FunctionSignature
+    {
+        get
+        {
+            var name = _currentAst?.Name ?? "algorithm";
+            var parameters = _currentAst?.Parameters is { Count: > 0 } p ? string.Join(", ", p) : "n";
+            return $"{name}({parameters})";
+        }
+    }
+
+    private string ProfileShortLabel => _profile.Preset switch
+    {
+        CostProfilePreset.StandardUnitCost => "Unit-Cost",
+        CostProfilePreset.StrictSeparateOp => "Strict",
+        _ => "Custom"
+    };
+
+    private string ProfileDisplayLabel => _profile.Preset switch
+    {
+        CostProfilePreset.StandardUnitCost => "Standard Unit-Cost",
+        CostProfilePreset.StrictSeparateOp => "Strict Separate-Op",
+        _ => "Custom"
+    };
+
+    private string LiveRecurrencePreviewLatex =>
+        !string.IsNullOrWhiteSpace(_directRecurrence?.RecurrenceLatex)
+            ? _directRecurrence.RecurrenceLatex
+            : BuildFallbackRecurrenceLatex();
 
     protected override void OnInitialized()
     {
         AppState.OnChange += OnAppStateChanged;
         var key = !string.IsNullOrEmpty(AppState.PendingPresetKey) && AlgorithmPresets.TryGet(AppState.PendingPresetKey, out _)
             ? AppState.PendingPresetKey!
-            : "nested-3";
+            : AlgorithmPresets.Blank.Key;
         AppState.PendingPresetKey = null;
         LoadPreset(key);
-        SolveDirectRecurrence();
+        if (_directRecurrence is null)
+        {
+            SolveDirectRecurrence();
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -560,14 +834,21 @@
         if (!_recurrenceDirectMode && !_blocklyMounted)
         {
             _selfRef ??= DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("SuperCs.blockly.mountBlockly", _blocklyHost, _selfRef, _pendingBlocklyJson, AppState.IsDark);
+            var darkAtMount = AppState.IsDark;
+            await JS.InvokeVoidAsync("SuperCs.blockly.mountBlockly", _blocklyHost, _selfRef, _pendingBlocklyJson, darkAtMount);
             _blocklyMounted = true;
+            _lastBlocklyDark = darkAtMount;
             _pendingBlocklyJson = null;
         }
         else if (_recurrenceDirectMode && _blocklyMounted)
         {
-            await JS.InvokeVoidAsync("SuperCs.blockly.disposeBlockly", _blocklyHost);
+            try
+            {
+                await JS.InvokeVoidAsync("SuperCs.blockly.disposeBlockly", _blocklyHost);
+            }
+            catch { }
             _blocklyMounted = false;
+            _lastBlocklyDark = null;
         }
         else if (!_recurrenceDirectMode && _blocklyMounted && _pendingBlocklyJson is not null)
         {
@@ -576,7 +857,14 @@
             await JS.InvokeVoidAsync("SuperCs.blockly.loadWorkspaceState", _blocklyHost, json);
         }
 
-        if (_activeCaseTab == "chart" && _analysis is not null && (_needsChartRender || firstRender))
+        if (!_recurrenceDirectMode && _blocklyMounted && _lastBlocklyDark != AppState.IsDark)
+        {
+            var dark = AppState.IsDark;
+            _lastBlocklyDark = dark;
+            await JS.InvokeVoidAsync("SuperCs.blockly.setBlocklyTheme", _blocklyHost, dark);
+        }
+
+        if (!_recurrenceDirectMode && !_fullCanvas && _activeAnalysisTab == "chart" && _analysis is not null && (_needsChartRender || firstRender))
         {
             _needsChartRender = false;
             await RenderGrowthChartAsync();
@@ -600,28 +888,115 @@
 
     private void LoadPreset(string key)
     {
-        if (!AlgorithmPresets.TryGet(key, out var preset) || preset is null) return;
+        AlgorithmPreset? preset;
+        if (string.Equals(key, AlgorithmPresets.Blank.Key, StringComparison.OrdinalIgnoreCase))
+        {
+            preset = AlgorithmPresets.Blank;
+        }
+        else if (!AlgorithmPresets.TryGet(key, out preset) || preset is null)
+        {
+            return;
+        }
+
         _selectedPresetKey = preset.Key;
         _currentAst = preset.Ast;
         _pendingBlocklyJson = preset.BlocklyStateJson;
+
         if (preset.RecurrenceSpec is not null)
         {
-            _directRecurrence = RecurrenceAnalyzer.Solve(preset.RecurrenceSpec);
+            var spec = preset.RecurrenceSpec;
+            _recKind = spec.DivideByB.HasValue ? "divide" : "subtract";
+            _recA = spec.BranchesA;
+            _recB = spec.DivideByB ?? 2;
+            _recC = spec.SubtractC ?? 1;
+            _recK = spec.WorkPolyDegreeK;
+            _recP = spec.WorkLogPowerP;
+            _recBaseN = spec.BaseN;
+            _selectedQuickRecKey = MatchQuickRecurrenceKey();
+            _directRecurrence = RecurrenceAnalyzer.Solve(spec);
         }
+
         Recompute();
-        AppState.RecordRecent(new WorkspaceDocument(
-            $"daa-{preset.Key}",
-            preset.Title,
-            StudioKind.Algorithms,
-            $"T(n) = {_analysis?.WorstCase.Plain ?? ""}",
-            DateTimeOffset.UtcNow,
-            JsonSerializer.SerializeToElement(new { preset = preset.Key })));
+
+        if (!string.Equals(preset.Key, AlgorithmPresets.Blank.Key, StringComparison.OrdinalIgnoreCase))
+        {
+            AppState.RecordRecent(new WorkspaceDocument(
+                $"daa-{preset.Key}",
+                preset.Title,
+                StudioKind.Algorithms,
+                $"T(n) = {_analysis?.WorstCase.Plain ?? ""}",
+                DateTimeOffset.UtcNow,
+                JsonSerializer.SerializeToElement(new { preset = preset.Key })));
+        }
     }
+
+    private void LoadBlankTemplate() => LoadPreset(AlgorithmPresets.Blank.Key);
 
     private void OnPresetChanged(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
         if (!string.IsNullOrEmpty(key)) LoadPreset(key);
+    }
+
+    private async Task FitBlocklyWorkspace()
+    {
+        if (!_blocklyMounted) return;
+        try
+        {
+            await JS.InvokeVoidAsync("SuperCs.blockly.fitWorkspace", _blocklyHost);
+        }
+        catch { }
+    }
+
+    private void ToggleFullCanvas()
+    {
+        _fullCanvas = !_fullCanvas;
+        if (!_fullCanvas && _activeAnalysisTab == "chart")
+        {
+            _needsChartRender = true;
+        }
+    }
+
+    private void SetSelectedCase(string caseName)
+    {
+        _selectedCase = caseName;
+    }
+
+    private void SetAnalysisTab(string tab)
+    {
+        _activeAnalysisTab = tab;
+        if (tab != "rules")
+        {
+            _lastNonRulesTab = tab;
+        }
+        if (tab == "chart")
+        {
+            _needsChartRender = true;
+        }
+    }
+
+    private void OpenCostRulesTab()
+    {
+        if (_activeAnalysisTab != "rules")
+        {
+            _lastNonRulesTab = _activeAnalysisTab;
+        }
+        _rulesTabOpen = true;
+        _activeAnalysisTab = "rules";
+        _fullCanvas = false;
+    }
+
+    private void CloseCostRulesTab()
+    {
+        _rulesTabOpen = false;
+        if (_activeAnalysisTab == "rules")
+        {
+            _activeAnalysisTab = _lastNonRulesTab;
+            if (_activeAnalysisTab == "chart")
+            {
+                _needsChartRender = true;
+            }
+        }
     }
 
     private void ApplyProfilePreset(CostProfilePreset preset) => UpdateProfile(CostRulesProfile.FromPreset(preset));
@@ -639,63 +1014,138 @@
         _needsChartRender = true;
     }
 
-    private void SetCaseTab(string tab)
+    private async Task SwitchToRecurrenceMode()
     {
-        _activeCaseTab = tab;
-        if (tab == "chart") _needsChartRender = true;
-    }
+        if (_recurrenceDirectMode) return;
+        if (_blocklyMounted)
+        {
+            try
+            {
+                var saved = await JS.InvokeAsync<string?>("SuperCs.blockly.getWorkspaceState", _blocklyHost);
+                _pendingBlocklyJson = !string.IsNullOrWhiteSpace(saved)
+                    ? saved
+                    : (_currentAst is not null ? AlgorithmAstSerializer.ToBlocklyWorkspaceJson(_currentAst) : null);
+            }
+            catch
+            {
+                _pendingBlocklyJson = _currentAst is not null ? AlgorithmAstSerializer.ToBlocklyWorkspaceJson(_currentAst) : null;
+            }
 
-    private void SwitchToRecurrenceMode()
-    {
+            try
+            {
+                await JS.InvokeVoidAsync("SuperCs.blockly.disposeBlockly", _blocklyHost);
+            }
+            catch { }
+            _blocklyMounted = false;
+            _lastBlocklyDark = null;
+        }
+        else if (_pendingBlocklyJson is null && _currentAst is not null)
+        {
+            _pendingBlocklyJson = AlgorithmAstSerializer.ToBlocklyWorkspaceJson(_currentAst);
+        }
+
         _recurrenceDirectMode = true;
         SolveDirectRecurrence();
     }
 
-    private void LoadRecQuick(int a, int b, int c, int k, int p, int baseN)
+    private void SwitchToBlockBuilderMode()
     {
-        _recKind = b >= 2 ? "divide" : "subtract";
-        _recA = a;
-        _recB = b >= 2 ? b : 2;
-        _recC = c >= 1 ? c : 1;
-        _recK = k;
-        _recP = p;
-        _recBaseN = baseN;
+        if (!_recurrenceDirectMode) return;
+        if (_pendingBlocklyJson is null && _currentAst is not null)
+        {
+            _pendingBlocklyJson = AlgorithmAstSerializer.ToBlocklyWorkspaceJson(_currentAst);
+        }
+        _recurrenceDirectMode = false;
+        if (_activeAnalysisTab == "chart")
+        {
+            _needsChartRender = true;
+        }
+    }
+
+    private void SetRecKind(string kind)
+    {
+        _recKind = kind;
         SolveDirectRecurrence();
+    }
+
+    private void OnQuickRecurrenceChanged(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString();
+        var match = QuickRecurrences.FirstOrDefault(q => q.Key == key);
+        if (match is null) return;
+        _recKind = match.B >= 2 ? "divide" : "subtract";
+        _recA = match.A;
+        _recB = match.B >= 2 ? match.B : 2;
+        _recC = match.C >= 1 ? match.C : 1;
+        _recK = match.K;
+        _recP = match.P;
+        _recBaseN = match.BaseN;
+        _selectedQuickRecKey = match.Key;
+        SolveDirectRecurrence();
+    }
+
+    private string MatchQuickRecurrenceKey()
+    {
+        foreach (var q in QuickRecurrences)
+        {
+            var isDiv = q.B >= 2;
+            if ((_recKind == "divide") != isDiv) continue;
+            if (_recA != q.A || _recK != q.K || _recP != q.P || _recBaseN != q.BaseN) continue;
+            if (isDiv && _recB == q.B) return q.Key;
+            if (!isDiv && _recC == q.C) return q.Key;
+        }
+        return "custom";
+    }
+
+    private string BuildWorkLatex() => (_recK, _recP) switch
+    {
+        (0, 0) => "1",
+        (1, 0) => "n",
+        (var k, 0) => $"n^{k}",
+        (0, 1) => @"\log_2 n",
+        (1, 1) => @"n \log_2 n",
+        (var k, 1) => $@"n^{k} \log_2 n",
+        (0, var p) => $@"\log_2^{{{p}}} n",
+        (var k, var p) => $@"n^{k} \log_2^{{{p}}} n"
+    };
+
+    private string BuildFallbackRecurrenceLatex()
+    {
+        var a = System.Math.Max(1, _recA);
+        var aPrefix = a == 1 ? "" : $"{a}";
+        var sub = _recKind == "divide"
+            ? $@"T\!\left(\frac{{n}}{{{System.Math.Max(2, _recB)}}}\right)"
+            : $"T(n - {System.Math.Max(1, _recC)})";
+        return $"T(n) = {aPrefix}{sub} + {BuildWorkLatex()}";
     }
 
     private void SolveDirectRecurrence()
     {
-        var workLatex = (_recK, _recP) switch
-        {
-            (0, 0) => "1",
-            (1, 0) => "n",
-            (var k, 0) => $"n^{k}",
-            (0, 1) => @"\log_2 n",
-            (1, 1) => @"n \log_2 n",
-            (var k, 1) => $@"n^{k} \log_2 n",
-            (0, var p) => $@"\log_2^{{{p}}} n",
-            (var k, var p) => $@"n^{k} \log_2^{{{p}}} n"
-        };
-
         var spec = new RecurrenceSpec(
             BaseN: _recBaseN,
             BaseCost: 1,
             BranchesA: System.Math.Max(1, _recA),
             DivideByB: _recKind == "divide" ? System.Math.Max(2, _recB) : null,
             SubtractC: _recKind == "subtract" ? System.Math.Max(1, _recC) : null,
-            NonRecursiveWorkLatex: workLatex,
+            NonRecursiveWorkLatex: BuildWorkLatex(),
             WorkPolyDegreeK: _recK,
             WorkLogPowerP: _recP);
 
+        _selectedQuickRecKey = MatchQuickRecurrenceKey();
         _directRecurrence = RecurrenceAnalyzer.Solve(spec);
     }
 
     private async Task OnHoverBlock(string? blockId)
     {
+        if (_hoveredBlockId == blockId) return;
         _hoveredBlockId = blockId;
         if (_blocklyMounted)
         {
-            await JS.InvokeVoidAsync("SuperCs.blockly.highlightBlock", _blocklyHost, blockId);
+            try
+            {
+                await JS.InvokeVoidAsync("SuperCs.blockly.highlightBlock", _blocklyHost, blockId);
+            }
+            catch { }
         }
     }
 
@@ -713,6 +1163,7 @@
             }).ToArray()
         };
         await JS.InvokeVoidAsync("SuperCs.charts.renderGrowthChart", _chartHost, payload);
+        _chartRendered = true;
     }
 
     private async Task CopyHeadlineLatex()
@@ -734,7 +1185,7 @@
         {
             $"# Runtime Analysis: `{_analysis.FunctionName}`",
             "",
-            $"- **Cost Profile**: `{_analysis.Profile.Preset}`",
+            $"- **Cost Profile**: `{ProfileDisplayLabel}`",
             $"- **Worst Case**: `T({_analysis.PrimaryVariable}) = {_analysis.WorstCase.Plain}`",
             $"- **Best Case**: `T({_analysis.PrimaryVariable}) = {_analysis.BestCase.Plain}`",
             $"- **Asymptotic**: `{_analysis.Asymptotic.BigO}`, `{_analysis.Asymptotic.BigOmega}`, `Θ: {_analysis.Asymptotic.BigThetaDisplay}`",
@@ -748,17 +1199,10 @@
         await JS.InvokeVoidAsync("SuperCs.storage.downloadTextFile", $"{_analysis.FunctionName}-analysis.md", string.Join('\n', lines), "text/markdown;charset=utf-8");
     }
 
-    private static string GetCodeLineStyle(bool hovered, bool inBox, bool isBoxStart)
-    {
-        if (hovered) return "background: var(--accent-soft); border: 1px solid var(--accent);";
-        if (inBox) return $"background: var(--canvas-well); border: 1px dashed var(--warning);{(isBoxStart ? " margin-top: 6px;" : "")}";
-        return "border: 1px solid transparent;";
-    }
-
     private RenderFragment RenderRecurrenceSummary(RecurrenceAnalysisResult rec) => @<div class="space-y-3">
         <div class="bp-card p-3.5 space-y-2">
             <div class="flex items-center justify-between gap-2">
-                <span class="text-xs font-semibold">Recurrence & Closed Form</span>
+                <span class="text-xs font-semibold">Recurrence &amp; Closed Form</span>
                 <div class="flex items-center gap-1.5">
                     <span class="bp-pill bp-pill-accent font-mono">@rec.BigO</span>
                     <span class="bp-pill bp-pill-positive font-mono">@rec.BigTheta</span>
@@ -771,7 +1215,7 @@
         </div>
 
         <div class="bp-card p-3.5 space-y-2">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-2">
                 <span class="text-xs font-semibold">@rec.MasterTheorem.TheoremName</span>
                 <span class="bp-pill bp-pill-neutral font-mono text-[11px]">@rec.MasterTheorem.CaseLabel</span>
             </div>
@@ -785,27 +1229,37 @@
 
         <div class="space-y-1.5">
             <div class="text-xs font-semibold">Iterative Unrolling Steps</div>
-            @foreach (var step in rec.UnrollingSteps)
-            {
-                <div class="bp-card px-3 py-2 space-y-1">
-                    <div class="text-[11px] font-medium" style="color: var(--muted);">@step.Label</div>
-                    <div class="overflow-x-auto"><MathFormula Latex="@step.Latex" /></div>
-                    @if (!string.IsNullOrEmpty(step.Explanation))
+            <div class="bp-card overflow-hidden">
+                <ol class="daa-step-list">
+                    @for (var i = 0; i < rec.UnrollingSteps.Count; i++)
                     {
-                        <div class="text-[11px]" style="color: var(--muted);">@step.Explanation</div>
+                        var step = rec.UnrollingSteps[i];
+                        <li class="daa-step-item">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-[11px] font-medium" style="color: var(--muted);">@step.Label</span>
+                                <span class="text-[10.5px] font-mono tnum" style="color: var(--faint);">@(i + 1)</span>
+                            </div>
+                            <div class="overflow-x-auto"><MathFormula Latex="@step.Latex" /></div>
+                            @if (!string.IsNullOrEmpty(step.Explanation))
+                            {
+                                <div class="text-[11px]" style="color: var(--muted);">@step.Explanation</div>
+                            }
+                        </li>
                     }
-                </div>
-            }
+                </ol>
+            </div>
         </div>
     </div>;
 
     private async void OnAppStateChanged()
     {
-        if (_blocklyMounted)
+        if (_blocklyMounted && _lastBlocklyDark != AppState.IsDark)
         {
             try
             {
-                await JS.InvokeVoidAsync("SuperCs.blockly.setBlocklyTheme", _blocklyHost, AppState.IsDark);
+                var dark = AppState.IsDark;
+                _lastBlocklyDark = dark;
+                await JS.InvokeVoidAsync("SuperCs.blockly.setBlocklyTheme", _blocklyHost, dark);
             }
             catch { }
         }
@@ -818,6 +1272,12 @@
         if (_blocklyMounted)
         {
             try { await JS.InvokeVoidAsync("SuperCs.blockly.disposeBlockly", _blocklyHost); } catch { }
+            _blocklyMounted = false;
+            _lastBlocklyDark = null;
+        }
+        if (_chartRendered)
+        {
+            try { await JS.InvokeVoidAsync("SuperCs.charts.disposeGrowthChart", _chartHost); } catch { }
         }
         _selfRef?.Dispose();
     }

@@ -1,15 +1,65 @@
 import { scaleLinear } from "d3-scale";
 import { line, area } from "d3-shape";
 
+const chartState = new WeakMap();
+
 /**
  * Renders a restrained complexity growth SVG chart (exact T(n) vs asymptotic reference curves)
- * using vanilla d3-scale + d3-shape.
+ * using vanilla d3-scale + d3-shape, with ResizeObserver support for responsive width updates.
  */
 export function renderGrowthChart(container, payload) {
   if (!container || !payload) return;
+
+  let state = chartState.get(container);
+  if (!state) {
+    state = { payload, lastWidth: 0, observer: null };
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[entries.length - 1];
+        const rawW = entry?.contentRect?.width ?? container.clientWidth;
+        const w = Math.round(rawW);
+        if (w <= 0 || !state.payload) return;
+        if (state.lastWidth === 0 || Math.abs(w - state.lastWidth) > 8) {
+          state.lastWidth = w;
+          drawGrowthChart(container, state.payload, w);
+        }
+      });
+      observer.observe(container);
+      state.observer = observer;
+    }
+    chartState.set(container, state);
+  } else {
+    state.payload = payload;
+  }
+
+  const measuredWidth = Math.round(container.clientWidth || 0);
+  if (measuredWidth === 0) {
+    state.lastWidth = 0;
+    if (!state.observer) {
+      drawGrowthChart(container, payload, 520);
+    }
+    return;
+  }
+
+  state.lastWidth = measuredWidth;
+  drawGrowthChart(container, payload, measuredWidth);
+}
+
+export function disposeGrowthChart(container) {
+  if (!container) return;
+  const state = chartState.get(container);
+  if (state) {
+    if (state.observer) {
+      state.observer.disconnect();
+    }
+    chartState.delete(container);
+  }
+}
+
+function drawGrowthChart(container, payload, containerWidth) {
   container.innerHTML = "";
 
-  const width = Math.max(container.clientWidth || 520, 320);
+  const width = Math.max(containerWidth || 520, 320);
   const height = 216;
   const margin = { top: 16, right: 18, bottom: 30, left: 48 };
   const plotW = width - margin.left - margin.right;
@@ -148,6 +198,7 @@ export function renderGrowthChart(container, payload) {
   overlay.setAttribute("fill", "transparent");
   overlay.addEventListener("mousemove", (e) => {
     const rect = overlay.getBoundingClientRect();
+    if (rect.width <= 0) return;
     const relX = ((e.clientX - rect.left) / rect.width) * plotW;
     const approxN = Math.round(x.invert(relX));
     let nearest = primary.points[0];

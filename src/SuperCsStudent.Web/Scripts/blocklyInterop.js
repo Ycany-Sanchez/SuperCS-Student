@@ -26,6 +26,40 @@ class DesktopZelosRenderer extends Blockly.zelos.Renderer {
   }
 }
 
+function getGridColour(isDark) {
+  return isDark ? "rgba(255,255,255,0.10)" : "#d7dde6";
+}
+
+function applyGridColour(container, isDark) {
+  if (!container) return;
+  const colour = getGridColour(isDark);
+  const nodes = container.querySelectorAll(
+    'pattern[id*="blocklyGridPattern"] line, pattern[id*="blocklyGridPattern"] rect'
+  );
+  for (const el of nodes) {
+    if (el.tagName.toLowerCase() === "line") {
+      el.setAttribute("stroke", colour);
+    } else {
+      el.setAttribute("fill", colour);
+      if (el.hasAttribute("stroke")) {
+        el.setAttribute("stroke", colour);
+      }
+    }
+  }
+}
+
+function syncForStepField(block, deferRender = false) {
+  if (!block || block.type !== "daa_for") return;
+  const op = block.getFieldValue("STEP_OP");
+  const stepVal = block.getField("STEP_VAL");
+  if (!stepVal) return;
+  stepVal.setVisible(op !== "++" && op !== "--");
+  if (!deferRender && block.rendered && block.initialized) {
+    block.markDirty?.();
+    block.queueRender?.();
+  }
+}
+
 function defineThemes() {
   const lightTheme = Blockly.Theme.defineTheme("blueprintLight", {
     base: Blockly.Themes.Zelos,
@@ -313,6 +347,15 @@ function registerBlocksOnce() {
       tooltip: "Numeric or symbolic literal"
     }
   ]);
+
+  const forBlockDef = Blockly.Blocks.daa_for;
+  if (forBlockDef && typeof forBlockDef.init === "function") {
+    const origInit = forBlockDef.init;
+    forBlockDef.init = function (...args) {
+      origInit.apply(this, args);
+      syncForStepField(this, true);
+    };
+  }
 }
 
 const TOOLBOX = {
@@ -430,6 +473,7 @@ function serializeStmt(block) {
       };
     case "daa_for": {
       const v = block.getFieldValue("VAR") || "i";
+      const stepOp = block.getFieldValue("STEP_OP") || "++";
       return {
         kind: "for",
         id,
@@ -437,8 +481,8 @@ function serializeStmt(block) {
         startExpr: block.getFieldValue("START") || "1",
         comparator: block.getFieldValue("CMP") || "<=",
         boundExpr: block.getFieldValue("BOUND") || "n",
-        stepOp: block.getFieldValue("STEP_OP") || "++",
-        stepValue: block.getFieldValue("STEP_VAL") || "1",
+        stepOp,
+        stepValue: (stepOp === "++" || stepOp === "--") ? "1" : (block.getFieldValue("STEP_VAL") || "1"),
         body: serializeStatements(block.getInputTargetBlock("BODY"))
       };
     }
@@ -505,16 +549,16 @@ export function mountBlockly(container, dotNetRef, initialStateJson, isDark) {
   registerBlocksOnce();
 
   const themes = defineThemes();
-  if (workspaces.has(container)) {
-    workspaces.get(container).dispose();
-    workspaces.delete(container);
-  }
+  disposeBlockly(container);
 
+  const dark = Boolean(isDark) || document.documentElement.dataset.theme === "dark";
   const ws = Blockly.inject(container, {
     renderer: "desktop_zelos",
-    theme: isDark ? themes.darkTheme : themes.lightTheme,
+    theme: dark ? themes.darkTheme : themes.lightTheme,
     toolbox: TOOLBOX,
-    grid: { spacing: 24, length: 2, colour: isDark ? "#262629" : "#dce2e8", snap: true },
+    horizontalLayout: true,
+    toolboxPosition: "start",
+    grid: { spacing: 24, length: 2, colour: getGridColour(dark), snap: true },
     zoom: { controls: true, wheel: true, startScale: 0.78, maxScale: 1.6, minScale: 0.45 },
     trashcan: true,
     move: { scrollbars: true, drag: true, wheel: true }
@@ -546,6 +590,17 @@ export function mountBlockly(container, dotNetRef, initialStateJson, isDark) {
         blk.setFieldValue(v, "VAR_STEP");
       }
     }
+    if (event.type === Blockly.Events.BLOCK_CHANGE && event.name === "STEP_OP") {
+      syncForStepField(ws.getBlockById(event.blockId));
+    }
+    if (event.type === Blockly.Events.BLOCK_CREATE) {
+      const createdIds = Array.isArray(event.ids) && event.ids.length > 0
+        ? event.ids
+        : (event.blockId ? [event.blockId] : []);
+      for (const id of createdIds) {
+        syncForStepField(ws.getBlockById(id));
+      }
+    }
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       const ast = extractAst(container);
@@ -558,6 +613,27 @@ export function mountBlockly(container, dotNetRef, initialStateJson, isDark) {
   return extractAst(container);
 }
 
+export function fitWorkspace(container) {
+  const ws = workspaces.get(container);
+  if (!ws) return;
+  Blockly.svgResize(ws);
+  if (container.clientWidth === 0 || container.clientHeight === 0) return;
+  if (ws.getAllBlocks(false).length > 0) {
+    ws.zoomToFit();
+    const clamped = Math.max(0.65, Math.min(ws.scale, 0.92));
+    if (Number.isFinite(clamped) && Math.abs(ws.scale - clamped) > 0.005) {
+      ws.setScale(clamped);
+    }
+    ws.scrollCenter();
+  }
+}
+
+export function getWorkspaceState(container) {
+  const ws = workspaces.get(container);
+  if (!ws) return null;
+  return JSON.stringify(Blockly.serialization.workspaces.save(ws));
+}
+
 export function loadWorkspaceState(container, stateJson) {
   const ws = workspaces.get(container);
   if (!ws || !stateJson) return;
@@ -566,9 +642,23 @@ export function loadWorkspaceState(container, stateJson) {
     Blockly.Events.disable();
     ws.clear();
     Blockly.serialization.workspaces.load(parsed, ws);
+    for (const blk of ws.getAllBlocks(false)) {
+      if (blk.type === "daa_for") {
+        syncForStepField(blk, true);
+      }
+      blk.initSvg?.();
+      blk.markDirty?.();
+      blk.queueRender?.();
+    }
+    Blockly.renderManagement?.triggerQueuedRenders?.();
     Blockly.Events.enable();
     ws.getToolbox()?.clearSelection();
     ws.scrollCenter();
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => fitWorkspace(container));
+    } else {
+      fitWorkspace(container);
+    }
   } catch {
     Blockly.Events.enable();
   }
@@ -579,6 +669,10 @@ export function setBlocklyTheme(container, isDark) {
   if (!ws) return;
   const themes = defineThemes();
   ws.setTheme(isDark ? themes.darkTheme : themes.lightTheme);
+  if (ws.options?.gridOptions) {
+    ws.options.gridOptions.colour = getGridColour(isDark);
+  }
+  applyGridColour(container, isDark);
 }
 
 export function highlightBlock(container, blockId) {

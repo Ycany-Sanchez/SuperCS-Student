@@ -499,15 +499,84 @@ select.bp-input optgroup {
 .blocklyMainBackground {
   stroke: none !important;
 }
-.blocklyToolboxDiv {
+.blocklyToolboxDiv,
+.blocklyToolbox {
   background-color: var(--surface) !important;
-  border-right: 1px solid var(--border) !important;
   color: var(--text) !important;
   font-family: var(--font-sans) !important;
+}
+.blocklyToolboxDiv:not([layout="h"]),
+.blocklyToolbox:not([layout="h"]) {
+  border-right: 1px solid var(--border) !important;
+}
+.blocklyToolboxDiv[layout="h"],
+.blocklyToolbox[layout="h"] {
+  background-color: var(--surface) !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 6px 10px !important;
+}
+.blocklyToolboxDiv[layout="h"] .blocklyToolboxCategoryGroup,
+.blocklyToolbox[layout="h"] .blocklyToolboxCategoryGroup {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+.blocklyToolboxDiv[layout="h"] .blocklyToolboxCategoryContainer,
+.blocklyToolbox[layout="h"] .blocklyToolboxCategoryContainer {
+  margin: 0 !important;
+}
+.blocklyToolboxDiv[layout="h"] .blocklyTreeRow,
+.blocklyToolbox[layout="h"] .blocklyToolboxCategory {
+  height: 28px !important;
+  line-height: 28px !important;
+  margin: 0 !important;
+  padding: 0 11px !important;
+  border-radius: 999px !important;
+  border: 1px solid var(--border) !important;
+  background-color: var(--raised) !important;
+  color: var(--text) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  cursor: pointer !important;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease !important;
+}
+.blocklyToolboxDiv[layout="h"] .blocklyTreeRow:not(.blocklyTreeSelected):hover,
+.blocklyToolbox[layout="h"] .blocklyToolboxCategory:not(.blocklyToolboxSelected):hover {
+  background-color: var(--active) !important;
+  border-color: var(--control) !important;
+}
+.blocklyToolboxDiv[layout="h"] .blocklyTreeRow.blocklyTreeSelected,
+.blocklyToolbox[layout="h"] .blocklyToolboxCategory.blocklyToolboxSelected {
+  background-color: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+.blocklyToolboxDiv[layout="h"] .blocklyTreeRow.blocklyTreeSelected .blocklyTreeLabel,
+.blocklyToolbox[layout="h"] .blocklyToolboxCategory.blocklyToolboxSelected .blocklyToolboxCategoryLabel {
+  color: var(--accent) !important;
+  font-weight: 600 !important;
+}
+.blocklyToolboxDiv[layout="h"] .blocklyToolboxCategoryIcon,
+.blocklyToolbox[layout="h"] .blocklyToolboxCategoryIcon {
+  display: none !important;
+}
+.blocklyToolboxDiv[layout="h"] .blocklyTreeLabel,
+.blocklyToolbox[layout="h"] .blocklyToolboxCategoryLabel {
+  font-family: var(--font-sans) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: 0 !important;
+  color: inherit !important;
+  cursor: pointer !important;
 }
 .blocklyFlyoutBackground {
   fill: var(--surface) !important;
   fill-opacity: 0.97 !important;
+  stroke: var(--border) !important;
+  stroke-width: 1px !important;
 }
 .blocklyTreeRow {
   height: 32px !important;
@@ -530,6 +599,271 @@ select.bp-input optgroup {
 .blocklyWidgetDiv .blocklyHtmlInput {
   font-family: var(--font-mono) !important;
   font-size: 12px !important;
+}
+
+/* Runtime Analyzer Floating Cost Rules Pill, Tab Close & Preset Cards */
+.daa-cost-fab {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 10px 0 11px;
+  border-radius: 999px;
+  background-color: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--control);
+  box-shadow: var(--shadow-floating);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 120ms ease;
+}
+
+:root[data-theme="dark"] .daa-cost-fab {
+  background-color: var(--raised);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.daa-cost-fab:hover {
+  border-color: var(--accent);
+  background-color: var(--raised);
+}
+
+:root[data-theme="dark"] .daa-cost-fab:hover {
+  background-color: var(--active);
+  border-color: var(--accent);
+}
+
+.daa-cost-fab:active {
+  transform: translateY(0.5px);
+}
+
+.daa-cost-fab[data-active="true"] {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: var(--shadow-floating), 0 0 0 2px var(--accent-soft);
+}
+
+.daa-cost-fab-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background-color: var(--raised);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+:root[data-theme="dark"] .daa-cost-fab-badge {
+  background-color: var(--surface);
+}
+
+.daa-cost-fab[data-active="true"] .daa-cost-fab-badge {
+  background-color: var(--surface);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.daa-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.daa-tab-close:hover {
+  background-color: var(--active);
+  color: var(--text);
+}
+
+.daa-preset-card {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: var(--radius-card);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.daa-preset-card:hover {
+  border-color: var(--control);
+  background-color: var(--raised);
+}
+
+.daa-preset-card[data-active="true"] {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* Runtime Analyzer Zero-Overlap Annotated Code Grid & Flattened Step List */
+.daa-code-grid {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(96px, auto);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background-color: var(--surface);
+  overflow: hidden;
+}
+
+.daa-code-box-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 10px;
+  border-left: 2px solid var(--warning);
+  border-top: 1px solid color-mix(in srgb, var(--warning) 26%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--warning) 22%, var(--rule));
+  background-color: color-mix(in srgb, var(--pill-warning-bg) 55%, var(--surface));
+  font-size: 11px;
+}
+
+:root[data-theme="dark"] .daa-code-box-head {
+  background-color: color-mix(in srgb, var(--warning) 10%, var(--surface));
+}
+
+.daa-code-box-head:first-child {
+  border-top: none;
+}
+
+.daa-code-box-head .katex-host .katex {
+  font-size: 0.92em;
+}
+
+.daa-code-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(96px, auto);
+  grid-template-columns: subgrid;
+  align-items: stretch;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--rule);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.daa-code-row:last-child {
+  border-bottom: none;
+}
+
+.daa-code-row.daa-code-inbox {
+  border-left-color: var(--warning);
+  background-color: color-mix(in srgb, var(--warning) 5%, var(--surface));
+}
+
+:root[data-theme="dark"] .daa-code-row.daa-code-inbox {
+  background-color: color-mix(in srgb, var(--warning) 6%, var(--surface));
+}
+
+.daa-code-row[data-hovered="true"] {
+  background-color: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+
+.daa-code-ln {
+  padding: 6px 4px 6px 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+  color: var(--faint);
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.daa-code-cell {
+  min-width: 0;
+  padding: 6px 10px 6px 6px;
+  overflow-x: auto;
+}
+
+.daa-code-line {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.48;
+  white-space: pre;
+  color: var(--text);
+}
+
+.daa-code-ops {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.daa-cost-gutter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 10px;
+  border-left: 1px solid var(--rule);
+  background-color: var(--canvas-well);
+  text-align: right;
+  white-space: nowrap;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.daa-cost-gutter .katex-host .katex {
+  font-size: 0.92em;
+}
+
+.daa-code-row.daa-code-inbox .daa-cost-gutter {
+  background-color: color-mix(in srgb, var(--warning) 6%, var(--canvas-well));
+}
+
+.daa-code-row[data-hovered="true"] .daa-cost-gutter {
+  background-color: color-mix(in srgb, var(--accent-soft) 75%, var(--canvas-well));
+}
+
+.daa-step-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.daa-step-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--rule);
+  border-left: 2px solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.daa-step-item:last-child {
+  border-bottom: none;
+}
+
+.daa-step-item[data-hovered="true"] {
+  background-color: var(--accent-soft);
+  border-left-color: var(--accent);
 }
 
 /* PDA LIFO Stack Machine Vessel & Tape Cells */
