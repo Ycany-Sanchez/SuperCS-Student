@@ -1,0 +1,249 @@
+@namespace SuperCsStudent.Web.Components.Shared
+
+<div class="space-y-2.5">
+    <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+            <span class="text-xs font-semibold" style="color: var(--text);">@Title</span>
+            @if (IsNfa && (_doesNotActive || SpecLooksNegated))
+            {
+                <span class="bp-pill bp-pill-warning text-[11px]">Does not → DFA</span>
+            }
+        </div>
+        <button type="button"
+                class="bp-tester-clear"
+                title="Close"
+                aria-label="Close constraint editor"
+                @onclick="OnClose">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke-linecap="round" />
+            </svg>
+        </button>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+        @if (IsFa)
+        {
+            <button type="button"
+                    class="bp-does-not-pill"
+                    data-active="@(_doesNotActive ? "true" : "false")"
+                    aria-pressed="@(_doesNotActive ? "true" : "false")"
+                    title="Negate this rule (default is positive)"
+                    @onclick="ToggleDoesNot">
+                Does not
+            </button>
+        }
+
+        <input type="text"
+               class="bp-input !h-8 font-mono text-xs flex-1 min-w-[220px]"
+               placeholder="@Placeholder"
+               aria-label="@Title"
+               value="@SpecText"
+               @oninput="OnSpecInput"
+               @onkeydown="OnInputKeyDown" />
+
+        <input type="text"
+               class="bp-input !h-8 font-mono text-xs w-40"
+               placeholder="Σ (e.g. x,y,z)"
+               title="Custom alphabet symbols (leave blank to auto-detect)"
+               aria-label="Custom alphabet symbols"
+               value="@AlphabetText"
+               @oninput="OnAlphabetInput"
+               @onkeydown="OnInputKeyDown" />
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(HintText))
+    {
+        <div class="text-[11px]" style="color: var(--faint);">@HintText</div>
+    }
+
+    <div class="flex flex-wrap items-center justify-between gap-2.5 pt-0.5">
+        <div class="flex flex-wrap items-center gap-2">
+            <button type="button" class="bp-btn-primary !h-8 text-xs" @onclick="TriggerSubmitAsync">
+                @SubmitLabel
+            </button>
+
+            <input type="text"
+                   class="bp-input !h-8 text-xs w-40"
+                   placeholder="Name to save…"
+                   aria-label="Name for saved constraint"
+                   @bind="_saveName"
+                   @bind:event="oninput" />
+
+            <button type="button" class="bp-btn-secondary !h-8 text-xs" @onclick="TriggerSaveAsync">
+                @(_justSaved ? "Saved ✓" : "Save")
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(ActiveSavedId))
+            {
+                <button type="button"
+                        class="bp-btn-ghost !h-8 !px-2 text-xs"
+                        style="color: var(--negative);"
+                        title="Delete saved constraint"
+                        @onclick="TriggerDeleteSavedAsync">
+                    Delete
+                </button>
+            }
+        </div>
+
+        @if (ExtraFooter is not null)
+        {
+            <div class="flex flex-wrap items-center gap-2">
+                @ExtraFooter
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorText))
+    {
+        <div class="text-xs px-2.5 py-1.5 rounded-md" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink);">
+            @ErrorText
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Build custom constraint";
+    [Parameter] public string SubmitLabel { get; set; } = "Build";
+    [Parameter] public string Placeholder { get; set; } = string.Empty;
+    [Parameter] public string? HintText { get; set; }
+    [Parameter] public bool IsFa { get; set; }
+    [Parameter] public bool IsNfa { get; set; }
+    [Parameter] public string SpecText { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> SpecTextChanged { get; set; }
+    [Parameter] public string AlphabetText { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> AlphabetTextChanged { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? ActiveSavedId { get; set; }
+    [Parameter] public string? ActiveSavedName { get; set; }
+    [Parameter] public EventCallback OnSubmit { get; set; }
+    [Parameter] public EventCallback<string> OnSave { get; set; }
+    [Parameter] public EventCallback<string> OnDeleteSaved { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public RenderFragment? ExtraFooter { get; set; }
+
+    private string _saveName = string.Empty;
+    private string? _lastSyncedSavedId;
+    private bool _doesNotActive;
+    private bool _justSaved;
+
+    private bool SpecLooksNegated =>
+        !string.IsNullOrWhiteSpace(SpecText) &&
+        (SpecText.Contains("does not", StringComparison.OrdinalIgnoreCase) ||
+         SpecText.Contains("doesn't", StringComparison.OrdinalIgnoreCase) ||
+         System.Text.RegularExpressions.Regex.IsMatch(SpecText, @"\bNOT\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+
+    protected override void OnParametersSet()
+    {
+        if (!string.Equals(_lastSyncedSavedId, ActiveSavedId, StringComparison.Ordinal))
+        {
+            _lastSyncedSavedId = ActiveSavedId;
+            if (!string.IsNullOrWhiteSpace(ActiveSavedName))
+            {
+                _saveName = ActiveSavedName;
+            }
+        }
+    }
+
+    private Task OnSpecInput(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? string.Empty;
+        if (_doesNotActive && string.IsNullOrWhiteSpace(val)) _doesNotActive = false;
+        return SpecTextChanged.InvokeAsync(val);
+    }
+
+    private Task OnAlphabetInput(ChangeEventArgs e) =>
+        AlphabetTextChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+
+    private async Task ToggleDoesNot()
+    {
+        _doesNotActive = !_doesNotActive;
+        var current = (SpecText ?? string.Empty).Trim();
+        if (current.Length == 0) return;
+
+        string next;
+        if (_doesNotActive)
+        {
+            next = ApplyDoesNotPrefix(current);
+        }
+        else
+        {
+            next = StripDoesNotPrefix(current);
+        }
+        await SpecTextChanged.InvokeAsync(next);
+    }
+
+    private async Task OnInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await TriggerSubmitAsync();
+        }
+    }
+
+    private async Task TriggerSubmitAsync()
+    {
+        if (IsFa && _doesNotActive && !SpecLooksNegated && !string.IsNullOrWhiteSpace(SpecText))
+        {
+            await SpecTextChanged.InvokeAsync(ApplyDoesNotPrefix(SpecText.Trim()));
+        }
+        await OnSubmit.InvokeAsync();
+    }
+
+    private async Task TriggerSaveAsync()
+    {
+        if (IsFa && _doesNotActive && !SpecLooksNegated && !string.IsNullOrWhiteSpace(SpecText))
+        {
+            await SpecTextChanged.InvokeAsync(ApplyDoesNotPrefix(SpecText.Trim()));
+        }
+
+        var clean = (SpecText ?? string.Empty).Trim();
+        var name = string.IsNullOrWhiteSpace(_saveName)
+            ? (clean.Length == 0 ? "Custom constraint" : (clean.Length <= 34 ? clean : clean[..31].TrimEnd() + "…"))
+            : _saveName.Trim();
+        _saveName = name;
+        await OnSave.InvokeAsync(name);
+
+        _justSaved = true;
+        StateHasChanged();
+        await Task.Delay(1500);
+        _justSaved = false;
+    }
+
+    private async Task TriggerDeleteSavedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ActiveSavedId)) return;
+        await OnDeleteSaved.InvokeAsync(ActiveSavedId);
+        _saveName = string.Empty;
+    }
+
+    private static string ApplyDoesNotPrefix(string spec)
+    {
+        if (spec.StartsWith("starts with ", StringComparison.OrdinalIgnoreCase))
+            return "does not start with " + spec[12..];
+        if (spec.StartsWith("ends with ", StringComparison.OrdinalIgnoreCase))
+            return "does not end with " + spec[10..];
+        if (spec.StartsWith("contains ", StringComparison.OrdinalIgnoreCase))
+            return "does not contain " + spec[9..];
+        if (spec.StartsWith("equals ", StringComparison.OrdinalIgnoreCase))
+            return "does not equal " + spec[7..];
+        if (spec.StartsWith("does not ", StringComparison.OrdinalIgnoreCase) ||
+            spec.StartsWith("NOT (", StringComparison.OrdinalIgnoreCase))
+            return spec;
+        return $"NOT ({spec})";
+    }
+
+    private static string StripDoesNotPrefix(string spec)
+    {
+        if (spec.StartsWith("does not start with ", StringComparison.OrdinalIgnoreCase))
+            return "starts with " + spec[20..];
+        if (spec.StartsWith("does not end with ", StringComparison.OrdinalIgnoreCase))
+            return "ends with " + spec[18..];
+        if (spec.StartsWith("does not contain ", StringComparison.OrdinalIgnoreCase))
+            return "contains " + spec[17..];
+        if (spec.StartsWith("does not equal ", StringComparison.OrdinalIgnoreCase))
+            return "equals " + spec[15..];
+        if (spec.StartsWith("NOT (", StringComparison.OrdinalIgnoreCase) && spec.EndsWith(')'))
+            return spec[5..^1].Trim();
+        return spec;
+    }
+}

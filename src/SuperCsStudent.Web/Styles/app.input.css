@@ -615,16 +615,16 @@ select.bp-input optgroup {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 164px;
-  flex: 0 1 208px;
+  min-width: 200px;
+  flex: 0 1 268px;
 }
 
 .bp-cmd-tester {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1 1 235px;
-  min-width: 205px;
+  flex: 1 1 260px;
+  min-width: 220px;
 }
 
 .bp-cmd-actions {
@@ -1012,75 +1012,8 @@ select.bp-select-sample option {
   border: 1.5px solid color-mix(in srgb, var(--warning) 52%, transparent);
 }
 
-/* Collapsible Custom Rule Toggle & Drawer */
-.bp-btn-toggle {
-  height: 36px;
-  padding: 0 10px;
-  border-radius: var(--radius-control);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-  background-color: var(--surface);
-  border: 1.5px solid var(--control);
-  box-shadow: var(--shadow-card);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
-}
-
-:root[data-theme="dark"] .bp-btn-toggle {
-  background-color: var(--raised);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.bp-btn-toggle:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-:root[data-theme="dark"] .bp-btn-toggle:hover:not(:disabled) {
-  background-color: var(--active);
-  border-color: var(--accent);
-}
-
-.bp-btn-toggle[data-open="true"],
-.bp-btn-toggle[aria-expanded="true"],
-:root[data-theme="dark"] .bp-btn-toggle[data-open="true"],
-:root[data-theme="dark"] .bp-btn-toggle[aria-expanded="true"],
-.bp-btn-toggle[data-open="true"]:hover:not(:disabled),
-.bp-btn-toggle[aria-expanded="true"]:hover:not(:disabled),
-:root[data-theme="dark"] .bp-btn-toggle[data-open="true"]:hover:not(:disabled),
-:root[data-theme="dark"] .bp-btn-toggle[aria-expanded="true"]:hover:not(:disabled) {
-  background-color: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.bp-btn-toggle:focus-visible,
-:root[data-theme="dark"] .bp-btn-toggle:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2.5px var(--accent-soft);
-}
-
-.bp-btn-toggle:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.bp-custom-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background-color: var(--accent);
-  flex-shrink: 0;
-}
-
 .bp-rule-drawer {
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-top: 1px solid var(--border);
   background-color: var(--surface);
   display: flex;
@@ -1092,117 +1025,39 @@ select.bp-select-sample option {
   background-color: rgba(255, 255, 255, 0.02);
 }
 
-/* Visual Constraint Builder Primitives */
-.bp-builder-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+/* Optional Negation Toggle Pill (Default is positive / Must) */
+.bp-does-not-pill {
+  height: 32px;
+  padding: 0 11px;
   border-radius: var(--radius-control);
-  background-color: var(--canvas-well);
-  border: 1px solid var(--border);
-}
-
-.bp-builder-op {
-  height: 28px;
-  min-width: 44px;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent);
-  background-color: var(--accent-soft);
-  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background-color 140ms ease, border-color 140ms ease;
-}
-
-.bp-builder-op:hover {
-  border-color: var(--accent);
-}
-
-.bp-polarity-seg {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-  border-radius: 6px;
-  background-color: var(--raised);
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.bp-polarity-btn {
-  height: 24px;
-  padding: 0 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  background: transparent;
-  border: none;
+  background-color: var(--raised);
+  border: 1px solid var(--control);
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 140ms ease, color 140ms ease;
+  flex-shrink: 0;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
-.bp-polarity-btn[data-active="true"][data-neg="false"] {
-  background-color: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-card);
-}
-
-:root[data-theme="dark"] .bp-polarity-btn[data-active="true"][data-neg="false"] {
-  background-color: var(--active);
+.bp-does-not-pill:hover {
+  border-color: var(--warning);
   color: var(--text);
 }
 
-.bp-polarity-btn[data-active="true"][data-neg="true"] {
+.bp-does-not-pill[data-active="true"] {
   background-color: var(--pill-warning-bg);
   color: var(--pill-warning-ink);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 55%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 60%, transparent);
 }
 
-.bp-builder-preview {
-  min-height: 28px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--accent);
+/* Compact Formal Definition Header Card at Top of Right Inspector */
+.bp-formal-top {
+  padding: 10px 12px;
+  border-radius: var(--radius-card);
   background-color: var(--canvas-well);
   border: 1px solid var(--border);
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  word-break: break-word;
-}
-
-.bp-alpha-chip {
-  height: 24px;
-  padding: 0 8px;
-  border-radius: 5px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  background-color: var(--raised);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
-}
-
-.bp-alpha-chip:hover {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.bp-alpha-chip[data-active="true"] {
-  background-color: var(--accent-soft);
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
 }
 
 /* CFG Main Stage Leftmost Derivation Stepper */
