@@ -55,6 +55,14 @@
   --edge-c6: #4d7c0f;
   --edge-c7: #0d9488;
 
+  /* Inner-loop nested scope-rail palette (light mode — distinct from cyan --accent) */
+  --loop-c0: #b45309;
+  --loop-c1: #7c3aed;
+  --loop-c2: #047857;
+  --loop-c3: #be123c;
+  --loop-c4: #c2410c;
+  --loop-c5: #4338ca;
+
   --shadow-sheet: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.03);
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-floating: 0 4px 16px rgba(15, 23, 42, 0.09), 0 1px 3px rgba(15, 23, 42, 0.06);
@@ -119,6 +127,14 @@
   --edge-c5: #fb923c;
   --edge-c6: #a3e635;
   --edge-c7: #2dd4bf;
+
+  /* Inner-loop nested scope-rail palette (dark mode — distinct from cyan --accent) */
+  --loop-c0: #fbbf24;
+  --loop-c1: #c084fc;
+  --loop-c2: #34d399;
+  --loop-c3: #fb7185;
+  --loop-c4: #fb923c;
+  --loop-c5: #818cf8;
 
   --shadow-sheet: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 28px rgba(0, 0, 0, 0.45);
   --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.035);
@@ -769,7 +785,7 @@ select.bp-input optgroup {
 /* Runtime Analyzer Zero-Overlap Annotated Code Grid & Flattened Step List */
 .daa-code-grid {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) minmax(96px, auto);
+  grid-template-columns: minmax(30px, auto) minmax(0, 1fr) minmax(96px, auto);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background-color: var(--surface);
@@ -783,15 +799,14 @@ select.bp-input optgroup {
   justify-content: space-between;
   gap: 10px;
   padding: 5px 10px;
-  border-left: 2px solid var(--warning);
-  border-top: 1px solid color-mix(in srgb, var(--warning) 26%, var(--border));
-  border-bottom: 1px solid color-mix(in srgb, var(--warning) 22%, var(--rule));
-  background-color: color-mix(in srgb, var(--pill-warning-bg) 55%, var(--surface));
+  border-top: 1px solid color-mix(in srgb, var(--loop-accent, var(--warning)) 28%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--loop-accent, var(--warning)) 24%, var(--rule));
+  background-color: color-mix(in srgb, var(--loop-accent, var(--warning)) 11%, var(--surface));
   font-size: 11px;
 }
 
 :root[data-theme="dark"] .daa-code-box-head {
-  background-color: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  background-color: color-mix(in srgb, var(--loop-accent, var(--warning)) 12%, var(--surface));
 }
 
 .daa-code-box-head:first-child {
@@ -805,12 +820,11 @@ select.bp-input optgroup {
 .daa-code-row {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) minmax(96px, auto);
+  grid-template-columns: minmax(30px, auto) minmax(0, 1fr) minmax(96px, auto);
   grid-template-columns: subgrid;
   align-items: stretch;
-  border-left: 2px solid transparent;
   border-bottom: 1px solid var(--rule);
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color 120ms ease;
 }
 
 .daa-code-row:last-child {
@@ -818,21 +832,19 @@ select.bp-input optgroup {
 }
 
 .daa-code-row.daa-code-inbox {
-  border-left-color: var(--warning);
-  background-color: color-mix(in srgb, var(--warning) 5%, var(--surface));
+  background-color: color-mix(in srgb, var(--loop-accent, var(--warning)) 5%, var(--surface));
 }
 
 :root[data-theme="dark"] .daa-code-row.daa-code-inbox {
-  background-color: color-mix(in srgb, var(--warning) 6%, var(--surface));
+  background-color: color-mix(in srgb, var(--loop-accent, var(--warning)) 7%, var(--surface));
 }
 
 .daa-code-row[data-hovered="true"] {
   background-color: var(--accent-soft);
-  border-left-color: var(--accent);
 }
 
 .daa-code-ln {
-  padding: 6px 4px 6px 2px;
+  padding: 6px 5px 6px 6px;
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
@@ -884,7 +896,7 @@ select.bp-input optgroup {
 }
 
 .daa-code-row.daa-code-inbox .daa-cost-gutter {
-  background-color: color-mix(in srgb, var(--warning) 6%, var(--canvas-well));
+  background-color: color-mix(in srgb, var(--loop-accent, var(--warning)) 7%, var(--canvas-well));
 }
 
 .daa-code-row[data-hovered="true"] .daa-cost-gutter {

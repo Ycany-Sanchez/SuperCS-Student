@@ -179,6 +179,70 @@ public sealed class IterativeAnalyzerGoldenTests
     }
 
     [Fact]
+    public void NestedTripleLoop_PopulatesOuterToInnerBoxGroupChainAndClosingBraceOwnership()
+    {
+        var result = IterativeAnalyzer.Analyze(AlgorithmPresets.Get("nested-3").Ast);
+        var lines = result.WorstCase.AnnotatedLines;
+
+        var outerHeader = lines.Single(l => l.CodeText.StartsWith("for (i ", StringComparison.Ordinal));
+        var midHeader = lines.Single(l => l.CodeText.StartsWith("for (j ", StringComparison.Ordinal));
+        var innerHeader = lines.Single(l => l.CodeText.StartsWith("for (k ", StringComparison.Ordinal));
+        var innerBody = lines.Single(l => l.CodeText.Contains("sum = sum + k", StringComparison.Ordinal));
+
+        Assert.Null(outerHeader.BoxGroupChain);
+        Assert.NotNull(midHeader.BoxGroupId);
+        Assert.NotNull(innerHeader.BoxGroupId);
+        Assert.NotEqual(midHeader.BoxGroupId, innerHeader.BoxGroupId);
+
+        Assert.Equal(new[] { midHeader.BoxGroupId! }, midHeader.BoxGroupChain);
+        Assert.Equal(new[] { midHeader.BoxGroupId!, innerHeader.BoxGroupId! }, innerHeader.BoxGroupChain);
+        Assert.Equal(new[] { midHeader.BoxGroupId!, innerHeader.BoxGroupId! }, innerBody.BoxGroupChain);
+
+        // Verify closing braces drop the inner rail immediately when exiting the inner loop (3 loop braces + function brace)
+        var closingBraces = lines.Where(l => l.CodeText.Trim() == "}").ToList();
+        Assert.Equal(4, closingBraces.Count);
+        Assert.Equal(new[] { midHeader.BoxGroupId!, innerHeader.BoxGroupId! }, closingBraces[0].BoxGroupChain);
+        Assert.Equal(new[] { midHeader.BoxGroupId! }, closingBraces[1].BoxGroupChain);
+        Assert.Null(closingBraces[2].BoxGroupChain);
+        Assert.Null(closingBraces[3].BoxGroupChain);
+    }
+
+    [Fact]
+    public void SiblingInnerLoops_ReceiveDistinctBoxGroupIdsAndSingleElementChains()
+    {
+        var fn = new AlgorithmFunction(
+            "siblingLoops",
+            new[] { "n" },
+            new AlgorithmStatement[]
+            {
+                new ForStatement("i", "1", "<=", "n", "++", "1", new AlgorithmStatement[]
+                {
+                    new ForStatement("j", "1", "<=", "i", "++", "1", new AlgorithmStatement[]
+                    {
+                        new UnaryStatement("a", "++", "s_a")
+                    }, "loop_j"),
+                    new ForStatement("k", "1", "<=", "n", "++", "1", new AlgorithmStatement[]
+                    {
+                        new UnaryStatement("b", "++", "s_b")
+                    }, "loop_k")
+                }, "loop_i")
+            });
+
+        var result = IterativeAnalyzer.Analyze(fn);
+        var lines = result.WorstCase.AnnotatedLines;
+
+        Assert.Equal(2, result.WorstCase.InnerBoxes.Count);
+        var jHeader = lines.Single(l => l.CodeText.StartsWith("for (j ", StringComparison.Ordinal));
+        var kHeader = lines.Single(l => l.CodeText.StartsWith("for (k ", StringComparison.Ordinal));
+
+        Assert.NotNull(jHeader.BoxGroupId);
+        Assert.NotNull(kHeader.BoxGroupId);
+        Assert.NotEqual(jHeader.BoxGroupId, kHeader.BoxGroupId);
+        Assert.Equal(new[] { jHeader.BoxGroupId! }, jHeader.BoxGroupChain);
+        Assert.Equal(new[] { kHeader.BoxGroupId! }, kHeader.BoxGroupChain);
+    }
+
+    [Fact]
     public void BlocklyInteropJsonContract_DeserializesAndPreservesBlockIds()
     {
         // Exact JSON shape emitted by blocklyInterop.js extractAst() (including out-of-order discriminator test)

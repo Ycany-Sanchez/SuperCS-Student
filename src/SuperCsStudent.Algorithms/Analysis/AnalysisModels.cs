@@ -23,7 +23,8 @@ public sealed record AnnotatedCodeLine(
     IReadOnlyList<InlineOpBadge> InlineBadges,
     string LineCostLatex,
     string? BoxGroupId = null,
-    string? BoxHeaderLabel = null);
+    string? BoxHeaderLabel = null,
+    IReadOnlyList<string>? BoxGroupChain = null);
 
 /// <summary>
 /// Summary of a nested inner-loop box (e.g. T_in(i) = 4i + 2, T_in2(j) = 4j + 2).

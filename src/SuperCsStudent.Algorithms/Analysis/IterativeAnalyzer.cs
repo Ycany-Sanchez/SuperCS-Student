@@ -400,6 +400,7 @@ public static class IterativeAnalyzer
         if (isInnerLoop)
         {
             myBoxId = ctx.NextBoxId();
+            ctx.ActiveBoxChain.Add(myBoxId);
         }
 
         // Format header text
@@ -496,6 +497,10 @@ public static class IterativeAnalyzer
         ctx.LoopDepth--;
 
         ctx.AddLine(null, indent, "}", Array.Empty<InlineOpBadge>(), "0", myBoxId);
+        if (isInnerLoop && ctx.ActiveBoxChain.Count > 0)
+        {
+            ctx.ActiveBoxChain.RemoveAt(ctx.ActiveBoxChain.Count - 1);
+        }
 
         // Update header line with exact total cost and BoxHeaderLabel for nested inner loops
         string? boxHeaderLabel = null;
@@ -950,6 +955,7 @@ public static class IterativeAnalyzer
         public bool IsWorstCase { get; }
         public int LoopDepth { get; set; }
         public Stack<string> LoopIterators { get; } = new();
+        public List<string> ActiveBoxChain { get; } = new();
         public List<DerivationStep> Steps { get; } = new();
         public List<AnnotatedCodeLine> Lines { get; } = new();
         public List<InnerLoopBox> InnerBoxes { get; } = new();
@@ -979,7 +985,8 @@ public static class IterativeAnalyzer
                 InlineBadges: badges,
                 LineCostLatex: lineCostLatex,
                 BoxGroupId: boxGroupId,
-                BoxHeaderLabel: boxHeaderLabel));
+                BoxHeaderLabel: boxHeaderLabel,
+                BoxGroupChain: ActiveBoxChain.Count > 0 ? ActiveBoxChain.ToArray() : null));
         }
     }
 }

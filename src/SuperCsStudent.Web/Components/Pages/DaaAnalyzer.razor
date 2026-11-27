@@ -287,23 +287,38 @@
 
                             @if (ActiveCase is not null && ActiveCase.AnnotatedLines.Count > 0)
                             {
-                                <div class="daa-code-grid">
+                                var loopColors = BuildLoopColorMap(ActiveCase);
+                                var maxRailDepth = ActiveCase.AnnotatedLines.Max(l => GetLineChain(l).Count);
+                                var lnColWidth = Math.Max(30, maxRailDepth * 6 + 24);
+                                <div class="daa-code-grid" style="grid-template-columns: @(lnColWidth)px minmax(0, 1fr) minmax(96px, auto);">
                                     @foreach (var line in ActiveCase.AnnotatedLines)
                                     {
                                         var isHovered = !string.IsNullOrEmpty(_hoveredBlockId) && _hoveredBlockId == line.BlockId;
-                                        var inBox = !string.IsNullOrEmpty(line.BoxGroupId);
+                                        var chain = GetLineChain(line);
+                                        var inBox = chain.Count > 0;
+                                        var loopVar = inBox ? LoopColorVar(loopColors, chain[^1]) : null;
+                                        var railShadow = inBox ? BuildStackedRailShadow(chain, loopColors) : null;
+                                        var rowStyle = inBox
+                                            ? $"--loop-accent: {loopVar}; box-shadow: {railShadow};"
+                                            : null;
 
                                         @if (!string.IsNullOrEmpty(line.BoxHeaderLabel))
                                         {
                                             var boxInfo = !string.IsNullOrEmpty(line.BoxGroupId)
                                                 ? ActiveCase.InnerBoxes.FirstOrDefault(b => b.BoxGroupId == line.BoxGroupId)
                                                 : null;
+                                            var headColor = !string.IsNullOrEmpty(line.BoxGroupId)
+                                                ? LoopColorVar(loopColors, line.BoxGroupId)
+                                                : "var(--warning)";
+                                            var headPadLeft = chain.Count > 0 ? chain.Count * 6 + 8 : 10;
+                                            var headStyle = $"--loop-accent: {headColor}; padding-left: {headPadLeft}px;{(railShadow is not null ? $" box-shadow: {railShadow};" : "")}";
                                             <div class="daa-code-box-head"
+                                                 style="@headStyle"
                                                  @onmouseenter="() => OnHoverBlock(line.BlockId)"
                                                  @onmouseleave="() => OnHoverBlock(null)">
                                                 @if (boxInfo is not null)
                                                 {
-                                                    <span class="font-mono font-semibold" style="color: var(--warning);">@boxInfo.Label</span>
+                                                    <span class="font-mono font-semibold" style="color: @headColor;">@boxInfo.Label</span>
                                                     <span class="tnum overflow-x-auto" style="color: var(--text);">
                                                         <MathFormula Latex="@boxInfo.Latex" />
                                                     </span>
@@ -313,22 +328,23 @@
                                                     var eqIdx = line.BoxHeaderLabel.IndexOf(" = ", StringComparison.Ordinal);
                                                     if (eqIdx > 0)
                                                     {
-                                                        <span class="font-mono font-semibold" style="color: var(--warning);">@(line.BoxHeaderLabel.Substring(0, eqIdx))</span>
+                                                        <span class="font-mono font-semibold" style="color: @headColor;">@(line.BoxHeaderLabel.Substring(0, eqIdx))</span>
                                                         <span class="font-mono tnum" style="color: var(--text);">@(line.BoxHeaderLabel.Substring(eqIdx + 3))</span>
                                                     }
                                                     else
                                                     {
-                                                        <span class="font-mono font-semibold" style="color: var(--warning);">@line.BoxHeaderLabel</span>
+                                                        <span class="font-mono font-semibold" style="color: @headColor;">@line.BoxHeaderLabel</span>
                                                     }
                                                 }
                                             </div>
                                         }
 
                                         <div class="daa-code-row @(inBox ? "daa-code-inbox" : "")"
+                                             style="@rowStyle"
                                              data-hovered="@(isHovered ? "true" : "false")"
                                              @onmouseenter="() => OnHoverBlock(line.BlockId)"
                                              @onmouseleave="() => OnHoverBlock(null)">
-                                            <span class="daa-code-ln">@line.LineNumber</span>
+                                            <span class="daa-code-ln" style="@(inBox ? $"padding-left: {chain.Count * 6 + 4}px;" : null)">@line.LineNumber</span>
                                             <div class="daa-code-cell">
                                                 <div class="daa-code-line" style="padding-left: @(line.IndentLevel * 12)px;">@line.CodeText</div>
                                                 @if (_showInlineBadges && line.InlineBadges.Count > 0)
@@ -355,19 +371,23 @@
                         }
                         else if (_activeAnalysisTab == "derivation" && _analysis is not null)
                         {
+                            var derivLoopColors = ActiveCase is not null ? BuildLoopColorMap(ActiveCase) : new Dictionary<string, int>(StringComparer.Ordinal);
+                            var derivBlockColors = ActiveCase is not null ? BuildBlockLoopColorMap(ActiveCase, derivLoopColors) : new Dictionary<string, int>(StringComparer.Ordinal);
+
                             @if (ActiveCase is not null && ActiveCase.InnerBoxes.Count > 0)
                             {
                                 <div class="space-y-1.5">
                                     <div class="text-xs font-semibold">Inner Loop Boxes</div>
                                     <div class="bp-card overflow-hidden">
-                                        @foreach (var box in ActiveCase.InnerBoxes)
+                                        @foreach (var box in ActiveCase.InnerBoxes.OrderBy(b => derivLoopColors.GetValueOrDefault(b.BoxGroupId, 99)))
                                         {
                                             var boxHovered = !string.IsNullOrEmpty(box.BlockId) && _hoveredBlockId == box.BlockId;
+                                            var boxColor = LoopColorVar(derivLoopColors, box.BoxGroupId);
                                             <div class="px-3 py-2 flex items-center justify-between gap-2 cursor-pointer transition-colors"
-                                                 style="border-bottom: 1px solid var(--rule); border-left: 2px solid var(--warning); @(boxHovered ? "background: var(--accent-soft);" : "background: var(--canvas-well);")"
+                                                 style="border-bottom: 1px solid var(--rule); border-left: 3px solid @boxColor; @(boxHovered ? "background: var(--accent-soft);" : $"background: color-mix(in srgb, {boxColor} 7%, var(--canvas-well));")"
                                                  @onmouseenter="() => OnHoverBlock(box.BlockId)"
                                                  @onmouseleave="() => OnHoverBlock(null)">
-                                                <span class="font-mono text-xs font-medium" style="color: var(--warning);">@box.Label</span>
+                                                <span class="font-mono text-xs font-semibold" style="color: @boxColor;">@box.Label</span>
                                                 <div class="overflow-x-auto text-xs"><MathFormula Latex="@box.Latex" /></div>
                                             </div>
                                         }
@@ -393,12 +413,16 @@
                                                 {
                                                     var step = ActiveCase.DerivationSteps[i];
                                                     var stepHovered = !string.IsNullOrEmpty(step.BlockId) && step.BlockId == _hoveredBlockId;
+                                                    var stepColorIdx = 0;
+                                                    var hasLoopColor = !string.IsNullOrEmpty(step.BlockId) && derivBlockColors.TryGetValue(step.BlockId, out stepColorIdx);
+                                                    var stepAccent = hasLoopColor ? $"var(--loop-c{stepColorIdx % LoopPaletteSize})" : null;
                                                     <li class="daa-step-item"
+                                                        style="@(hasLoopColor ? $"border-left: 3px solid {stepAccent};" : null)"
                                                         data-hovered="@(stepHovered ? "true" : "false")"
                                                         @onmouseenter="() => OnHoverBlock(step.BlockId)"
                                                         @onmouseleave="() => OnHoverBlock(null)">
                                                         <div class="flex items-center justify-between gap-2">
-                                                            <span class="text-[11px] font-medium" style="color: var(--muted);">@step.Label</span>
+                                                            <span class="text-[11px] font-medium" style="color: @(hasLoopColor ? stepAccent : "var(--muted)");">@step.Label</span>
                                                             <span class="text-[10.5px] font-mono tnum" style="color: var(--faint);">@(i + 1)</span>
                                                         </div>
                                                         <div class="overflow-x-auto text-sm">
@@ -1250,6 +1274,76 @@
             </div>
         </div>
     </div>;
+
+    private const int LoopPaletteSize = 6;
+
+    private static IReadOnlyList<string> GetLineChain(AnnotatedCodeLine line)
+    {
+        if (line.BoxGroupChain is { Count: > 0 }) return line.BoxGroupChain;
+        if (!string.IsNullOrEmpty(line.BoxGroupId)) return new[] { line.BoxGroupId };
+        return Array.Empty<string>();
+    }
+
+    private static Dictionary<string, int> BuildLoopColorMap(CaseAnalysis analysis)
+    {
+        var map = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var line in analysis.AnnotatedLines)
+        {
+            foreach (var boxId in GetLineChain(line))
+            {
+                if (!map.ContainsKey(boxId))
+                {
+                    map[boxId] = map.Count;
+                }
+            }
+        }
+        foreach (var box in analysis.InnerBoxes)
+        {
+            if (!map.ContainsKey(box.BoxGroupId))
+            {
+                map[box.BoxGroupId] = map.Count;
+            }
+        }
+        return map;
+    }
+
+    private static Dictionary<string, int> BuildBlockLoopColorMap(
+        CaseAnalysis analysis,
+        Dictionary<string, int> loopColors)
+    {
+        var map = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var box in analysis.InnerBoxes)
+        {
+            if (!string.IsNullOrEmpty(box.BlockId) && loopColors.TryGetValue(box.BoxGroupId, out var idx))
+            {
+                map[box.BlockId] = idx;
+            }
+        }
+        return map;
+    }
+
+    private static string LoopColorVar(Dictionary<string, int> loopColors, string boxGroupId)
+    {
+        var idx = loopColors.TryGetValue(boxGroupId, out var found) ? found : 0;
+        return $"var(--loop-c{idx % LoopPaletteSize})";
+    }
+
+    private static string BuildStackedRailShadow(
+        IReadOnlyList<string> chain,
+        Dictionary<string, int> loopColors)
+    {
+        var layers = new List<string>(chain.Count * 2);
+        for (var i = 0; i < chain.Count; i++)
+        {
+            var railEdge = i * 6 + 3;
+            layers.Add($"inset {railEdge}px 0 0 {LoopColorVar(loopColors, chain[i])}");
+            if (i < chain.Count - 1)
+            {
+                layers.Add($"inset {railEdge + 3}px 0 0 var(--surface)");
+            }
+        }
+        return string.Join(", ", layers);
+    }
 
     private async void OnAppStateChanged()
     {
