@@ -257,4 +257,108 @@ public class FiniteAutomataTests
         Assert.Contains(trace.Steps, s => s.State.ActiveStates.Any(st => st.Contains("a·ba")));
         Assert.Contains(trace.Steps, s => s.State.ActiveStates.Any(st => st.Contains("ab·a")));
     }
+
+    [Fact]
+    public void ExtendedRegularConstraints_CompileExactDfaCompactNfaAndDoesNotNegation()
+    {
+        // 1. 3rd from right is 1 -> 4-state compact NFA vs 8-state Minimal DFA
+        var kthRightNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("3rd from right is 1", new[] { '0', '1' });
+        var kthRightDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("3rd from right is 1", new[] { '0', '1' });
+        Assert.False(kthRightNfa.RequiredDeterminization);
+        Assert.Equal(4, kthRightNfa.Nfa.States.Count);
+        Assert.Equal(8, kthRightDfa.States.Count);
+
+        // Exhaustive binary check up to length 6
+        var binQueue = new Queue<string>();
+        binQueue.Enqueue("");
+        while (binQueue.Count > 0)
+        {
+            var w = binQueue.Dequeue();
+            var expected = w.Length >= 3 && w[^3] == '1';
+            Assert.Equal(expected, kthRightDfa.Accepts(w));
+            Assert.Equal(expected, kthRightNfa.Nfa.Accepts(w));
+            if (w.Length < 6)
+            {
+                binQueue.Enqueue(w + "0");
+                binQueue.Enqueue(w + "1");
+            }
+        }
+
+        // 2. 2nd symbol is x over {x, y, z} -> 3-state compact NFA (zero dead trap)
+        var kthLeftNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("2nd symbol is x", new[] { 'x', 'y', 'z' });
+        var kthLeftDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("2nd symbol is x", new[] { 'x', 'y', 'z' });
+        Assert.False(kthLeftNfa.RequiredDeterminization);
+        Assert.Equal(3, kthLeftNfa.Nfa.States.Count);
+        Assert.True(kthLeftDfa.Accepts("yxz"));
+        Assert.True(kthLeftNfa.Nfa.Accepts("yxz"));
+        Assert.False(kthLeftDfa.Accepts("xyz"));
+        Assert.False(kthLeftNfa.Nfa.Accepts("xyz"));
+        Assert.False(kthLeftDfa.Accepts("x"));
+
+        // 3. Modulo, strict length/counts, every X followed by Y, same/different endpoints, equals, and does-not forms
+        var modCount = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.Compile("#a mod 3 = 1", SuperCsStudent.Automata.Synthesis.LanguageSpecMode.Auto);
+        var divCount = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.Compile("#a divisible by 3", SuperCsStudent.Automata.Synthesis.LanguageSpecMode.Auto);
+        var lenMod = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("length mod 3 = 1");
+        var lenStrict = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("length > 2 AND length < 5");
+        var countStrict = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("more than 1 a AND fewer than 2 b");
+        var everyAbNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("every a is followed by b");
+        var everyAbDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("every a is followed by b");
+        var noConsecNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("no consecutive a");
+        var noConsecDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("no consecutive a");
+        var sameEndsNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("starts and ends with same symbol");
+        var sameEndsDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("starts and ends with same symbol");
+        var diffEndsNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("starts and ends with different symbol");
+        var diffEndsDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("starts and ends with different symbol");
+        var equalsNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("equals aba");
+        var doesNotEqualNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("does not equal aba");
+        var doesNotHaveNfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToNfa("does not have 2nd symbol is a");
+        var compoundDfa = SuperCsStudent.Automata.Synthesis.LanguageSpecCompiler.CompileConstraintToDfa("starts with ab AND does not contain aba AND even b");
+
+        Assert.False(everyAbNfa.RequiredDeterminization);
+        Assert.Single(everyAbNfa.Nfa.States);
+        Assert.True(noConsecNfa.RequiredDeterminization);
+        Assert.True(doesNotEqualNfa.RequiredDeterminization);
+        Assert.True(doesNotHaveNfa.RequiredDeterminization);
+        Assert.False(sameEndsNfa.RequiredDeterminization);
+        Assert.False(diffEndsNfa.RequiredDeterminization);
+        Assert.Equal(2, equalsNfa.Nfa.States.Count);
+
+        var abQueue = new Queue<string>();
+        abQueue.Enqueue("");
+        while (abQueue.Count > 0)
+        {
+            var w = abQueue.Dequeue();
+            var countA = w.Count(c => c == 'a');
+            var countB = w.Count(c => c == 'b');
+            var expectedEveryAb = !Enumerable.Range(0, w.Length).Any(i => w[i] == 'a' && (i + 1 >= w.Length || w[i + 1] != 'b'));
+            var expectedNoConsecA = !w.Contains("aa", StringComparison.Ordinal);
+            var expectedSameEnds = w.Length >= 1 && w[0] == w[^1];
+            var expectedDiffEnds = w.Length >= 2 && w[0] != w[^1];
+            var expectedCompound = w.StartsWith("ab", StringComparison.Ordinal) && !w.Contains("aba", StringComparison.Ordinal) && countB % 2 == 0;
+
+            Assert.Equal(countA % 3 == 1, modCount.MinimalDfa!.Accepts(w));
+            Assert.Equal(countA % 3 == 0, divCount.MinimalDfa!.Accepts(w));
+            Assert.Equal(w.Length % 3 == 1, lenMod.Accepts(w));
+            Assert.Equal(w.Length > 2 && w.Length < 5, lenStrict.Accepts(w));
+            Assert.Equal(countA > 1 && countB < 2, countStrict.Accepts(w));
+            Assert.Equal(expectedEveryAb, everyAbDfa.Accepts(w));
+            Assert.Equal(expectedEveryAb, everyAbNfa.Nfa.Accepts(w));
+            Assert.Equal(expectedNoConsecA, noConsecDfa.Accepts(w));
+            Assert.Equal(expectedNoConsecA, noConsecNfa.Nfa.Accepts(w));
+            Assert.Equal(expectedSameEnds, sameEndsDfa.Accepts(w));
+            Assert.Equal(expectedSameEnds, sameEndsNfa.Nfa.Accepts(w));
+            Assert.Equal(expectedDiffEnds, diffEndsDfa.Accepts(w));
+            Assert.Equal(expectedDiffEnds, diffEndsNfa.Nfa.Accepts(w));
+            Assert.Equal(w == "aba", equalsNfa.Nfa.Accepts(w));
+            Assert.Equal(w != "aba", doesNotEqualNfa.Nfa.Accepts(w));
+            Assert.Equal(!(w.Length >= 2 && w[1] == 'a'), doesNotHaveNfa.Nfa.Accepts(w));
+            Assert.Equal(expectedCompound, compoundDfa.Accepts(w));
+
+            if (w.Length < 5)
+            {
+                abQueue.Enqueue(w + "a");
+                abQueue.Enqueue(w + "b");
+            }
+        }
+    }
 }

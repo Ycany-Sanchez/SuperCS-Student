@@ -593,9 +593,16 @@ public static class ParametricSpecParser
             }
         }
 
+        // Let regular Boolean constraints (e.g. "#a mod 3 = 1", "#a divisible by 3", "NOT (#a = 2)") fall through
+        var rawExpr = m.Groups["expr"].Value.Trim();
+        if (Regex.IsMatch(rawExpr, @"\b(mod|divisible|multiple|AND|OR|NOT|starts?|ends?|contains?|does\s+not|doesn't)\b", RegexOptions.IgnoreCase))
+        {
+            return null;
+        }
+
         // Normalize "#a(w)" or "count(a)" -> synthetic variable "__c_a" so our affine parser handles arbitrary linear count forms!
         var exprText = Regex.Replace(
-            m.Groups["expr"].Value.Trim(),
+            rawExpr,
             @"#([a-z0-9])(?:\s*\(\s*[a-z]\s*\))?",
             match => $"_c{char.ToLowerInvariant(match.Groups[1].Value[0])}_",
             RegexOptions.IgnoreCase);

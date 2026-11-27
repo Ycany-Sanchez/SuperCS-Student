@@ -56,7 +56,7 @@ public sealed record LanguageSpecCompilationResult(
 public static class LanguageSpecCompiler
 {
     private static readonly Regex ConstraintSignalRegex = new(
-        @"\b(starts?\s+with|begins?\s+with|ends?\s+with|contains?|does\s+not|doesn't|even|odd|length|divisible|multiple|at\s+least|at\s+most|exactly)\b|\b(AND|OR|NOT)\b",
+        @"\b(starts?\s+with|begins?\s+with|ends?\s+with|contains?|has\s+substring|does\s+not|doesn't|even|odd|length|divisible|multiple|mod|at\s+least|at\s+most|exactly|more\s+than|fewer\s+than|less\s+than|no\s+consecutive|no\s+adjacent|consecutive|adjacent|every\s+\S+\s+(?:is\s+)?followed\s+by|starts?\s+and\s+ends?|from\s+(?:right|end|last)|to\s+last|equals?|exact|non-?empty|is\s+empty|empty|count\s+of|no\s+\S)\b|\b\d+(?:st|nd|rd|th)?\s+(?:symbol|char|character|letter|from)\b|\b(AND|OR|NOT)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static LanguageSpecCompilationResult Compile(
@@ -1214,10 +1214,20 @@ public static class LanguageSpecCompiler
             }
             if (MatchesWord("AND"))
             {
-                FlushAtom();
-                tokens.Add(new ConstraintToken(ConstraintTokenKind.And, "AND"));
-                i += 3;
-                continue;
+                var currentAtom = new string(atomChars.ToArray()).Trim();
+                var afterAnd = input[(i + 3)..].TrimStart();
+                var isStartAndEnd =
+                    (currentAtom.EndsWith("starts", StringComparison.OrdinalIgnoreCase) ||
+                     currentAtom.EndsWith("start", StringComparison.OrdinalIgnoreCase)) &&
+                    (afterAnd.StartsWith("ends", StringComparison.OrdinalIgnoreCase) ||
+                     afterAnd.StartsWith("end", StringComparison.OrdinalIgnoreCase));
+                if (!isStartAndEnd)
+                {
+                    FlushAtom();
+                    tokens.Add(new ConstraintToken(ConstraintTokenKind.And, "AND"));
+                    i += 3;
+                    continue;
+                }
             }
             if (MatchesWord("OR"))
             {
@@ -1291,7 +1301,13 @@ public static class LanguageSpecCompiler
     private static void CollectAtomSymbols(string atom, SortedSet<char> symbols)
     {
         var s = Regex.Replace(atom.Trim(), @"\s+", " ");
-        var m = Regex.Match(s, @"^(?:(?:does not|doesn't)\s+)?(?:starts? with|begins? with|ends? with|contains?|has substring)\s+(.+)$", RegexOptions.IgnoreCase);
+        if (TryStripDoesNotPrefix(s, out var innerPos))
+        {
+            CollectAtomSymbols(innerPos, symbols);
+            return;
+        }
+
+        var m = Regex.Match(s, @"^(?:starts? with|begins? with|ends? with|contains?|has substring|equals?|exact)\s+(.+)$", RegexOptions.IgnoreCase);
         if (m.Success)
         {
             var arg = Unquote(m.Groups[1].Value.Trim());
@@ -1302,6 +1318,35 @@ public static class LanguageSpecCompiler
             return;
         }
 
+        var followedMatch = Regex.Match(s, @"^every\s+#?([^\s])\s+(?:is\s+)?followed\s+by\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (followedMatch.Success)
+        {
+            symbols.Add(followedMatch.Groups[1].Value[0]);
+            symbols.Add(followedMatch.Groups[2].Value[0]);
+            return;
+        }
+
+        var consecMatch = Regex.Match(s, @"^(?:consecutive|adjacent)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (consecMatch.Success)
+        {
+            symbols.Add(consecMatch.Groups[1].Value[0]);
+            return;
+        }
+
+        var posMatch = Regex.Match(s, @"^\d+(?:st|nd|rd|th)?(?:\s+(?:symbol|char|character|letter))?(?:\s+(?:from\s+(?:left|start|right|end|last)|to\s+last))?\s+(?:is|=)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (posMatch.Success)
+        {
+            symbols.Add(posMatch.Groups[1].Value[0]);
+            return;
+        }
+
+        var symModMatch = Regex.Match(s, @"^(?:count\s+of\s+)?#?([^\s])\s+(?:divisible\s+by|multiple\s+of|mod)\s+\d+(?:\s*=\s*\d+)?$", RegexOptions.IgnoreCase);
+        if (symModMatch.Success && !symModMatch.Groups[1].Value.Equals("length", StringComparison.OrdinalIgnoreCase))
+        {
+            symbols.Add(symModMatch.Groups[1].Value[0]);
+            return;
+        }
+
         var countMatch = Regex.Match(s, @"^(?:even|odd)(?:\s+number\s+of)?\s+#?([^\s])$", RegexOptions.IgnoreCase);
         if (countMatch.Success)
         {
@@ -1309,11 +1354,73 @@ public static class LanguageSpecCompiler
             return;
         }
 
-        var numMatch = Regex.Match(s, @"^(?:at least|at most|exactly|>=|<=|=)\s+\d+\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        var numMatch = Regex.Match(s, @"^(?:at least|at most|exactly|more than|fewer than|less than|>=|<=|=|>|<)\s+\d+\s+#?([^\s])$", RegexOptions.IgnoreCase);
         if (numMatch.Success)
         {
             symbols.Add(numMatch.Groups[1].Value[0]);
         }
+    }
+
+    private static bool TryStripDoesNotPrefix(string atom, out string innerPositive)
+    {
+        // "does not start/begin/end with X", "does not contain X", "does not equal X"
+        var m = Regex.Match(atom, @"^(?:does not|doesn't)\s+(start|begin|end)\s+with\s+(.+)$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var verb = m.Groups[1].Value.ToLowerInvariant() switch
+            {
+                "begin" => "begins with",
+                "end" => "ends with",
+                _ => "starts with"
+            };
+            innerPositive = $"{verb} {m.Groups[2].Value.Trim()}";
+            return true;
+        }
+
+        m = Regex.Match(atom, @"^(?:does not|doesn't)\s+contain\s+(.+)$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            innerPositive = $"contains {m.Groups[1].Value.Trim()}";
+            return true;
+        }
+
+        m = Regex.Match(atom, @"^(?:does not|doesn't)\s+equal\s+(.+)$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            innerPositive = $"equals {m.Groups[1].Value.Trim()}";
+            return true;
+        }
+
+        m = Regex.Match(atom, @"^(?:does not|doesn't)\s+start\s+and\s+end\s+with\s+(?:the\s+)?(same|different)\s+symbols?$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            innerPositive = $"starts and ends with {m.Groups[1].Value.ToLowerInvariant()} symbol";
+            return true;
+        }
+
+        m = Regex.Match(atom, @"^(?:does not|doesn't)\s+have\s+(.+)$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            innerPositive = m.Groups[1].Value.Trim();
+            return true;
+        }
+
+        m = Regex.Match(atom, @"^no\s+(?:consecutive|adjacent)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            innerPositive = $"consecutive {m.Groups[1].Value[0]}";
+            return true;
+        }
+
+        m = Regex.Match(atom, @"^(?:contains?\s+)?(?:no|zero)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            innerPositive = $"contains {m.Groups[1].Value[0]}";
+            return true;
+        }
+
+        innerPositive = string.Empty;
+        return false;
     }
 
     private static string Unquote(string value)
@@ -1417,33 +1524,15 @@ public static class LanguageSpecCompiler
             return string.Concat(w.Select(EscapeRegexChar));
         }
 
-        // Negated prefix/suffix/substring
-        var m = Regex.Match(atom, @"^(?:does not|doesn't)\s+(?:start|begin)\s+with\s+(.+)$", RegexOptions.IgnoreCase);
-        if (m.Success)
+        // Unified "does not ..." / "doesn't ..." / "no ..." negation wrapper
+        if (TryStripDoesNotPrefix(atom, out var innerPositive))
         {
-            var x = Unquote(m.Groups[1].Value.Trim());
-            var pos = RegexCompiler.CompileToMinimalDfa($"{EscapeWord(x)}{sigmaStar}", alpha);
+            var pos = BuildAtomicDfa(innerPositive, alpha);
             return FaOperations.Complement(pos, alpha);
         }
 
-        m = Regex.Match(atom, @"^(?:does not|doesn't)\s+end\s+with\s+(.+)$", RegexOptions.IgnoreCase);
-        if (m.Success)
-        {
-            var x = Unquote(m.Groups[1].Value.Trim());
-            var pos = RegexCompiler.CompileToMinimalDfa($"{sigmaStar}{EscapeWord(x)}", alpha);
-            return FaOperations.Complement(pos, alpha);
-        }
-
-        m = Regex.Match(atom, @"^(?:does not|doesn't)\s+contain\s+(.+)$", RegexOptions.IgnoreCase);
-        if (m.Success)
-        {
-            var x = Unquote(m.Groups[1].Value.Trim());
-            var pos = RegexCompiler.CompileToMinimalDfa($"{sigmaStar}{EscapeWord(x)}{sigmaStar}", alpha);
-            return FaOperations.Complement(pos, alpha);
-        }
-
-        // Positive prefix/suffix/substring
-        m = Regex.Match(atom, @"^(?:starts? with|begins? with)\s+(.+)$", RegexOptions.IgnoreCase);
+        // Positive prefix/suffix/substring/exact
+        var m = Regex.Match(atom, @"^(?:starts? with|begins? with)\s+(.+)$", RegexOptions.IgnoreCase);
         if (m.Success)
         {
             var x = Unquote(m.Groups[1].Value.Trim());
@@ -1462,6 +1551,69 @@ public static class LanguageSpecCompiler
         {
             var x = Unquote(m.Groups[1].Value.Trim());
             return RegexCompiler.CompileToMinimalDfa($"{sigmaStar}{EscapeWord(x)}{sigmaStar}", alpha);
+        }
+
+        m = Regex.Match(atom, @"^(?:equals?|exact)\s+(.+)$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var x = Unquote(m.Groups[1].Value.Trim());
+            return RegexCompiler.CompileToMinimalDfa(EscapeWord(x), alpha);
+        }
+
+        // Consecutive / adjacent symbol pair
+        m = Regex.Match(atom, @"^(?:consecutive|adjacent)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var sym = m.Groups[1].Value[0];
+            var pair = $"{EscapeRegexChar(sym)}{EscapeRegexChar(sym)}";
+            return RegexCompiler.CompileToMinimalDfa($"{sigmaStar}{pair}{sigmaStar}", alpha);
+        }
+
+        // Every X is followed by Y
+        m = Regex.Match(atom, @"^every\s+#?([^\s])\s+(?:is\s+)?followed\s+by\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            return BuildEveryFollowedByDfa(alpha, m.Groups[1].Value[0], m.Groups[2].Value[0]);
+        }
+
+        // Starts and ends with same / different symbol
+        m = Regex.Match(atom, @"^starts?\s+and\s+ends?\s+with\s+(?:the\s+)?(same|different)\s+symbols?$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var same = m.Groups[1].Value.Equals("same", StringComparison.OrdinalIgnoreCase);
+            return BuildSameOrDifferentEndsNfa(alpha, same).ToDfa(renameStates: true).Minimize();
+        }
+
+        // k-th symbol from right / from last is c
+        m = Regex.Match(atom, @"^(\d+)(?:st|nd|rd|th)?(?:\s+(?:symbol|char|character|letter))?\s+(?:from\s+(?:right|end|last)|to\s+last)\s+(?:is|=)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var rightK))
+        {
+            if (rightK < 1 || rightK > 8)
+            {
+                throw new FormatException($"'k-th from right' supports k between 1 and 8 (found {rightK}; a complete DFA requires 2^k states).");
+            }
+            return BuildKthFromRightNfa(rightK, m.Groups[2].Value[0], alpha).ToDfa(renameStates: true).Minimize();
+        }
+
+        // k-th symbol (from left) is c
+        m = Regex.Match(atom, @"^(\d+)(?:st|nd|rd|th)?\s+(?:symbol|char|character|letter)(?:\s+from\s+(?:left|start))?\s+(?:is|=)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var leftK))
+        {
+            if (leftK < 1 || leftK > 12)
+            {
+                throw new FormatException($"'k-th symbol' supports k between 1 and 12 (found {leftK}).");
+            }
+            return BuildKthFromLeftDfa(leftK, m.Groups[2].Value[0], alpha);
+        }
+
+        // Empty / non-empty
+        if (atom.Equals("non-empty", StringComparison.OrdinalIgnoreCase) || atom.Equals("nonempty", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildLengthCompareDfa(alpha, ">=", 1);
+        }
+        if (atom.Equals("empty", StringComparison.OrdinalIgnoreCase) || atom.Equals("is empty", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildLengthCompareDfa(alpha, "=", 0);
         }
 
         // Even / odd length
@@ -1483,24 +1635,67 @@ public static class LanguageSpecCompiler
             return BuildSymbolModDfa(alpha, sym, 2, isOdd ? 1 : 0);
         }
 
-        // Length divisible by k
-        m = Regex.Match(atom, @"^length\s+(?:divisible\s+by|multiple\s+of)\s+(\d+)$", RegexOptions.IgnoreCase);
-        if (m.Success && int.TryParse(m.Groups[1].Value, out var modK) && modK >= 1)
+        // Symbol count divisible by k or mod k = r
+        m = Regex.Match(atom, @"^(?:count\s+of\s+)?#?([^\s])\s+(?:divisible\s+by|multiple\s+of)\s+(\d+)$", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[2].Value, out var symDivK))
         {
+            if (symDivK < 1 || symDivK > 12)
+            {
+                throw new FormatException($"Modulus k must be between 1 and 12 (found {symDivK}).");
+            }
+            return BuildSymbolModDfa(alpha, m.Groups[1].Value[0], symDivK, 0);
+        }
+
+        m = Regex.Match(atom, @"^(?:count\s+of\s+)?#?([^\s])\s+mod\s+(\d+)\s*=\s*(\d+)$", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[2].Value, out var symModK) && int.TryParse(m.Groups[3].Value, out var symRem))
+        {
+            if (symModK < 1 || symModK > 12)
+            {
+                throw new FormatException($"Modulus k must be between 1 and 12 (found {symModK}).");
+            }
+            return BuildSymbolModDfa(alpha, m.Groups[1].Value[0], symModK, symRem % symModK);
+        }
+
+        // Length divisible by k or length mod k = r
+        m = Regex.Match(atom, @"^length\s+(?:divisible\s+by|multiple\s+of)\s+(\d+)$", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var modK))
+        {
+            if (modK < 1 || modK > 12)
+            {
+                throw new FormatException($"Length modulus k must be between 1 and 12 (found {modK}).");
+            }
             return BuildLengthModDfa(alpha, modK, 0);
         }
 
-        // Exact / at least / at most length
-        m = Regex.Match(atom, @"^length\s*(=|>=|<=)\s*(\d+)$", RegexOptions.IgnoreCase);
+        m = Regex.Match(atom, @"^length\s+mod\s+(\d+)\s*=\s*(\d+)$", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var lenModK) && int.TryParse(m.Groups[2].Value, out var lenRem))
+        {
+            if (lenModK < 1 || lenModK > 12)
+            {
+                throw new FormatException($"Length modulus k must be between 1 and 12 (found {lenModK}).");
+            }
+            return BuildLengthModDfa(alpha, lenModK, lenRem % lenModK);
+        }
+
+        // Exact / at least / at most / strict length
+        m = Regex.Match(atom, @"^length\s*(=|>=|<=|>|<)\s*(\d+)$", RegexOptions.IgnoreCase);
         if (m.Success && int.TryParse(m.Groups[2].Value, out var lenK))
         {
+            if (lenK > 15)
+            {
+                throw new FormatException($"Length bound k must be 15 or less (found {lenK}).");
+            }
             return BuildLengthCompareDfa(alpha, m.Groups[1].Value, lenK);
         }
 
-        // At least / at most / exactly k occurrences of symbol c
-        m = Regex.Match(atom, @"^(at least|at most|exactly|>=|<=|=)\s+(\d+)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        // At least / at most / exactly / more than / fewer than k occurrences of symbol c
+        m = Regex.Match(atom, @"^(at least|at most|exactly|more than|fewer than|less than|>=|<=|=|>|<)\s+(\d+)\s+#?([^\s])$", RegexOptions.IgnoreCase);
         if (m.Success && int.TryParse(m.Groups[2].Value, out var countK))
         {
+            if (countK > 15)
+            {
+                throw new FormatException($"Symbol count bound k must be 15 or less (found {countK}).");
+            }
             var op = m.Groups[1].Value.ToLowerInvariant();
             var sym = m.Groups[3].Value[0];
             return BuildSymbolCountDfa(alpha, sym, op, countK);
@@ -1566,6 +1761,8 @@ public static class LanguageSpecCompiler
                 "=" => i == k,
                 ">=" => i >= k,
                 "<=" => i <= k,
+                ">" => i > k,
+                "<" => i < k,
                 _ => false
             };
             if (ok) accept.Add($"q{i}");
@@ -1596,12 +1793,49 @@ public static class LanguageSpecCompiler
                 "at least" or ">=" => i >= k,
                 "at most" or "<=" => i <= k,
                 "exactly" or "=" => i == k,
+                "more than" or ">" => i > k,
+                "fewer than" or "less than" or "<" => i < k,
                 _ => false
             };
             if (ok) accept.Add($"q{i}");
         }
 
         return new Dfa(states, alpha, trans, "q0", accept).Minimize();
+    }
+
+    private static Dfa BuildEveryFollowedByDfa(SortedSet<char> alpha, char first, char follower)
+    {
+        var states = new[] { "q0", "q1", "q2" };
+        var trans = new Dictionary<(string State, char Symbol), string>();
+        foreach (var c in alpha)
+        {
+            trans[("q0", c)] = c == first ? "q1" : "q0";
+            trans[("q1", c)] = c == follower ? (first == follower ? "q1" : "q0") : "q2";
+            trans[("q2", c)] = "q2";
+        }
+        return new Dfa(states, alpha, trans, "q0", new[] { "q0" }).Minimize();
+    }
+
+    private static Dfa BuildKthFromLeftDfa(int k, char targetSym, SortedSet<char> alpha)
+    {
+        // q0 .. q_{k-1} count prefix length; q_k = accept sink; q_{k+1} = dead sink
+        var states = Enumerable.Range(0, k + 2).Select(i => $"q{i}").ToList();
+        var acceptState = $"q{k}";
+        var deadState = $"q{k + 1}";
+        var trans = new Dictionary<(string State, char Symbol), string>();
+
+        for (var i = 0; i < k - 1; i++)
+        {
+            foreach (var c in alpha) trans[($"q{i}", c)] = $"q{i + 1}";
+        }
+        foreach (var c in alpha)
+        {
+            trans[($"q{k - 1}", c)] = c == targetSym ? acceptState : deadState;
+            trans[(acceptState, c)] = acceptState;
+            trans[(deadState, c)] = deadState;
+        }
+
+        return new Dfa(states, alpha, trans, "q0", new[] { acceptState }).Minimize();
     }
 
     // --- Compact NFA Constraint Synthesizer (True String-Edge NFAs + Negation-to-DFA Rule) ---
@@ -1699,7 +1933,7 @@ public static class LanguageSpecCompiler
         var atom = Regex.Replace(rawAtom.Trim(), @"\s+", " ");
 
         // Negated constraints MUST determinize to a complete DFA before complementing!
-        if (Regex.IsMatch(atom, @"^(?:does not|doesn't)\s+(?:(?:start|begin|end)\s+with|contain)\s+.+$", RegexOptions.IgnoreCase))
+        if (TryStripDoesNotPrefix(atom, out _))
         {
             var compDfa = BuildAtomicDfa(atom, alpha).Complete().Minimize();
             return new ConstraintNfaResult(compDfa.ToNfa(), RequiredDeterminization: true, DeterminizationReason: NegationDetReason);
@@ -1729,9 +1963,160 @@ public static class LanguageSpecCompiler
             return new ConstraintNfaResult(BuildContainsNfa(w, alpha), false, null);
         }
 
-        // Other positive constraints (even/odd, divisible, at least/at most/exactly): minimal NFA with dead sink pruned
+        // Positive: equals w  =>  q0 --w--> q1 (accept)
+        m = Regex.Match(atom, @"^(?:equals?|exact)\s+(.+)$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var w = Unquote(m.Groups[1].Value.Trim());
+            return new ConstraintNfaResult(BuildEqualsNfa(w, alpha), false, null);
+        }
+
+        // Positive: consecutive c  =>  contains cc
+        m = Regex.Match(atom, @"^(?:consecutive|adjacent)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var sym = m.Groups[1].Value[0];
+            return new ConstraintNfaResult(BuildContainsNfa($"{sym}{sym}", alpha), false, null);
+        }
+
+        // Positive: every X followed by Y  =>  compact 1-state string-edge NFA when X != Y
+        m = Regex.Match(atom, @"^every\s+#?([^\s])\s+(?:is\s+)?followed\s+by\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var first = m.Groups[1].Value[0];
+            var follower = m.Groups[2].Value[0];
+            if (first != follower)
+            {
+                return new ConstraintNfaResult(BuildEveryFollowedByNfa(alpha, first, follower), false, null);
+            }
+        }
+
+        // Positive: starts and ends with same / different symbol  =>  compact branching NFA
+        m = Regex.Match(atom, @"^starts?\s+and\s+ends?\s+with\s+(?:the\s+)?(same|different)\s+symbols?$", RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            var same = m.Groups[1].Value.Equals("same", StringComparison.OrdinalIgnoreCase);
+            return new ConstraintNfaResult(BuildSameOrDifferentEndsNfa(alpha, same), false, null);
+        }
+
+        // Positive: k-th symbol from right is c  =>  classic (k+1)-state compact NFA
+        m = Regex.Match(atom, @"^(\d+)(?:st|nd|rd|th)?(?:\s+(?:symbol|char|character|letter))?\s+(?:from\s+(?:right|end|last)|to\s+last)\s+(?:is|=)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var rightK))
+        {
+            if (rightK < 1 || rightK > 8)
+            {
+                throw new FormatException($"'k-th from right' supports k between 1 and 8 (found {rightK}; a complete DFA requires 2^k states).");
+            }
+            return new ConstraintNfaResult(BuildKthFromRightNfa(rightK, m.Groups[2].Value[0], alpha), false, null);
+        }
+
+        // Positive: k-th symbol from left is c  =>  compact (k+1)-state NFA (zero dead trap)
+        m = Regex.Match(atom, @"^(\d+)(?:st|nd|rd|th)?\s+(?:symbol|char|character|letter)(?:\s+from\s+(?:left|start))?\s+(?:is|=)\s+#?([^\s])$", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var leftK))
+        {
+            if (leftK < 1 || leftK > 12)
+            {
+                throw new FormatException($"'k-th symbol' supports k between 1 and 12 (found {leftK}).");
+            }
+            return new ConstraintNfaResult(BuildKthFromLeftNfa(leftK, m.Groups[2].Value[0], alpha), false, null);
+        }
+
+        // Other positive constraints (even/odd, divisible, mod, at least/at most/exactly): minimal NFA with dead sink pruned
         var baseDfa = BuildAtomicDfa(atom, alpha);
         return new ConstraintNfaResult(PruneDeadStatesAsNfa(baseDfa), false, null);
+    }
+
+    private static Nfa BuildEqualsNfa(string w, SortedSet<char> alpha)
+    {
+        if (AutomataSymbols.IsEmptyToken(w))
+        {
+            return new Nfa(new[] { "q0" }, alpha, Array.Empty<NfaTransition>(), "q0", new[] { "q0" });
+        }
+        return new Nfa(new[] { "q0", "q1" }, alpha, new[] { new NfaTransition("q0", w, "q1") }, "q0", new[] { "q1" });
+    }
+
+    private static Nfa BuildEveryFollowedByNfa(SortedSet<char> alpha, char first, char follower)
+    {
+        var transitions = new List<NfaTransition>();
+        foreach (var c in alpha)
+        {
+            if (c != first)
+            {
+                transitions.Add(new NfaTransition("q0", c.ToString(), "q0"));
+            }
+        }
+        transitions.Add(new NfaTransition("q0", $"{first}{follower}", "q0"));
+        return new Nfa(new[] { "q0" }, alpha, transitions, "q0", new[] { "q0" });
+    }
+
+    private static Nfa BuildKthFromLeftNfa(int k, char targetSym, SortedSet<char> alpha)
+    {
+        var states = Enumerable.Range(0, k + 1).Select(i => $"q{i}").ToList();
+        var transitions = new List<NfaTransition>();
+        for (var i = 0; i < k - 1; i++)
+        {
+            foreach (var c in alpha) transitions.Add(new NfaTransition($"q{i}", c.ToString(), $"q{i + 1}"));
+        }
+        transitions.Add(new NfaTransition($"q{k - 1}", targetSym.ToString(), $"q{k}"));
+        foreach (var c in alpha) transitions.Add(new NfaTransition($"q{k}", c.ToString(), $"q{k}"));
+        return new Nfa(states, alpha, transitions, "q0", new[] { $"q{k}" });
+    }
+
+    private static Nfa BuildKthFromRightNfa(int k, char targetSym, SortedSet<char> alpha)
+    {
+        var states = Enumerable.Range(0, k + 1).Select(i => $"q{i}").ToList();
+        var transitions = new List<NfaTransition>();
+        foreach (var c in alpha) transitions.Add(new NfaTransition("q0", c.ToString(), "q0"));
+        transitions.Add(new NfaTransition("q0", targetSym.ToString(), "q1"));
+        for (var i = 1; i < k; i++)
+        {
+            foreach (var c in alpha) transitions.Add(new NfaTransition($"q{i}", c.ToString(), $"q{i + 1}"));
+        }
+        return new Nfa(states, alpha, transitions, "q0", new[] { $"q{k}" });
+    }
+
+    private static Nfa BuildSameOrDifferentEndsNfa(SortedSet<char> alpha, bool same)
+    {
+        var states = new List<string> { "q0" };
+        var transitions = new List<NfaTransition>();
+        var accept = new List<string>();
+        var nextId = 1;
+
+        if (same)
+        {
+            foreach (var c in alpha)
+            {
+                var mid = $"q{nextId++}";
+                var acc = $"q{nextId++}";
+                states.Add(mid);
+                states.Add(acc);
+                accept.Add(acc);
+
+                transitions.Add(new NfaTransition("q0", c.ToString(), acc));
+                transitions.Add(new NfaTransition("q0", c.ToString(), mid));
+                foreach (var x in alpha) transitions.Add(new NfaTransition(mid, x.ToString(), mid));
+                transitions.Add(new NfaTransition(mid, c.ToString(), acc));
+            }
+        }
+        else
+        {
+            var acc = $"q{nextId++}";
+            states.Add(acc);
+            accept.Add(acc);
+            foreach (var c in alpha)
+            {
+                var mid = $"q{nextId++}";
+                states.Add(mid);
+                transitions.Add(new NfaTransition("q0", c.ToString(), mid));
+                foreach (var x in alpha) transitions.Add(new NfaTransition(mid, x.ToString(), mid));
+                foreach (var d in alpha)
+                {
+                    if (d != c) transitions.Add(new NfaTransition(mid, d.ToString(), acc));
+                }
+            }
+        }
+
+        return new Nfa(states, alpha, transitions, "q0", accept);
     }
 
     private static Nfa BuildStartsWithNfa(string w, SortedSet<char> alpha)
