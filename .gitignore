@@ -19,5 +19,6 @@ npm-debug.log*
 Thumbs.db
 *.log
 graphify-out/
+.graphifyignore
 .taste-skill/
 .impeccable/
