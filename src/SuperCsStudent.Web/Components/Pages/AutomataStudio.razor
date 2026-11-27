@@ -241,8 +241,11 @@
                                 @if (_compiledSpec.Pda is not null)
                                 {
                                     <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
+                                            style="@(_compilerPreviewKind == "pda-stack" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
+                                            @onclick='() => _compilerPreviewKind = "pda-stack"'>PDA Stack</button>
+                                    <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
                                             style="@(_compilerPreviewKind == "pda" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
-                                            @onclick='() => _compilerPreviewKind = "pda"'>PDA</button>
+                                            @onclick='() => _compilerPreviewKind = "pda"'>PDA Graph</button>
                                 }
                                 <button type="button" class="px-2 h-6 rounded text-[11px] font-medium cursor-pointer"
                                         style="@(_compilerPreviewKind == "tm" ? "background: var(--surface); color: var(--text);" : "color: var(--muted);")"
@@ -252,11 +255,24 @@
                     </div>
                 }
 
-                <div class="flex-1 min-h-[280px]">
-                    <InteractiveSvgCanvas Scene="@GetCompilerPreviewScene()"
-                                          SnapMotion="@AppState.SnapMotion"
-                                          ErrorBanner="@_compilerError"
-                                          ExportFileName="compiled-automaton.svg" />
+                <div class="flex-1 min-h-[280px] min-w-0 overflow-hidden">
+                    @if (_compilerPreviewKind == "pda-stack" && _compilerPdaTrace is not null)
+                    {
+                        <div class="h-full bp-card p-3 overflow-hidden">
+                            <PdaStackVisualizer Trace="@_compilerPdaTrace"
+                                                @bind-CurrentStepIndex="_compilerPdaStepIndex"
+                                                ShowEvolutionStrip="true"
+                                                ShowCompactStepControls="true"
+                                                SnapMotion="@AppState.SnapMotion" />
+                        </div>
+                    }
+                    else
+                    {
+                        <InteractiveSvgCanvas Scene="@GetCompilerPreviewScene()"
+                                              SnapMotion="@AppState.SnapMotion"
+                                              ErrorBanner="@_compilerError"
+                                              ExportFileName="compiled-automaton.svg" />
+                    }
                 </div>
             </div>
 
@@ -339,7 +355,12 @@
                                     <tbody>
                                         @foreach (var row in _compilerTestRows)
                                         {
-                                            <tr style="border-bottom: 1px solid var(--rule);">
+                                            var rowInput = row.Input;
+                                            var isSelectedPda = _compilerPreviewKind == "pda-stack" && string.Equals(_compilerTestInput, rowInput, StringComparison.Ordinal);
+                                            <tr class="cursor-pointer transition-colors"
+                                                style="@(isSelectedPda ? "background: var(--accent-soft);" : "") border-bottom: 1px solid var(--rule);"
+                                                title="Click to inspect this input in the preview"
+                                                @onclick="() => InspectCompilerRow(rowInput)">
                                                 <td class="px-2.5 py-1.5 font-mono">@row.Input</td>
                                                 <td class="px-2.5 py-1.5">
                                                     <div class="flex items-center gap-1">
@@ -834,8 +855,13 @@
 
                     @if (_pdaResult is not null)
                     {
-                        <div class="flex items-center gap-2">
-                            <span class="text-[11px] font-mono tnum" style="color: var(--muted);">@_pdaResult.ExploredConfigurations configs</span>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <div class="bp-seg">
+                                <button type="button" class="bp-seg-btn" data-active="@(_pdaViewMode == "stack" ? "true" : "false")" @onclick='() => _pdaViewMode = "stack"'>Stack</button>
+                                <button type="button" class="bp-seg-btn" data-active="@(_pdaViewMode == "split" ? "true" : "false")" @onclick='() => _pdaViewMode = "split"'>Split</button>
+                                <button type="button" class="bp-seg-btn" data-active="@(_pdaViewMode == "graph" ? "true" : "false")" @onclick='() => _pdaViewMode = "graph"'>Graph</button>
+                            </div>
+                            <span class="text-[11px] font-mono tnum hidden xl:inline" style="color: var(--muted);">@_pdaResult.ExploredConfigurations configs</span>
                             <span class="bp-pill @(_pdaResult.Accepted ? "bp-pill-positive" : "bp-pill-negative")">
                                 @(_pdaResult.Accepted ? "Accepted (q ∈ F, e, e)" : "Rejected")
                             </span>
@@ -843,49 +869,48 @@
                     }
                 </div>
 
-                @* Center: State Diagram + Live LIFO Stack Tower *@
+                @* Center: Interactive LIFO Stack Machine + State Diagram *@
                 <div class="flex-1 min-h-[260px] flex gap-2.5 overflow-hidden">
-                    <div class="flex-1 min-w-0">
-                        <InteractiveSvgCanvas Scene="@CurrentPdaScene"
-                                              SnapMotion="@AppState.SnapMotion"
-                                              ErrorBanner="@_pdaError"
-                                              ExportFileName="pda-diagram.svg" />
-                    </div>
-
-                    <div class="w-28 shrink-0 bp-card p-2 flex flex-col">
-                        <div class="text-[11px] font-semibold text-center pb-1.5 mb-1.5" style="border-bottom: 1px solid var(--border);">
-                            LIFO Stack
-                        </div>
-                        <div class="flex-1 flex flex-col justify-end gap-1 overflow-y-auto">
-                            @if (CurrentPdaStep is not null && CurrentPdaStep.State.StackFrames.Count > 0)
+                    @if (_pdaViewMode == "stack")
+                    {
+                        <div class="flex-1 min-w-0 bp-card p-3 overflow-hidden">
+                            @if (!string.IsNullOrEmpty(_pdaError))
                             {
-                                @for (var f = 0; f < CurrentPdaStep.State.StackFrames.Count; f++)
-                                {
-                                    var isTop = f == 0;
-                                    <div class="px-2 py-1 rounded text-center font-mono text-xs font-semibold relative"
-                                         style="@(isTop ? "background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent);" : "background: var(--raised); color: var(--text); border: 1px solid var(--border);")">
-                                        @CurrentPdaStep.State.StackFrames[f]
-                                        @if (isTop)
-                                        {
-                                            <span class="block text-[9px] font-sans uppercase tracking-wider opacity-80">TOP</span>
-                                        }
-                                    </div>
-                                }
-                            }
-                            else
-                            {
-                                <div class="text-center py-4 font-mono text-xs rounded" style="background: var(--raised); color: var(--faint); border: 1px dashed var(--control);">
-                                    e (empty)
+                                <div class="mb-2 px-3 py-2 rounded-md text-xs font-mono" style="background: var(--pill-negative-bg); color: var(--pill-negative-ink); border: 1px solid var(--negative);">
+                                    @_pdaError
                                 </div>
                             }
+                            <PdaStackVisualizer Trace="@_pdaResult"
+                                                @bind-CurrentStepIndex="_pdaStepIndex"
+                                                ShowEvolutionStrip="true"
+                                                SnapMotion="@AppState.SnapMotion" />
                         </div>
-                        @if (CurrentPdaStep is not null)
-                        {
-                            <div class="pt-1.5 mt-1.5 text-center font-mono text-[10px]" style="border-top: 1px solid var(--border); color: var(--muted);">
-                                Rem: @CurrentPdaStep.State.RemainingInput
-                            </div>
-                        }
-                    </div>
+                    }
+                    else if (_pdaViewMode == "split")
+                    {
+                        <div class="flex-1 min-w-0">
+                            <InteractiveSvgCanvas Scene="@CurrentPdaScene"
+                                                  SnapMotion="@AppState.SnapMotion"
+                                                  ErrorBanner="@_pdaError"
+                                                  ExportFileName="pda-diagram.svg" />
+                        </div>
+
+                        <div class="w-[300px] xl:w-[340px] shrink-0 bp-card p-3 overflow-hidden">
+                            <PdaStackVisualizer Trace="@_pdaResult"
+                                                @bind-CurrentStepIndex="_pdaStepIndex"
+                                                ShowEvolutionStrip="false"
+                                                SnapMotion="@AppState.SnapMotion" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="flex-1 min-w-0">
+                            <InteractiveSvgCanvas Scene="@CurrentPdaScene"
+                                                  SnapMotion="@AppState.SnapMotion"
+                                                  ErrorBanner="@_pdaError"
+                                                  ExportFileName="pda-diagram.svg" />
+                        </div>
+                    }
                 </div>
 
                 <PlaybackBar CurrentStep="@_pdaStepIndex"
@@ -1296,6 +1321,8 @@
     private int _builderMinBound = 0;
     private string _builderThreeRel = "n + m = k";
     private bool _savedProblemNotice;
+    private PdaTraceResult? _compilerPdaTrace;
+    private int _compilerPdaStepIndex;
 
     // --- DFA/NFA Tab State ---
     private string _faSourceKind = "regex";
@@ -1333,6 +1360,7 @@
     private string _pdaInput = "aabb";
     private IReadOnlyList<string> _pdaSampleInputs = ["aabb", "e", "ab", "abb", "aab"];
     private string _pdaRightTab = "table";
+    private string _pdaViewMode = "stack";
     private string? _pdaError;
     private PushdownAutomaton? _currentPda;
     private PdaTraceResult? _pdaResult;
@@ -1594,14 +1622,17 @@
             _compilerPreviewKind = _compiledSpec.MinimalDfa is not null
                 ? "dfa"
                 : _compiledSpec.Pda is not null
-                    ? "pda"
+                    ? "pda-stack"
                     : "tm";
             _lastValidCompilerScene = GetCompilerPreviewScene();
             if (_compiledSpec.SuggestedTests is { Count: > 0 } tests)
             {
-                var firstPos = tests.FirstOrDefault(t => t.ExpectedAccept) ?? tests[0];
-                _compilerTestInput = firstPos.Input;
+                var preferredPos = tests.FirstOrDefault(t => t.ExpectedAccept && t.Input != "e" && t.Input.Length >= 2)
+                    ?? tests.FirstOrDefault(t => t.ExpectedAccept)
+                    ?? tests[0];
+                _compilerTestInput = preferredPos.Input;
             }
+            RefreshCompilerPdaTrace();
             _compilerTestRows.Clear();
             RunCompilerTest();
         }
@@ -1609,6 +1640,40 @@
         {
             _compilerError = ex.Message;
         }
+    }
+
+    private void RefreshCompilerPdaTrace()
+    {
+        if (_compiledSpec?.Pda is null)
+        {
+            _compilerPdaTrace = null;
+            _compilerPdaStepIndex = 0;
+            return;
+        }
+
+        var input = string.IsNullOrEmpty(_compilerTestInput) ? "e" : _compilerTestInput;
+        _compilerPdaTrace = PdaTracer.Trace(_compiledSpec.Pda, input);
+        // Start on a non-empty stack frame when available so the stack is visibly populated right away
+        var firstStackIdx = -1;
+        for (var i = 0; i < _compilerPdaTrace.Timeline.Steps.Count; i++)
+        {
+            if (_compilerPdaTrace.Timeline.Steps[i].State.StackFrames.Count >= 2)
+            {
+                firstStackIdx = i;
+                break;
+            }
+        }
+        if (firstStackIdx < 0)
+        {
+            firstStackIdx = _compilerPdaTrace.Timeline.Steps.Count > 1 ? 1 : 0;
+        }
+        _compilerPdaStepIndex = firstStackIdx;
+    }
+
+    private void InspectCompilerRow(string input)
+    {
+        _compilerTestInput = input;
+        RefreshCompilerPdaTrace();
     }
 
     private void RunCompilerExample(string spec, string sampleInput)
@@ -1649,6 +1714,7 @@
 
         _compilerTestRows.Insert(0, new CompilerTestRow(input, accepted, detail));
         if (_compilerTestRows.Count > 10) _compilerTestRows.RemoveAt(_compilerTestRows.Count - 1);
+        RefreshCompilerPdaTrace();
     }
 
     private void RunAutoTestSuite()
